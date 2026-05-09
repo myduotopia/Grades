@@ -1,0 +1,170 @@
+"""Grade, StudentStandard, PointRule, PointRecord."""
+from datetime import datetime
+from decimal import Decimal
+from typing import TYPE_CHECKING
+from uuid import UUID
+
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Numeric,
+    String,
+    Text,
+    UniqueConstraint,
+    text,
+)
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from models.base import Base, TimestampMixin, UserScopedMixin
+from models.classroom import SOURCE_VALUES
+
+if TYPE_CHECKING:
+    from models.classroom import Student
+    from models.curriculum import Category, Item
+
+
+class Grade(Base, UserScopedMixin, TimestampMixin):
+    __tablename__ = "grade"
+
+    id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        primary_key=True,
+        server_default=text("gen_random_uuid()"),
+    )
+    item_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("item.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    student_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("student.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    score: Mapped[Decimal] = mapped_column(Numeric(4, 1), nullable=False)
+    source: Mapped[str] = mapped_column(String(32), nullable=False, default="manual")
+    source_external_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    item: Mapped["Item"] = relationship(back_populates="grades")
+    student: Mapped["Student"] = relationship(back_populates="grades")
+    point_record: Mapped["PointRecord | None"] = relationship(
+        back_populates="source_grade",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
+
+    __table_args__ = (
+        UniqueConstraint("item_id", "student_id", name="uq_grade_item_student"),
+        CheckConstraint("score >= 0 AND score <= 100", name="ck_grade_score_range"),
+        CheckConstraint(
+            f"source IN {SOURCE_VALUES!r}",
+            name="ck_grade_source",
+        ),
+    )
+
+
+class StudentStandard(Base, UserScopedMixin, TimestampMixin):
+    """Per-student × per-category threshold for awarding points."""
+    __tablename__ = "student_standard"
+
+    id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        primary_key=True,
+        server_default=text("gen_random_uuid()"),
+    )
+    student_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("student.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    category_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("category.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    threshold: Mapped[Decimal] = mapped_column(Numeric(4, 1), nullable=False)
+
+    student: Mapped["Student"] = relationship(back_populates="standards")
+    category: Mapped["Category"] = relationship(back_populates="standards")
+
+    __table_args__ = (
+        UniqueConstraint(
+            "student_id", "category_id",
+            name="uq_standard_student_category",
+        ),
+        CheckConstraint(
+            "threshold >= 0 AND threshold <= 100",
+            name="ck_standard_threshold_range",
+        ),
+    )
+
+
+class PointRule(Base, UserScopedMixin, TimestampMixin):
+    """How many points to award per category when a student meets standard."""
+    __tablename__ = "point_rule"
+
+    id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        primary_key=True,
+        server_default=text("gen_random_uuid()"),
+    )
+    category_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("category.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    points_awarded: Mapped[int] = mapped_column(nullable=False, default=0)
+
+    category: Mapped["Category"] = relationship(back_populates="point_rule")
+
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id", "category_id",
+            name="uq_point_rule_user_category",
+        ),
+        CheckConstraint("points_awarded >= 0", name="ck_point_rule_non_negative"),
+    )
+
+
+class PointRecord(Base, UserScopedMixin):
+    """Awarded points history. Total = SUM(points) per student.
+
+    UNIQUE on source_grade_id ensures one grade can only award points once.
+    """
+    __tablename__ = "point_record"
+
+    id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        primary_key=True,
+        server_default=text("gen_random_uuid()"),
+    )
+    student_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("student.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    points: Mapped[int] = mapped_column(nullable=False)
+    reason: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
+    source_grade_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("grade.id", ondelete="CASCADE"),
+        nullable=True,
+        unique=True,
+    )
+    # Inline created_at (no updated_at — point_records are append-only / recreated)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=text("now()"),
+    )
+
+    student: Mapped["Student"] = relationship(back_populates="point_records")
+    source_grade: Mapped["Grade | None"] = relationship(back_populates="point_record")
