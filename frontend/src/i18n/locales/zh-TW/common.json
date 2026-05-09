@@ -1,0 +1,16 @@
+{
+  "app": {
+    "title": "Grades",
+    "tagline": "學生成績與點數記錄系統",
+    "backend_status": "後端狀態",
+    "backend_says": "後端回應",
+    "backend_error": "後端錯誤",
+    "switch_lang": "Switch to English"
+  },
+  "auth": {
+    "sign_in_with_google": "用 Google 登入",
+    "sign_out": "登出",
+    "signed_in_as": "登入身份",
+    "signing_in": "登入中…"
+  }
+}

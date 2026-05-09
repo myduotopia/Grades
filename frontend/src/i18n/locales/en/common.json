@@ -1,0 +1,16 @@
+{
+  "app": {
+    "title": "Grades",
+    "tagline": "Student grade and point tracking",
+    "backend_status": "Backend status",
+    "backend_says": "Backend says",
+    "backend_error": "Backend error",
+    "switch_lang": "切換到中文"
+  },
+  "auth": {
+    "sign_in_with_google": "Sign in with Google",
+    "sign_out": "Sign out",
+    "signed_in_as": "Signed in as",
+    "signing_in": "Signing in…"
+  }
+}
