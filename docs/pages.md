@@ -2,6 +2,8 @@
 
 The frontend is a SPA built with React Router. All routes require login except `/login` and `/auth/callback`.
 
+> **Per-page standards** (responsive breakpoints, SEO meta, i18n, a11y, loading/empty/error states) are defined in [page-checklist.md](page-checklist.md). Every new page must satisfy that checklist.
+
 ## Route table
 
 | Route | Name | Auth | Notes |
