@@ -12,5 +12,45 @@
     "sign_out": "登出",
     "signed_in_as": "登入身份",
     "signing_in": "登入中…"
+  },
+  "common": {
+    "save": "儲存",
+    "cancel": "取消",
+    "loading": "載入中…",
+    "retry": "重試",
+    "error_generic": "發生錯誤，請稍後再試"
+  },
+  "classes": {
+    "title": "班級",
+    "empty": {
+      "heading": "還沒有班級",
+      "subheading": "選擇下面任一方式開始建立班級名單"
+    },
+    "cta": {
+      "import_classroom": "從 Google Classroom 匯入",
+      "import_duotopia": "從 Duotopia 匯入",
+      "add_manual": "手動新增",
+      "classroom_disabled": "之後版本提供",
+      "duotopia_disabled": "之後版本提供",
+      "add_manual_hint": "輸入班級名稱即可建立"
+    },
+    "source": {
+      "manual": "手動",
+      "duotopia": "Duotopia",
+      "google_classroom": "Classroom"
+    },
+    "modal": {
+      "add_title": "新增班級",
+      "edit_title": "編輯班級",
+      "name_label": "班級名稱"
+    },
+    "actions": {
+      "edit": "編輯",
+      "delete": "刪除",
+      "confirm_delete": "確定刪除「{{name}}」？此動作會一併刪除學生與成績。"
+    },
+    "errors": {
+      "duplicate_name": "已經有同名的班級了"
+    }
   }
 }

@@ -1,9 +1,9 @@
-import { BrowserRouter, Route, Routes } from 'react-router-dom'
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 
 import { AuthProvider } from './auth/AuthProvider'
 import { ProtectedRoute } from './auth/ProtectedRoute'
 import { AuthCallback } from './pages/AuthCallback'
-import { Dashboard } from './pages/Dashboard'
+import { Classes } from './pages/Classes'
 import { Login } from './pages/Login'
 
 function App() {
@@ -14,7 +14,8 @@ function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/auth/callback" element={<AuthCallback />} />
           <Route element={<ProtectedRoute />}>
-            <Route path="/" element={<Dashboard />} />
+            <Route path="/" element={<Navigate to="/classes" replace />} />
+            <Route path="/classes" element={<Classes />} />
           </Route>
         </Routes>
       </BrowserRouter>

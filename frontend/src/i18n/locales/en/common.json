@@ -12,5 +12,45 @@
     "sign_out": "Sign out",
     "signed_in_as": "Signed in as",
     "signing_in": "Signing in…"
+  },
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "loading": "Loading…",
+    "retry": "Retry",
+    "error_generic": "Something went wrong, please try again"
+  },
+  "classes": {
+    "title": "Classes",
+    "empty": {
+      "heading": "No classes yet",
+      "subheading": "Pick one of the options below to start building your roster"
+    },
+    "cta": {
+      "import_classroom": "Import from Google Classroom",
+      "import_duotopia": "Import from Duotopia",
+      "add_manual": "Add manually",
+      "classroom_disabled": "Coming soon",
+      "duotopia_disabled": "Coming soon",
+      "add_manual_hint": "Just enter a name to get started"
+    },
+    "source": {
+      "manual": "Manual",
+      "duotopia": "Duotopia",
+      "google_classroom": "Classroom"
+    },
+    "modal": {
+      "add_title": "Add class",
+      "edit_title": "Rename class",
+      "name_label": "Class name"
+    },
+    "actions": {
+      "edit": "Edit",
+      "delete": "Delete",
+      "confirm_delete": "Delete \"{{name}}\"? This will also remove its students and grades."
+    },
+    "errors": {
+      "duplicate_name": "A class with this name already exists"
+    }
   }
 }
