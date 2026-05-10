@@ -1,4 +1,11 @@
 """Grades backend — FastAPI entry point."""
+# truststore must be injected BEFORE any module that creates an SSL context
+# (httpx, urllib3, etc.). It makes Python's default ssl.SSLContext delegate to
+# the OS trust store — required on Windows where AV/VPN software often injects
+# a TLS-intercepting CA that certifi doesn't include. No-op on Linux/Mac.
+import truststore  # noqa: E402
+truststore.inject_into_ssl()  # noqa: E402
+
 from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI

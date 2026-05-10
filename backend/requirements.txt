@@ -15,6 +15,9 @@ psycopg2-binary>=2.9.9
 # Auth
 python-jose[cryptography]>=3.3.0
 httpx>=0.26.0
+# Use the OS trust store for TLS — fixes Windows TLS interception (AV/VPN MITM)
+# without disabling verification. No-op on Linux/Mac with proper CA setup.
+truststore>=0.10.0
 
 # Excel import
 openpyxl>=3.1.2
