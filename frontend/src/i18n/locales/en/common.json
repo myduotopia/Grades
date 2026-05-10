@@ -12,5 +12,82 @@
     "sign_out": "Sign out",
     "signed_in_as": "Signed in as",
     "signing_in": "Signing in…"
+  },
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "loading": "Loading…",
+    "retry": "Retry",
+    "error_generic": "Something went wrong, please try again"
+  },
+  "nav": {
+    "home": "Home",
+    "classes": "Classes",
+    "open_menu": "Open menu"
+  },
+  "home": {
+    "welcome": "Welcome back",
+    "intro": "Grades is a grade + reward-points system for teachers. Build classes, record exam and quiz scores, and let students earn points when they hit their standard.",
+    "quick_actions": "Quick actions",
+    "action": {
+      "add_classroom": "Add / manage classes",
+      "add_assessment": "Add exam or assignment",
+      "import_grades": "Import grades",
+      "coming_soon": "Coming soon"
+    },
+    "workflow": {
+      "heading": "Suggested workflow",
+      "step1": "Create classes and add students",
+      "step2": "Under each subject, add exams or assignments (midterm, quiz, homework…)",
+      "step3": "Enter scores; the system auto-awards points when a student meets their standard"
+    }
+  },
+  "category": {
+    "first_midterm": "First Midterm",
+    "second_midterm": "Second Midterm",
+    "third_midterm": "Third Midterm",
+    "midterm": "Midterm Exam",
+    "final": "Final Exam",
+    "major_exam": "Major Exam",
+    "quiz": "Quiz",
+    "homework": "Homework"
+  },
+  "classes": {
+    "title": "Classes",
+    "subtitle": "Manage your class rosters — students and grades hang off these.",
+    "empty": {
+      "heading": "No classes yet",
+      "subheading": "Pick one of the options below to start building your roster",
+      "options_heading": "Add a class"
+    },
+    "cta": {
+      "import_classroom": "Import from Google Classroom",
+      "import_duotopia": "Import from Duotopia",
+      "add_manual": "Add manually",
+      "classroom_disabled": "Coming soon",
+      "duotopia_disabled": "Coming soon",
+      "add_manual_hint": "Just enter a name to get started"
+    },
+    "source": {
+      "manual": "Manual",
+      "duotopia": "Duotopia",
+      "google_classroom": "Classroom"
+    },
+    "modal": {
+      "add_title": "Add class",
+      "edit_title": "Edit class",
+      "grade_label": "Grade",
+      "grade_placeholder": "Select grade",
+      "name_label": "Class label",
+      "name_placeholder": "e.g. 甲, A, 1, Red"
+    },
+    "actions": {
+      "edit": "Edit",
+      "delete": "Delete",
+      "confirm_delete": "Delete \"{{name}}\"? This will also remove its students and grades."
+    },
+    "errors": {
+      "duplicate_name": "A class with this name already exists"
+    }
   }
 }

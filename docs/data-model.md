@@ -14,12 +14,15 @@ All timestamps are `timestamptz`, default `now()`. `updated_at` is set via SQLAl
 classroom
 ├─ id                   uuid PK
 ├─ user_id              uuid           ← Supabase Auth user
-├─ name                 text           ← e.g., "六年甲班"
+├─ grade                smallint + CHECK BETWEEN 1 AND 12   ← 12-year compulsory education in Taiwan
+├─ name                 text           ← class label only, e.g., "甲" / "忠" / "A" / "1"; UI composes display
 ├─ source               text + CHECK in ('manual','duotopia','google_classroom')
 ├─ source_external_id   text NULL      ← original ID from import source
 ├─ created_at, updated_at  timestamptz
-└─ UNIQUE (user_id, name)
+└─ UNIQUE (user_id, grade, name)
 ```
+
+**Grade is mandatory.** Stored as 1–12 (Taiwan elementary 1–6, junior high 7–9, senior high 10–12). UI shows `{grade}年{name}班` for zh-TW (e.g. `六年甲班`) and `Grade {grade} · {name}` for en. The `name` column is just a class label — do **not** encode grade in it. Annual promotion (planned, not in v1) bumps `grade += 1` for the user's classrooms; rows where grade reaches 13 are archived.
 
 > Renamed from spec's `class` because `class` is a Python keyword and a SQL reserved word — using `classroom` everywhere (`classroom_id` FK, `item_classroom` M2M).
 
@@ -113,8 +116,11 @@ System defaults are seeded per user on signup. Frontend uses `system_key` to loo
 | `third_midterm` | 第三次段考 | Third Midterm |
 | `midterm` | 期中考 | Midterm Exam |
 | `final` | 期末考 | Final Exam |
+| `major_exam` | 大考 | Major Exam |
 | `quiz` | 小考 | Quiz |
 | `homework` | 作業 | Homework |
+
+In v1 the 8 keys above are the **only** categories — users cannot add custom ones (no `POST /api/categories`). Keep `SYSTEM_CATEGORY_KEYS` stable; adding a key requires updating both `models/curriculum.py` and the seed map in `routers/me.py`, and re-running `POST /api/me/seed` for existing users (idempotent — only inserts missing keys).
 
 System defaults **cannot be deleted** — backend rejects `DELETE` on rows with `is_system_default = true`.
 

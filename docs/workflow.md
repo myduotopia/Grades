@@ -22,13 +22,13 @@ Confirm with the user before starting; don't grab an issue and run.
 cd C:\Users\mixca\Grades
 git checkout staging
 git pull origin staging
-git worktree add .worktrees/issue-N-slug -b issue-N-slug staging
-cd .worktrees/issue-N-slug
+git worktree add .worktree/N -b claude/issue-N staging
+cd .worktree/N
 ```
 
-- `N` = issue number
-- `slug` = short kebab-case description (e.g., `classroom-crud` for #1)
-- Full path example: `.worktrees/issue-1-classroom-crud`
+- `N` = issue number — used both as the worktree directory name (`.worktree/1`, `.worktree/2`, ...) and inside the branch name
+- Branch name is **always** `claude/issue-<N>` — no slug. The `claude/` prefix marks branches authored by Claude Code; PR titles carry the human-readable description.
+- Full example: worktree at `.worktree/1`, branch `claude/issue-1`
 
 A worktree is a separate working directory sharing one `.git`. You can have many worktrees concurrently for different issues. Branch lives **inside** the worktree.
 
@@ -50,6 +50,21 @@ npm install
 
 For most issues you can skip this — just run dev servers from the main `Grades/` checkout against the same Supabase, and edit code in the worktree. The worktree is for git isolation, not necessarily runtime isolation.
 
+### Running dev servers from inside the worktree
+
+If you want to *see* your branch's changes locally (without merging into staging first), you must start the dev servers from the worktree directory itself. Two pieces don't carry across automatically because they're git-ignored:
+
+```powershell
+# .env files — copy from main checkout (one-time per worktree; re-copy if values change)
+cp ..\..\backend\.env .\backend\.env
+cp ..\..\frontend\.env .\frontend\.env
+
+# frontend/node_modules — link to main checkout's install instead of re-installing
+cmd /c "mklink /J .\frontend\node_modules ..\..\frontend\node_modules"
+```
+
+Then start the servers from inside the worktree as usual (`uvicorn main:app --reload --port 8000` and `npm run dev`).
+
 ## 4. Implement
 
 **Order within an issue**: backend first, then frontend.
@@ -66,6 +81,8 @@ Backend first because:
 - Frontend hook per resource: `frontend/src/hooks/use<Entity>.ts` wrapping TanStack Query
 - API access: extend `frontend/src/lib/api.ts`'s `api` object
 - i18n discipline: every UI string via `t()`; new keys added to **both** `frontend/src/i18n/locales/zh-TW/common.json` AND `en/common.json`
+
+**Before any frontend page work**, read [page-checklist.md](page-checklist.md) §Visual design rules and use the layout primitives in `frontend/src/layout/` (`PageContainer`, `PageHeader`, `AppShell`) and `frontend/src/components/ActionCard`. Do not hand-roll page chrome, h1 sizes, container widths, or accent colors — the rules already exist; follow them.
 
 **Every new page must satisfy** [page-checklist.md](page-checklist.md).
 
@@ -115,7 +132,7 @@ Multiple commits per PR is fine — split logically (e.g., one commit for backen
 ## 7. Push the branch
 
 ```powershell
-git push -u origin issue-N-slug
+git push -u origin claude/issue-N
 ```
 
 The `-u` sets upstream tracking so subsequent `git push` works without args.
@@ -125,7 +142,7 @@ The `-u` sets upstream tracking so subsequent `git push` works without args.
 ```powershell
 gh pr create --repo myduotopia/Grades \
   --base staging \
-  --head issue-N-slug \
+  --head claude/issue-N \
   --title "[#N] short title" \
   --body "..."
 ```
@@ -158,11 +175,11 @@ User reviews + merges. Don't auto-merge — even if the user gave general approv
 cd C:\Users\mixca\Grades
 git checkout staging
 git pull origin staging
-git worktree remove .worktrees/issue-N-slug
-git branch -D issue-N-slug
+git worktree remove .worktree/N
+git branch -D claude/issue-N
 ```
 
-The branch on `origin` is auto-deleted by GitHub if "automatically delete head branches" is on. If not, also: `git push origin --delete issue-N-slug`.
+The branch on `origin` is auto-deleted by GitHub if "automatically delete head branches" is on. If not, also: `git push origin --delete claude/issue-N`.
 
 ---
 
@@ -187,8 +204,8 @@ For typo fixes, broken-link patches, or README touch-ups that don't touch any co
 | Action | Command |
 |---|---|
 | Sync staging | `git checkout staging && git pull` |
-| New worktree | `git worktree add .worktrees/issue-N-slug -b issue-N-slug staging` |
+| New worktree | `git worktree add .worktree/N -b claude/issue-N staging` |
 | List worktrees | `git worktree list` |
-| Remove worktree | `git worktree remove .worktrees/issue-N-slug` |
+| Remove worktree | `git worktree remove .worktree/N` |
 | Open PR | `gh pr create --base staging --head <branch>` |
 | Check PR status | `gh pr view --web` |

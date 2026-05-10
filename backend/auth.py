@@ -6,6 +6,7 @@ fetching the project's JWKS endpoint — for asymmetric tokens we use the
 matching public key; for HS256 we fall back to SUPABASE_JWT_SECRET.
 """
 from typing import Annotated, Any
+from uuid import UUID
 
 import httpx
 from fastapi import Depends, HTTPException, status
@@ -95,3 +96,27 @@ def get_current_user(
             detail=f"Invalid token: {e}",
         )
     return payload
+
+
+def require_user_id(
+    payload: Annotated[dict[str, Any], Depends(get_current_user)],
+) -> UUID:
+    """Resolve the JWT payload to the Supabase auth.users.id UUID.
+
+    Every router that needs per-user data isolation should depend on this
+    instead of get_current_user — it returns just the UUID, which is what
+    every query actually filters by.
+    """
+    sub = payload.get("sub")
+    if not sub:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token missing sub claim",
+        )
+    try:
+        return UUID(sub)
+    except (TypeError, ValueError) as e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Token sub is not a UUID: {e}",
+        )
