@@ -82,6 +82,8 @@ Backend first because:
 - API access: extend `frontend/src/lib/api.ts`'s `api` object
 - i18n discipline: every UI string via `t()`; new keys added to **both** `frontend/src/i18n/locales/zh-TW/common.json` AND `en/common.json`
 
+**Before any frontend page work**, read [page-checklist.md](page-checklist.md) §Visual design rules and use the layout primitives in `frontend/src/layout/` (`PageContainer`, `PageHeader`, `AppShell`) and `frontend/src/components/ActionCard`. Do not hand-roll page chrome, h1 sizes, container widths, or accent colors — the rules already exist; follow them.
+
 **Every new page must satisfy** [page-checklist.md](page-checklist.md).
 
 ## 5. Verify

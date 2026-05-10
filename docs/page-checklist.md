@@ -2,6 +2,62 @@
 
 Per-page standards every new page or page change must satisfy. PR review is gated on these. The "PR checklist template" at the bottom can be pasted directly into a PR description.
 
+## Visual design rules
+
+Every authenticated page must use the shared layout primitives so titles, spacing, and widths stay consistent. Don't hand-roll page chrome.
+
+### Layout primitives (mandatory)
+
+- `<PageContainer>` — wraps the page content. Sets `max-w-6xl mx-auto`. (`frontend/src/layout/PageContainer.tsx`)
+- `<PageHeader title subtitle? actions?>` — page title row. Sets the h1 size and spacing below. (`frontend/src/layout/PageHeader.tsx`)
+- `<AppShell>` — sidebar + main wrapper, applied at the route level. Pages do **not** render their own header / sign-out / language switcher.
+
+### Type scale
+
+| Use | Classes |
+|---|---|
+| Page title (h1) | `text-2xl lg:text-3xl font-bold tracking-tight` (set by `PageHeader`) |
+| Page subtitle | `text-sm text-slate-500` (set by `PageHeader`) |
+| Section eyebrow (small caps) | `text-sm font-semibold text-slate-500 uppercase tracking-wide` |
+| Section heading (h2 inside cards) | `text-lg font-semibold text-slate-900 tracking-tight` |
+| Card title (h3) | `font-semibold text-slate-900 tracking-tight` |
+| Body text | `text-slate-700 leading-relaxed` |
+| Muted / hint | `text-sm text-slate-500` |
+
+### Color tokens
+
+- Accent: **`amber-500`** (hover `amber-600`, active `amber-700`). Used for primary buttons, primary CTA cards, focus rings.
+- Sidebar: `slate-900` background with `slate-200` text and `slate-800` active row.
+- Surfaces: page bg `slate-50`; cards `white` + `border-slate-200`.
+- Errors: `rose-*` family. Never use `red-*` directly — keep semantic.
+
+### Spacing
+
+- Page → first section: `mb-8` (set by `PageHeader`)
+- Section → next section: `mb-10` for major, `mb-6` for tight
+- Card padding: `p-5` for compact, `p-6 lg:p-8` for hero/empty-state cards
+- Card radius: `rounded-xl` (cards), `rounded-lg` (inputs, buttons), `rounded-2xl` (modals, hero panels)
+
+### Page skeleton (paste this when starting a new page)
+
+```tsx
+import { PageContainer } from '../layout/PageContainer'
+import { PageHeader } from '../layout/PageHeader'
+
+export function MyPage() {
+  return (
+    <PageContainer>
+      <PageHeader
+        title={t('mypage.title')}
+        subtitle={t('mypage.subtitle')}
+        actions={<button className={PRIMARY_BTN}>{t('mypage.cta')}</button>}
+      />
+      {/* sections here */}
+    </PageContainer>
+  )
+}
+```
+
 ## Responsive design
 
 Every page must work at three breakpoints:

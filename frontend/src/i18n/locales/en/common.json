@@ -20,6 +20,28 @@
     "retry": "Retry",
     "error_generic": "Something went wrong, please try again"
   },
+  "nav": {
+    "home": "Home",
+    "classes": "Classes",
+    "open_menu": "Open menu"
+  },
+  "home": {
+    "welcome": "Welcome back",
+    "intro": "Grades is a grade + reward-points system for teachers. Build classes, record exam and quiz scores, and let students earn points when they hit their standard.",
+    "quick_actions": "Quick actions",
+    "action": {
+      "add_classroom": "Add / manage classes",
+      "add_assessment": "Add exam or assignment",
+      "import_grades": "Import grades",
+      "coming_soon": "Coming soon"
+    },
+    "workflow": {
+      "heading": "Suggested workflow",
+      "step1": "Create classes and add students",
+      "step2": "Under each subject, add exams or assignments (midterm, quiz, homework…)",
+      "step3": "Enter scores; the system auto-awards points when a student meets their standard"
+    }
+  },
   "category": {
     "first_midterm": "First Midterm",
     "second_midterm": "Second Midterm",
@@ -32,9 +54,11 @@
   },
   "classes": {
     "title": "Classes",
+    "subtitle": "Manage your class rosters — students and grades hang off these.",
     "empty": {
       "heading": "No classes yet",
-      "subheading": "Pick one of the options below to start building your roster"
+      "subheading": "Pick one of the options below to start building your roster",
+      "options_heading": "Add a class"
     },
     "cta": {
       "import_classroom": "Import from Google Classroom",

@@ -20,6 +20,28 @@
     "retry": "重試",
     "error_generic": "發生錯誤，請稍後再試"
   },
+  "nav": {
+    "home": "首頁",
+    "classes": "班級管理",
+    "open_menu": "開啟選單"
+  },
+  "home": {
+    "welcome": "歡迎回來",
+    "intro": "Grades 是給老師用的成績與點數記錄系統。建立班級、紀錄段考小考成績，達標自動發點數。",
+    "quick_actions": "快速動作",
+    "action": {
+      "add_classroom": "新增 / 管理班級",
+      "add_assessment": "新增考試或作業",
+      "import_grades": "匯入成績",
+      "coming_soon": "之後版本提供"
+    },
+    "workflow": {
+      "heading": "建議的使用流程",
+      "step1": "先建立班級，並把學生加進去",
+      "step2": "在每個科目下，新增考試或作業（段考、小考、作業…）",
+      "step3": "輸入成績，系統會依標準自動發放點數"
+    }
+  },
   "category": {
     "first_midterm": "第一次段考",
     "second_midterm": "第二次段考",
@@ -31,10 +53,12 @@
     "homework": "作業"
   },
   "classes": {
-    "title": "班級",
+    "title": "班級管理",
+    "subtitle": "管理你的班級名單，學生與成績都會掛在這裡。",
     "empty": {
       "heading": "還沒有班級",
-      "subheading": "選擇下面任一方式開始建立班級名單"
+      "subheading": "選擇下面任一方式開始建立班級名單",
+      "options_heading": "新增方式"
     },
     "cta": {
       "import_classroom": "從 Google Classroom 匯入",

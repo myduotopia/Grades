@@ -1,96 +1,116 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { useAuth } from '../auth/AuthProvider'
+import { ActionCard } from '../components/ActionCard'
 import {
   useClassrooms,
   useCreateClassroom,
   useDeleteClassroom,
   useUpdateClassroom,
 } from '../hooks/useClassrooms'
+import { PageContainer } from '../layout/PageContainer'
+import { PageHeader } from '../layout/PageHeader'
 import { ApiError, type Classroom } from '../lib/api'
-import { supabase } from '../lib/supabase'
 
 type ModalState =
   | { kind: 'closed' }
   | { kind: 'add' }
   | { kind: 'edit'; classroom: Classroom }
 
+const PRIMARY_BTN =
+  'inline-flex items-center px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white text-sm font-medium shadow-sm transition-colors disabled:bg-slate-300 disabled:shadow-none'
+
+const SECONDARY_BTN =
+  'inline-flex items-center px-4 py-2 rounded-lg bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-medium shadow-sm transition-colors disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:bg-white disabled:hover:border-slate-200'
+
 export function Classes() {
-  const { t, i18n } = useTranslation()
-  const { session } = useAuth()
+  const { t } = useTranslation()
   const { data, isLoading, isError, error, refetch } = useClassrooms()
   const [modal, setModal] = useState<ModalState>({ kind: 'closed' })
 
-  const handleSignOut = () => supabase.auth.signOut()
-  const toggleLang = () =>
-    i18n.changeLanguage(i18n.language === 'zh-TW' ? 'en' : 'zh-TW')
-
   const classrooms = data?.data ?? []
+  const isEmpty = !isLoading && !isError && classrooms.length === 0
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white border-b">
-        <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
-          <h1 className="text-2xl font-bold text-gray-900">{t('classes.title')}</h1>
-          <div className="flex items-center gap-3 text-sm">
-            <span className="hidden sm:inline text-gray-600">{session?.user.email}</span>
-            <button
-              onClick={toggleLang}
-              className="text-gray-600 hover:text-blue-600 font-medium"
-            >
-              {t('app.switch_lang')}
-            </button>
-            <button
-              onClick={handleSignOut}
-              className="text-gray-500 hover:text-red-600 font-medium"
-            >
-              {t('auth.sign_out')}
-            </button>
-          </div>
-        </div>
-      </header>
-
-      <main className="max-w-6xl mx-auto px-4 py-8">
-        {isLoading && (
-          <div className="text-center text-gray-500 py-12">{t('common.loading')}</div>
-        )}
-
-        {isError && (
-          <div className="bg-red-50 border border-red-200 text-red-700 rounded p-4 flex items-center justify-between">
-            <span>
-              {t('common.error_generic')}: {error instanceof Error ? error.message : ''}
-            </span>
-            <button
-              onClick={() => refetch()}
-              className="text-sm font-medium text-red-700 hover:text-red-900 underline"
-            >
-              {t('common.retry')}
-            </button>
-          </div>
-        )}
-
-        {!isLoading && !isError && classrooms.length === 0 && (
-          <EmptyState onManualAdd={() => setModal({ kind: 'add' })} />
-        )}
-
-        {!isLoading && !isError && classrooms.length > 0 && (
-          <>
-            <div className="flex justify-end mb-4">
+    <PageContainer>
+      <PageHeader
+        title={t('classes.title')}
+        subtitle={isEmpty ? t('classes.empty.subheading') : t('classes.subtitle')}
+        actions={
+          !isLoading && !isError && classrooms.length > 0 ? (
+            <div className="flex flex-wrap items-center gap-2 justify-end">
               <button
-                onClick={() => setModal({ kind: 'add' })}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white rounded font-medium transition-colors"
+                disabled
+                title={t('classes.cta.classroom_disabled')}
+                className={SECONDARY_BTN}
               >
+                {t('classes.cta.import_classroom')}
+              </button>
+              <button
+                disabled
+                title={t('classes.cta.duotopia_disabled')}
+                className={SECONDARY_BTN}
+              >
+                {t('classes.cta.import_duotopia')}
+              </button>
+              <button onClick={() => setModal({ kind: 'add' })} className={PRIMARY_BTN}>
                 {t('classes.cta.add_manual')}
               </button>
             </div>
-            <ClassroomGrid
-              classrooms={classrooms}
-              onEdit={(c) => setModal({ kind: 'edit', classroom: c })}
+          ) : undefined
+        }
+      />
+
+      {isLoading && (
+        <div className="text-center text-slate-400 py-16">{t('common.loading')}</div>
+      )}
+
+      {isError && (
+        <div className="bg-rose-50 border border-rose-200 text-rose-700 rounded-xl p-4 flex items-center justify-between">
+          <span className="text-sm">
+            {t('common.error_generic')}: {error instanceof Error ? error.message : ''}
+          </span>
+          <button
+            onClick={() => refetch()}
+            className="text-sm font-medium text-rose-700 hover:text-rose-900 underline"
+          >
+            {t('common.retry')}
+          </button>
+        </div>
+      )}
+
+      {isEmpty && (
+        <section className="mb-10">
+          <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-4">
+            {t('classes.empty.options_heading')}
+          </h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <ActionCard
+              disabled
+              label={t('classes.cta.import_classroom')}
+              hint={t('classes.cta.classroom_disabled')}
             />
-          </>
-        )}
-      </main>
+            <ActionCard
+              disabled
+              label={t('classes.cta.import_duotopia')}
+              hint={t('classes.cta.duotopia_disabled')}
+            />
+            <ActionCard
+              primary
+              label={t('classes.cta.add_manual')}
+              hint={t('classes.cta.add_manual_hint')}
+              onClick={() => setModal({ kind: 'add' })}
+            />
+          </div>
+        </section>
+      )}
+
+      {!isLoading && !isError && classrooms.length > 0 && (
+        <ClassroomGrid
+          classrooms={classrooms}
+          onEdit={(c) => setModal({ kind: 'edit', classroom: c })}
+        />
+      )}
 
       {modal.kind !== 'closed' && (
         <ClassroomModal
@@ -99,66 +119,7 @@ export function Classes() {
           onClose={() => setModal({ kind: 'closed' })}
         />
       )}
-    </div>
-  )
-}
-
-function EmptyState({ onManualAdd }: { onManualAdd: () => void }) {
-  const { t } = useTranslation()
-  return (
-    <section className="bg-white rounded-lg shadow-sm border p-8 text-center max-w-3xl mx-auto">
-      <h2 className="text-xl font-semibold text-gray-900 mb-2">
-        {t('classes.empty.heading')}
-      </h2>
-      <p className="text-gray-600 mb-8">{t('classes.empty.subheading')}</p>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <CtaCard
-          title={t('classes.cta.import_classroom')}
-          subtitle={t('classes.cta.classroom_disabled')}
-          disabled
-        />
-        <CtaCard
-          title={t('classes.cta.import_duotopia')}
-          subtitle={t('classes.cta.duotopia_disabled')}
-          disabled
-        />
-        <CtaCard
-          title={t('classes.cta.add_manual')}
-          subtitle={t('classes.cta.add_manual_hint')}
-          onClick={onManualAdd}
-        />
-      </div>
-    </section>
-  )
-}
-
-function CtaCard({
-  title,
-  subtitle,
-  onClick,
-  disabled,
-}: {
-  title: string
-  subtitle: string
-  onClick?: () => void
-  disabled?: boolean
-}) {
-  const base =
-    'border rounded-lg p-5 text-left transition-colors flex flex-col gap-1 h-full'
-  const enabled =
-    'bg-white border-gray-200 hover:border-blue-400 hover:bg-blue-50 cursor-pointer'
-  const off = 'bg-gray-50 border-gray-200 text-gray-400 cursor-not-allowed'
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      title={disabled ? subtitle : undefined}
-      className={`${base} ${disabled ? off : enabled}`}
-    >
-      <span className="font-semibold">{title}</span>
-      <span className="text-sm">{subtitle}</span>
-    </button>
+    </PageContainer>
   )
 }
 
@@ -177,18 +138,20 @@ function ClassroomGrid({
       {classrooms.map((c) => (
         <li
           key={c.id}
-          className="bg-white border border-gray-200 rounded-lg p-5 shadow-sm flex flex-col gap-3"
+          className="group bg-white border border-slate-200 rounded-xl p-5 shadow-sm hover:shadow-md hover:border-slate-300 transition-all flex flex-col gap-4"
         >
           <div className="flex items-start justify-between gap-2">
-            <h3 className="font-semibold text-gray-900 break-all">{c.name}</h3>
-            <span className="shrink-0 text-xs uppercase tracking-wide text-gray-500 border border-gray-200 rounded px-2 py-0.5">
+            <h3 className="font-semibold text-slate-900 break-all tracking-tight">
+              {c.name}
+            </h3>
+            <span className="shrink-0 text-[10px] uppercase tracking-wider text-slate-500 bg-slate-100 rounded-full px-2 py-1">
               {t(`classes.source.${c.source}`)}
             </span>
           </div>
-          <div className="mt-auto flex gap-2 text-sm">
+          <div className="mt-auto flex gap-3 text-sm border-t border-slate-100 pt-3">
             <button
               onClick={() => onEdit(c)}
-              className="text-blue-600 hover:text-blue-800 font-medium"
+              className="text-amber-700 hover:text-amber-900 font-medium"
             >
               {t('classes.actions.edit')}
             </button>
@@ -198,7 +161,7 @@ function ClassroomGrid({
                   del.mutate(c.id)
                 }
               }}
-              className="text-red-600 hover:text-red-800 font-medium"
+              className="text-rose-600 hover:text-rose-800 font-medium"
             >
               {t('classes.actions.delete')}
             </button>
@@ -247,18 +210,18 @@ function ClassroomModal({
 
   return (
     <div
-      className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50"
+      className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50"
       onClick={onClose}
     >
       <form
         onSubmit={onSubmit}
         onClick={(e) => e.stopPropagation()}
-        className="bg-white rounded-lg shadow-lg p-6 w-full max-w-md"
+        className="bg-white rounded-2xl shadow-xl border border-slate-200 p-6 w-full max-w-md"
       >
-        <h2 className="text-lg font-semibold mb-4">
+        <h2 className="text-lg font-semibold tracking-tight mb-4 text-slate-900">
           {t(mode === 'add' ? 'classes.modal.add_title' : 'classes.modal.edit_title')}
         </h2>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
+        <label className="block text-sm font-medium text-slate-700 mb-1.5">
           {t('classes.modal.name_label')}
         </label>
         <input
@@ -267,21 +230,21 @@ function ClassroomModal({
           onChange={(e) => setName(e.target.value)}
           required
           maxLength={200}
-          className="w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition-colors"
         />
-        {errKey && <p className="mt-2 text-sm text-red-600">{t(errKey)}</p>}
+        {errKey && <p className="mt-2 text-sm text-rose-600">{t(errKey)}</p>}
         <div className="mt-6 flex justify-end gap-2">
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded font-medium"
+            className="px-4 py-2 text-slate-700 hover:bg-slate-100 rounded-lg text-sm font-medium transition-colors"
           >
             {t('common.cancel')}
           </button>
           <button
             type="submit"
             disabled={submitting || name.trim().length === 0}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:bg-gray-300 text-white rounded font-medium transition-colors"
+            className={PRIMARY_BTN}
           >
             {t('common.save')}
           </button>

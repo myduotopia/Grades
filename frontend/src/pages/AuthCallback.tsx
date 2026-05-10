@@ -22,7 +22,7 @@ export function AuthCallback() {
           console.warn('seed failed (non-fatal):', err)
         }),
       )
-      .finally(() => navigate('/classes', { replace: true }))
+      .finally(() => navigate('/', { replace: true }))
   }, [navigate])
 
   return (
