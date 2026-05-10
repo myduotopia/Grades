@@ -23,6 +23,7 @@ _SYSTEM_CATEGORY_NAMES: dict[str, str] = {
     "third_midterm": "第三次段考",
     "midterm": "期中考",
     "final": "期末考",
+    "major_exam": "大考",
     "quiz": "小考",
     "homework": "作業",
 }

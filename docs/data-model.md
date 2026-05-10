@@ -113,8 +113,11 @@ System defaults are seeded per user on signup. Frontend uses `system_key` to loo
 | `third_midterm` | 第三次段考 | Third Midterm |
 | `midterm` | 期中考 | Midterm Exam |
 | `final` | 期末考 | Final Exam |
+| `major_exam` | 大考 | Major Exam |
 | `quiz` | 小考 | Quiz |
 | `homework` | 作業 | Homework |
+
+In v1 the 8 keys above are the **only** categories — users cannot add custom ones (no `POST /api/categories`). Keep `SYSTEM_CATEGORY_KEYS` stable; adding a key requires updating both `models/curriculum.py` and the seed map in `routers/me.py`, and re-running `POST /api/me/seed` for existing users (idempotent — only inserts missing keys).
 
 System defaults **cannot be deleted** — backend rejects `DELETE` on rows with `is_system_default = true`.
 

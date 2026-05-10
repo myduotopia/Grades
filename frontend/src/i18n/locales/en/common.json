@@ -20,6 +20,16 @@
     "retry": "Retry",
     "error_generic": "Something went wrong, please try again"
   },
+  "category": {
+    "first_midterm": "First Midterm",
+    "second_midterm": "Second Midterm",
+    "third_midterm": "Third Midterm",
+    "midterm": "Midterm Exam",
+    "final": "Final Exam",
+    "major_exam": "Major Exam",
+    "quiz": "Quiz",
+    "homework": "Homework"
+  },
   "classes": {
     "title": "Classes",
     "empty": {

@@ -22,13 +22,15 @@ if TYPE_CHECKING:
     from models.grading import Grade, PointRule, StudentStandard
 
 
-# 7 system-default category keys (seeded per user on signup)
+# 8 system-default category keys (seeded per user on signup).
+# Users cannot add custom categories in v1 — keep this list stable.
 SYSTEM_CATEGORY_KEYS = (
     "first_midterm",
     "second_midterm",
     "third_midterm",
     "midterm",
     "final",
+    "major_exam",
     "quiz",
     "homework",
 )

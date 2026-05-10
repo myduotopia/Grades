@@ -20,6 +20,16 @@
     "retry": "重試",
     "error_generic": "發生錯誤，請稍後再試"
   },
+  "category": {
+    "first_midterm": "第一次段考",
+    "second_midterm": "第二次段考",
+    "third_midterm": "第三次段考",
+    "midterm": "期中考",
+    "final": "期末考",
+    "major_exam": "大考",
+    "quiz": "小考",
+    "homework": "作業"
+  },
   "classes": {
     "title": "班級",
     "empty": {
