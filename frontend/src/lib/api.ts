@@ -24,6 +24,7 @@ export type ClassroomSource = 'manual' | 'duotopia' | 'google_classroom'
 
 export interface Classroom {
   id: string
+  grade: number
   name: string
   source: ClassroomSource
   source_external_id: string | null
@@ -91,12 +92,12 @@ export const api = {
   classrooms: {
     list: () => request<ClassroomList>('/api/classrooms'),
     get: (id: string) => request<ClassroomDetail>(`/api/classrooms/${id}`),
-    create: (body: { name: string }) =>
+    create: (body: { grade: number; name: string }) =>
       request<Classroom>('/api/classrooms', {
         method: 'POST',
         body: JSON.stringify(body),
       }),
-    update: (id: string, body: { name: string }) =>
+    update: (id: string, body: { grade: number; name: string }) =>
       request<Classroom>(`/api/classrooms/${id}`, {
         method: 'PUT',
         body: JSON.stringify(body),

@@ -13,7 +13,7 @@ export function useClassrooms() {
 
 export function useCreateClassroom() {
   const qc = useQueryClient()
-  return useMutation<Classroom, Error, { name: string }>({
+  return useMutation<Classroom, Error, { grade: number; name: string }>({
     mutationFn: api.classrooms.create,
     onSuccess: () => qc.invalidateQueries({ queryKey: classroomsKey }),
   })
@@ -21,8 +21,9 @@ export function useCreateClassroom() {
 
 export function useUpdateClassroom() {
   const qc = useQueryClient()
-  return useMutation<Classroom, Error, { id: string; name: string }>({
-    mutationFn: ({ id, name }) => api.classrooms.update(id, { name }),
+  return useMutation<Classroom, Error, { id: string; grade: number; name: string }>({
+    mutationFn: ({ id, grade, name }) =>
+      api.classrooms.update(id, { grade, name }),
     onSuccess: () => qc.invalidateQueries({ queryKey: classroomsKey }),
   })
 }

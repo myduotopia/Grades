@@ -75,8 +75,11 @@
     },
     "modal": {
       "add_title": "Add class",
-      "edit_title": "Rename class",
-      "name_label": "Class name"
+      "edit_title": "Edit class",
+      "grade_label": "Grade",
+      "grade_placeholder": "Select grade",
+      "name_label": "Class label",
+      "name_placeholder": "e.g. 甲, A, 1, Red"
     },
     "actions": {
       "edit": "Edit",

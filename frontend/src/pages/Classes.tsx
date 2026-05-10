@@ -11,6 +11,7 @@ import {
 import { PageContainer } from '../layout/PageContainer'
 import { PageHeader } from '../layout/PageHeader'
 import { ApiError, type Classroom } from '../lib/api'
+import { classroomDisplayName, gradeLabel } from '../lib/classroomFormat'
 
 type ModalState =
   | { kind: 'closed' }
@@ -130,19 +131,24 @@ function ClassroomGrid({
   classrooms: Classroom[]
   onEdit: (c: Classroom) => void
 }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const del = useDeleteClassroom()
+
+  // Sort by grade then name so visually-grouped output matches teacher mental model
+  const sorted = [...classrooms].sort(
+    (a, b) => a.grade - b.grade || a.name.localeCompare(b.name),
+  )
 
   return (
     <ul className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-      {classrooms.map((c) => (
+      {sorted.map((c) => (
         <li
           key={c.id}
           className="group bg-white border border-slate-200 rounded-xl p-5 shadow-sm hover:shadow-md hover:border-slate-300 transition-all flex flex-col gap-4"
         >
           <div className="flex items-start justify-between gap-2">
             <h3 className="font-semibold text-slate-900 break-all tracking-tight">
-              {c.name}
+              {classroomDisplayName(c.grade, c.name, i18n.language)}
             </h3>
             <span className="shrink-0 text-[10px] uppercase tracking-wider text-slate-500 bg-slate-100 rounded-full px-2 py-1">
               {t(`classes.source.${c.source}`)}
@@ -157,7 +163,8 @@ function ClassroomGrid({
             </button>
             <button
               onClick={() => {
-                if (window.confirm(t('classes.actions.confirm_delete', { name: c.name }))) {
+                const display = classroomDisplayName(c.grade, c.name, i18n.language)
+                if (window.confirm(t('classes.actions.confirm_delete', { name: display }))) {
                   del.mutate(c.id)
                 }
               }}
@@ -181,22 +188,25 @@ function ClassroomModal({
   classroom?: Classroom
   onClose: () => void
 }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const create = useCreateClassroom()
   const update = useUpdateClassroom()
+  const [grade, setGrade] = useState<number | ''>(classroom?.grade ?? '')
   const [name, setName] = useState(classroom?.name ?? '')
   const [errKey, setErrKey] = useState<string | null>(null)
 
   const submitting = create.isPending || update.isPending
+  const canSubmit = grade !== '' && name.trim().length > 0 && !submitting
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault()
+    if (grade === '') return
     setErrKey(null)
     try {
       if (mode === 'add') {
-        await create.mutateAsync({ name })
+        await create.mutateAsync({ grade, name })
       } else if (classroom) {
-        await update.mutateAsync({ id: classroom.id, name })
+        await update.mutateAsync({ id: classroom.id, grade, name })
       }
       onClose()
     } catch (err) {
@@ -221,18 +231,43 @@ function ClassroomModal({
         <h2 className="text-lg font-semibold tracking-tight mb-4 text-slate-900">
           {t(mode === 'add' ? 'classes.modal.add_title' : 'classes.modal.edit_title')}
         </h2>
+
         <label className="block text-sm font-medium text-slate-700 mb-1.5">
+          {t('classes.modal.grade_label')}
+        </label>
+        <select
+          autoFocus
+          value={grade}
+          onChange={(e) =>
+            setGrade(e.target.value === '' ? '' : Number(e.target.value))
+          }
+          required
+          className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition-colors bg-white"
+        >
+          <option value="" disabled>
+            {t('classes.modal.grade_placeholder')}
+          </option>
+          {Array.from({ length: 12 }, (_, i) => i + 1).map((g) => (
+            <option key={g} value={g}>
+              {gradeLabel(g, i18n.language)}
+            </option>
+          ))}
+        </select>
+
+        <label className="block text-sm font-medium text-slate-700 mb-1.5 mt-4">
           {t('classes.modal.name_label')}
         </label>
         <input
-          autoFocus
           value={name}
           onChange={(e) => setName(e.target.value)}
           required
           maxLength={200}
+          placeholder={t('classes.modal.name_placeholder')}
           className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition-colors"
         />
+
         {errKey && <p className="mt-2 text-sm text-rose-600">{t(errKey)}</p>}
+
         <div className="mt-6 flex justify-end gap-2">
           <button
             type="button"
@@ -241,11 +276,7 @@ function ClassroomModal({
           >
             {t('common.cancel')}
           </button>
-          <button
-            type="submit"
-            disabled={submitting || name.trim().length === 0}
-            className={PRIMARY_BTN}
-          >
+          <button type="submit" disabled={!canSubmit} className={PRIMARY_BTN}>
             {t('common.save')}
           </button>
         </div>

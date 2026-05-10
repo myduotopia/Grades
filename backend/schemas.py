@@ -40,10 +40,12 @@ ClassroomSource = Literal["manual", "duotopia", "google_classroom"]
 
 
 class ClassroomCreate(BaseModel):
+    grade: int = Field(ge=1, le=12)
     name: str = Field(min_length=1, max_length=200)
 
 
 class ClassroomUpdate(BaseModel):
+    grade: int = Field(ge=1, le=12)
     name: str = Field(min_length=1, max_length=200)
 
 
@@ -51,6 +53,7 @@ class ClassroomOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
+    grade: int
     name: str
     source: ClassroomSource
     source_external_id: str | None

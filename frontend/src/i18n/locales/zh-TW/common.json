@@ -76,7 +76,10 @@
     "modal": {
       "add_title": "新增班級",
       "edit_title": "編輯班級",
-      "name_label": "班級名稱"
+      "grade_label": "年級",
+      "grade_placeholder": "請選擇年級",
+      "name_label": "班別",
+      "name_placeholder": "例如：甲、忠、1、A"
     },
     "actions": {
       "edit": "編輯",

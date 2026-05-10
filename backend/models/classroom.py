@@ -6,7 +6,14 @@ to avoid the SQL keyword and Python `class` collision.
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-from sqlalchemy import CheckConstraint, ForeignKey, String, UniqueConstraint, text
+from sqlalchemy import (
+    CheckConstraint,
+    ForeignKey,
+    SmallInteger,
+    String,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -29,6 +36,7 @@ class Classroom(Base, UserScopedMixin, TimestampMixin):
         primary_key=True,
         server_default=text("gen_random_uuid()"),
     )
+    grade: Mapped[int] = mapped_column(SmallInteger, nullable=False)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     source: Mapped[str] = mapped_column(String(32), nullable=False, default="manual")
     source_external_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -43,11 +51,14 @@ class Classroom(Base, UserScopedMixin, TimestampMixin):
     )
 
     __table_args__ = (
-        UniqueConstraint("user_id", "name", name="uq_classroom_user_name"),
+        UniqueConstraint(
+            "user_id", "grade", "name", name="uq_classroom_user_grade_name"
+        ),
         CheckConstraint(
             f"source IN {SOURCE_VALUES!r}".replace("'", "'"),
             name="ck_classroom_source",
         ),
+        CheckConstraint("grade BETWEEN 1 AND 12", name="ck_classroom_grade_range"),
     )
 
 

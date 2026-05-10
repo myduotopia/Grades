@@ -86,7 +86,12 @@ def create_classroom(
     user_id: Annotated[UUID, Depends(require_user_id)],
     db: Annotated[Session, Depends(get_db)],
 ) -> ClassroomOut:
-    classroom = Classroom(user_id=user_id, name=body.name, source="manual")
+    classroom = Classroom(
+        user_id=user_id,
+        grade=body.grade,
+        name=body.name,
+        source="manual",
+    )
     db.add(classroom)
     try:
         db.commit()
@@ -121,6 +126,7 @@ def update_classroom(
     db: Annotated[Session, Depends(get_db)],
 ) -> ClassroomOut:
     classroom = _get_owned(db, user_id, classroom_id)
+    classroom.grade = body.grade
     classroom.name = body.name
     try:
         db.commit()
