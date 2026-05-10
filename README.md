@@ -16,6 +16,7 @@ A web app for teachers to track students' grades and award points across classes
 - [Page checklist](docs/page-checklist.md) — per-page standards (responsive, SEO, i18n, a11y, states)
 - [API spec](docs/api-spec.md) — REST endpoints, request/response shapes
 - [Roadmap](docs/roadmap.md) — milestones + GitHub issue list
+- [Development workflow](docs/workflow.md) — issue → worktree → PR → merge process
 - [Duotopia integration](docs/duotopia-api.md) — reference for the optional import feature
 
 ## Tech stack
