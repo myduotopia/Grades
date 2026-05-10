@@ -22,13 +22,13 @@ Confirm with the user before starting; don't grab an issue and run.
 cd C:\Users\mixca\Grades
 git checkout staging
 git pull origin staging
-git worktree add .worktrees/issue-N-slug -b issue-N-slug staging
-cd .worktrees/issue-N-slug
+git worktree add .worktree/N -b issue-N-slug staging
+cd .worktree/N
 ```
 
-- `N` = issue number
-- `slug` = short kebab-case description (e.g., `classroom-crud` for #1)
-- Full path example: `.worktrees/issue-1-classroom-crud`
+- `N` = issue number — used as the worktree directory name (`.worktree/1`, `.worktree/2`, ...)
+- `slug` = short kebab-case description (e.g., `classroom-crud` for #1) — used in the **branch name** only, since branch names show up in GitHub PRs/URLs
+- Full example: worktree at `.worktree/1`, branch `issue-1-classroom-crud`
 
 A worktree is a separate working directory sharing one `.git`. You can have many worktrees concurrently for different issues. Branch lives **inside** the worktree.
 
@@ -158,7 +158,7 @@ User reviews + merges. Don't auto-merge — even if the user gave general approv
 cd C:\Users\mixca\Grades
 git checkout staging
 git pull origin staging
-git worktree remove .worktrees/issue-N-slug
+git worktree remove .worktree/N
 git branch -D issue-N-slug
 ```
 
@@ -187,8 +187,8 @@ For typo fixes, broken-link patches, or README touch-ups that don't touch any co
 | Action | Command |
 |---|---|
 | Sync staging | `git checkout staging && git pull` |
-| New worktree | `git worktree add .worktrees/issue-N-slug -b issue-N-slug staging` |
+| New worktree | `git worktree add .worktree/N -b issue-N-slug staging` |
 | List worktrees | `git worktree list` |
-| Remove worktree | `git worktree remove .worktrees/issue-N-slug` |
+| Remove worktree | `git worktree remove .worktree/N` |
 | Open PR | `gh pr create --base staging --head <branch>` |
 | Check PR status | `gh pr view --web` |

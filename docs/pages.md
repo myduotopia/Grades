@@ -82,7 +82,7 @@ The active semester selector lives in the top nav so users can switch context gl
 1. Click 「批次匯入 Excel」 → file picker
 2. Backend parses → returns preview (parsed rows + any unknown class names)
 3. If unknown classes → confirm dialog: 「這些班級不存在，要一併建嗎？」
-4. Confirm → backend upserts on `(class_id, seat_number)`
+4. Confirm → backend upserts on `(classroom_id, seat_number)`
 5. Toast: "新增 N 筆，更新 M 筆"
 
 ### `/grades/new`

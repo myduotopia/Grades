@@ -50,3 +50,7 @@ logs/
 *.bak
 *.tmp
 .cache/
+
+# Git worktrees (per-issue feature work)
+.worktree/
+.worktrees/

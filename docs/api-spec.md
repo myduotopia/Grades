@@ -32,7 +32,7 @@ Everything else requires a valid bearer token.
 
 ### Base URL
 
-All endpoints under `/api`. Example: `https://grades-backend.example.com/api/classes`.
+All endpoints under `/api`. Example: `https://grades-backend.example.com/api/classrooms`.
 
 ### Response shape
 
@@ -104,25 +104,40 @@ Returns the user's identity and a setup status flag the frontend uses to decide 
 #### `POST /api/me/seed`
 Idempotent. Called by `/auth/callback` on first sign-in to create the 7 default categories and one default semester. Safe to call repeatedly — checks before inserting.
 
-### Classes
+### Classrooms
+
+> Renamed from `class` to `classroom` everywhere — `class` is a Python keyword and a SQL reserved word. See `docs/data-model.md`.
 
 | Method | Path | Description |
 |---|---|---|
-| GET | `/api/classes` | List user's classes |
-| POST | `/api/classes` | Create class |
-| GET | `/api/classes/:id` | Class detail (includes student count) |
-| PUT | `/api/classes/:id` | Rename |
-| DELETE | `/api/classes/:id` | Cascade-delete students, grades, point_records |
+| GET | `/api/classrooms` | List user's classrooms (`{data, meta:{total}}`) |
+| POST | `/api/classrooms` | Create classroom (always `source='manual'` from this endpoint) |
+| GET | `/api/classrooms/:id` | Classroom detail (includes `student_count`) |
+| PUT | `/api/classrooms/:id` | Rename |
+| DELETE | `/api/classrooms/:id` | Cascade-delete students, grades, point_records |
 
-`POST /api/classes` body: `{ "name": "六年甲班" }`
+`POST /api/classrooms` body: `{ "name": "六年甲班" }`. Duplicate name for the same user → `409 CONFLICT` with `code: "CONFLICT"`, `message_key: "errors.classroom.duplicate_name"`.
+
+`GET /api/classrooms/:id` response:
+```json
+{
+  "id": "uuid",
+  "name": "六年甲班",
+  "source": "manual",
+  "source_external_id": null,
+  "student_count": 0,
+  "created_at": "...",
+  "updated_at": "..."
+}
+```
 
 ### Students
 
 | Method | Path | Description |
 |---|---|---|
-| GET | `/api/classes/:id/students` | Students in a class |
+| GET | `/api/classrooms/:id/students` | Students in a classroom |
 | POST | `/api/students` | Create one student |
-| PUT | `/api/students/:id` | Update (incl. transfer via `class_id`) |
+| PUT | `/api/students/:id` | Update (incl. transfer via `classroom_id`) |
 | DELETE | `/api/students/:id` | Cascade-delete grades, standards, point_records |
 | POST | `/api/students/import` | Excel batch import |
 
@@ -130,7 +145,7 @@ Idempotent. Called by `/auth/callback` on first sign-in to create the 7 default 
 
 Multipart form:
 - `file`: `.xlsx` file
-- `auto_create_classes`: `"true"` / `"false"` (default `false`)
+- `auto_create_classrooms`: `"true"` / `"false"` (default `false`)
 
 Excel columns expected (header row required):
 - 班級 / `class`
@@ -143,12 +158,12 @@ Response:
 {
   "created": 12,
   "updated": 8,
-  "missing_classes": ["六年丙班", "六年丁班"],
+  "missing_classrooms": ["六年丙班", "六年丁班"],
   "errors": [{ "row": 5, "message_key": "import.bad_score", "details": {...} }]
 }
 ```
 
-If `missing_classes` is non-empty and `auto_create_classes=false`, returns `409 CONFLICT`. Frontend shows confirm dialog, re-submits with `auto_create_classes=true`.
+If `missing_classrooms` is non-empty and `auto_create_classrooms=false`, returns `409 CONFLICT`. Frontend shows confirm dialog, re-submits with `auto_create_classrooms=true`.
 
 ### Subjects
 
@@ -185,8 +200,8 @@ When PUT sets `is_current=true`, the backend automatically sets all other rows f
 |---|---|---|
 | GET | `/api/items?semester_id=&subject_id=&category_id=` | List, optionally filtered |
 | POST | `/api/items` | Create |
-| GET | `/api/items/:id` | Item detail (includes class list) |
-| PUT | `/api/items/:id` | Update (incl. `class_ids`) |
+| GET | `/api/items/:id` | Item detail (includes classroom list) |
+| PUT | `/api/items/:id` | Update (incl. `classroom_ids`) |
 | DELETE | `/api/items/:id` | Cascade-delete grades, point_records |
 
 `POST /api/items` body:
@@ -196,7 +211,7 @@ When PUT sets `is_current=true`, the backend automatically sets all other rows f
   "category_id": "uuid",
   "semester_id": "uuid",
   "name": "L3 Quiz",   // empty string for 段考 categories
-  "class_ids": ["uuid", "uuid"]
+  "classroom_ids": ["uuid", "uuid"]
 }
 ```
 
@@ -204,7 +219,7 @@ When PUT sets `is_current=true`, the backend automatically sets all other rows f
 
 | Method | Path | Description |
 |---|---|---|
-| GET | `/api/items/:id/grades?class_id=` | Grades for an item × class. Includes empty rows for ungraded students. |
+| GET | `/api/items/:id/grades?classroom_id=` | Grades for an item × classroom. Includes empty rows for ungraded students. |
 | POST | `/api/grades/bulk` | Submit many grade entries at once |
 | PUT | `/api/grades/:id` | Update single grade |
 | DELETE | `/api/grades/:id` | Delete grade (and any point_record) |
@@ -272,7 +287,7 @@ PUT body: `{ "points_awarded": 5 }`
 | Method | Path | Description |
 |---|---|---|
 | GET | `/api/students/:id/points?semester_id=` | Total + history. `semester_id` filters by item's semester. |
-| GET | `/api/classes/:id/points?semester_id=` | Per-student totals for the class |
+| GET | `/api/classrooms/:id/points?semester_id=` | Per-student totals for the classroom |
 
 ### Imports
 
@@ -286,7 +301,7 @@ Body:
   "subject_id": "uuid",
   "category_id": "uuid",
   "semester_id": "uuid",
-  "class_id": "uuid",
+  "classroom_id": "uuid",
   "item_name": "Optional, for non-段考 categories",
   "entries": [
     {
@@ -302,7 +317,7 @@ Body:
 
 Backend behaviour:
 1. Find or create the matching `item` (by subject + category + semester + name). Set `item.source` if newly created.
-2. For each entry, find the Grades student by `(class_id, source='duotopia', source_external_id=duotopia_student_id)`. If no match, return `409 CONFLICT` with the unmatched list — frontend asks user to map.
+2. For each entry, find the Grades student by `(classroom_id, source='duotopia', source_external_id=duotopia_student_id)`. If no match, return `409 CONFLICT` with the unmatched list — frontend asks user to map.
 3. Upsert grades on `(item_id, student_id)`. Set `source='duotopia'`, `source_external_id=duotopia_assignment_id`.
 4. Recompute point awards for each affected grade.
 
