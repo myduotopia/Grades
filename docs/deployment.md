@@ -7,8 +7,10 @@ Where each environment lives, which Supabase project it talks to, and where its 
 | Environment | Frontend URL | Backend URL | Supabase project | Supabase ref |
 |---|---|---|---|---|
 | Local dev | `http://localhost:5000` (Vite) | `http://localhost:8000` (uvicorn) | **Staging** (shared with Vercel Preview) | `nvufhrviaxblxlmiqive` |
-| Vercel Preview (= staging) | `https://grades-git-staging-kaddt.vercel.app` | `https://grades-backend-git-staging-*.vercel.app` | **Staging** | `nvufhrviaxblxlmiqive` |
-| Vercel Production | `https://grades-rho.vercel.app` | `https://grades-backend.vercel.app` | **Production** | `wtwpwmizwzlkbqfctbir` |
+| Vercel Preview (= staging) | `https://grades-git-staging-kaddyeunice.vercel.app` | `https://grades-backend-git-staging-kaddyeunice.vercel.app` | **Staging** | `nvufhrviaxblxlmiqive` |
+| Vercel Production | `https://grades-rho.vercel.app` | `https://grades-backend.vercel.app` (also aliased as `grades-backend-kaddyeunice.vercel.app`) | **Production** | `wtwpwmizwzlkbqfctbir` |
+
+> Vercel team owner is `kaddyeunice` (renamed from `kaddt`). Branch/preview URLs include the owner suffix; custom production aliases (`grades-rho`, `grades-backend`) do not.
 
 **Rule:** local dev points at Staging, never Production. Production Supabase is only touched by Vercel Production deployments and the `migrate` GitHub Action.
 
@@ -46,10 +48,10 @@ Each Supabase project has its own allow-list. Both must be set; they don't share
 - Redirect URLs: `https://grades-rho.vercel.app/**`
 
 **Staging project (`nvufhrviaxblxlmiqive`):**
-- Site URL: `https://grades-git-staging-kaddt.vercel.app`
+- Site URL: `https://grades-git-staging-kaddyeunice.vercel.app`
 - Redirect URLs:
-  - `https://grades-git-staging-kaddt.vercel.app/**`
-  - `https://grades-*-kaddt.vercel.app/**` (other preview branches)
+  - `https://grades-git-staging-kaddyeunice.vercel.app/**`
+  - `https://grades-*-kaddyeunice.vercel.app/**` (other preview branches)
   - `http://localhost:5000/**`
 
 If a deployed login redirects to the wrong host (classic symptom: production redirects to `localhost:3000`), the cause is almost always Vercel env vars pointing to the wrong Supabase project, not a Google OAuth misconfiguration. Decode the JWT in the redirect URL — `iss` reveals which Supabase actually issued it.
