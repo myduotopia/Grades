@@ -7,7 +7,7 @@ Where each environment lives, which Supabase project it talks to, and where its 
 | Environment | Frontend URL | Backend URL | Supabase project | Supabase ref |
 |---|---|---|---|---|
 | Local dev | `http://localhost:5000` (Vite) | `http://localhost:8000` (uvicorn) | **Staging** (shared with Vercel Preview) | `nvufhrviaxblxlmiqive` |
-| Vercel Preview (= staging) | `https://grades-git-staging-kaddyeunice.vercel.app` | `https://grades-backend-git-staging-kaddyeunice.vercel.app` | **Staging** | `nvufhrviaxblxlmiqive` |
+| Vercel Preview (= staging) | `https://grades-frontend-git-staging-kaddyeunice.vercel.app` | `https://grades-backend-git-staging-kaddyeunice.vercel.app` | **Staging** | `nvufhrviaxblxlmiqive` |
 | Vercel Production | `https://grades-rho.vercel.app` | `https://grades-backend.vercel.app` (also aliased as `grades-backend-kaddyeunice.vercel.app`) | **Production** | `wtwpwmizwzlkbqfctbir` |
 
 > Vercel team owner is `kaddyeunice` (renamed from `kaddt`). Branch/preview URLs include the owner suffix; custom production aliases (`grades-rho`, `grades-backend`) do not.
@@ -78,13 +78,14 @@ When changing any of those, walk through this list:
 4. **Google Cloud OAuth client** — Authorized redirect URIs must still cover `https://<supabase-ref>.supabase.co/auth/v1/callback`. This rarely changes (it's keyed by Supabase ref, not Vercel host) but worth confirming if the Supabase project itself moves.
 5. **`docs/deployment.md`** — update the Environments table, the Supabase Auth URL block, and any other place hostnames appear. This file is the source of truth; if reality drifts from it, future debugging gets harder.
 6. **Redeploy** — Vercel env var changes don't auto-trigger a redeploy. After updating env vars, redeploy the affected project (Deployments → latest → Redeploy) or push an empty commit.
+7. **Deployment Protection on `grades-backend`** — Settings → Deployment Protection → Vercel Authentication → must be **Disabled** (or "Only Production Deployments" on a paid plan). When ON, every request including OPTIONS preflight is intercepted by Vercel SSO before reaching FastAPI, so CORS headers never get attached and the browser sees a generic preflight failure. Frontend protection is a UX choice; backend protection silently breaks every cross-origin call from the frontend.
 
 Symptom-to-cause cheatsheet for failures during/after a rename:
 
 | Symptom | First place to check |
 |---|---|
 | `404: NOT_FOUND` on a client-side route after login | Frontend SPA rewrite ([frontend/vercel.json](../frontend/vercel.json)) — unrelated to renames, but commonly noticed at the same time |
-| `blocked by CORS policy` on `/api/*` | Backend `CORS_ALLOWED_ORIGINS` missing the new frontend hostname |
+| `blocked by CORS policy` on `/api/*` | Backend `CORS_ALLOWED_ORIGINS` missing the new frontend hostname — **or** Deployment Protection still enabled on `grades-backend` (intercepts OPTIONS before FastAPI runs) |
 | OAuth returns to `localhost` or to a stale host | Supabase **Site URL** still points at the old hostname |
 | OAuth returns `redirect_uri_mismatch` | Supabase **Redirect URLs** allow-list missing the new pattern |
 | Frontend loads but every API call 404s | `VITE_API_BASE_URL` still points at the old backend hostname |
