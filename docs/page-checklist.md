@@ -29,31 +29,89 @@ Every page must work at three breakpoints:
 
 ## SEO + meta tags
 
-Most of Grades is auth-gated, so SEO matters mainly for the public-facing surface (Login + future marketing). But every page should still have correct meta for proper browser tab labels + social sharing.
+Most of Grades is auth-gated, so heavy SEO investment goes into the public surface (Login + future marketing). But every page needs correct base meta for browser tab labels + correct robots behaviour.
 
-### Required on every page
+### Universal (every page, regardless of auth status)
 
-- [ ] `<title>` set via React Helmet (or equivalent) — translated; e.g. `${t('app.title')} — ${t('classes.title')}`
-- [ ] `<meta name="description">` set per page — translated
-- [ ] `<html lang="...">` matches current i18n locale (`zh-TW` or `en`) — set programmatically by the i18n provider
-- [ ] Favicon present (`/favicon.ico`)
-- [ ] Apple touch icon (`/apple-touch-icon.png`) for "Add to Home Screen" on iOS
+- [ ] `<title>` — translated. Format: `${pageTitle} — ${siteName}`. **50–60 char max** before Google truncates
+- [ ] `<meta name="description">` — translated, **150–160 char max**. This is the snippet Google often shows under your title in search results
+- [ ] `<html lang="zh-TW">` or `lang="en"` — set programmatically by the i18n provider (NOT hardcoded in `index.html`)
+- [ ] `<link rel="canonical" href="https://example.com/page">` — absolute URL of the canonical version. Prevents duplicate-content penalties from query params, trailing slashes, locale prefixes
+- [ ] Favicon: `<link rel="icon" href="/favicon.ico">`
+- [ ] Apple touch icon: `<link rel="apple-touch-icon" href="/apple-touch-icon.png">` — for "Add to Home Screen" on iOS
 
-### Auth-gated pages additionally
+### Auth-gated pages (Classes, Admin, Students, etc.)
+
+Don't waste effort on social meta — these will never be shared.
 
 - [ ] `<meta name="robots" content="noindex, nofollow">` — crawlers shouldn't index anything behind login
-- [ ] No leaked internal data in HTML before the auth check redirects
+- [ ] No leaked internal data in HTML before the auth check redirects (don't render student names then redirect — render nothing then redirect)
+- [ ] og:/twitter:/Schema.org tags **NOT needed** here
 
-### Public pages (Login + any future marketing pages) additionally
+### Public pages (Login + future marketing)
 
-- [ ] `<meta property="og:title">`, `og:description`, `og:image` for sharing previews
+These pages need the full SEO arsenal to compete in search.
+
+#### Open Graph (Facebook, LinkedIn, LINE, WhatsApp previews)
+
+- [ ] `<meta property="og:title">` — usually same as `<title>` minus the site-name suffix
+- [ ] `<meta property="og:description">` — same as meta description
+- [ ] `<meta property="og:image">` — **1200 × 630 px**, < 8 MB; absolute URL (`https://...`)
+- [ ] `<meta property="og:url">` — absolute URL of this page
+- [ ] `<meta property="og:type">` — `website` for landing, `article` for blog posts, `product` for product pages
+- [ ] `<meta property="og:site_name">` — `Grades`
+- [ ] `<meta property="og:locale">` — `zh_TW` or `en_US` (note underscore, not hyphen)
+- [ ] `<meta property="og:locale:alternate">` — list each other supported locale
+
+#### Twitter Cards (X)
+
 - [ ] `<meta name="twitter:card" content="summary_large_image">`
-- [ ] Image at `/og-image.png` (1200 × 630 px)
+- [ ] `<meta name="twitter:title">`, `<meta name="twitter:description">`, `<meta name="twitter:image">` — usually same as og: equivalents
+- [ ] `<meta name="twitter:site" content="@handle">` — if Grades has a brand X / Twitter account
+
+#### Multilingual hreflang (for pages that have both zh-TW and en versions)
+
+Critical for ranking in **both** Chinese and English searches:
+
+- [ ] `<link rel="alternate" hreflang="zh-TW" href="https://yoursite.com/zh-TW/page">`
+- [ ] `<link rel="alternate" hreflang="en" href="https://yoursite.com/en/page">`
+- [ ] `<link rel="alternate" hreflang="x-default" href="https://yoursite.com/en/page">` — fallback for unsupported locales
+
+#### Schema.org structured data (JSON-LD) — **biggest ranking lift**
+
+This is what gets you rich snippets (stars, prices, FAQ accordions) in Google results. Embed as `<script type="application/ld+json">`:
+
+- [ ] **Homepage**: `Organization` + `WebSite` (with site search action if you have one)
+- [ ] **Product / feature pages**: `SoftwareApplication` (since Grades is software) with `name`, `applicationCategory`, `operatingSystem`, optionally `offers`
+- [ ] **Blog posts**: `Article` or `BlogPosting` with `author`, `datePublished`, `image`, `headline`, `mainEntityOfPage`
+- [ ] **FAQ pages**: `FAQPage` with array of `Question` + `acceptedAnswer` (renders as expandable Q&A in Google!)
+- [ ] **All public pages**: `BreadcrumbList` showing the page hierarchy
+- [ ] **Contact / About**: `ContactPage` + `Organization` with logo, sameAs links to social profiles
+
+**Test with**: <https://search.google.com/test/rich-results>
+
+### Site-wide (one-time setup, not per page)
+
+- [ ] `/robots.txt` exists and references `/sitemap.xml`:
+  ```
+  User-agent: *
+  Allow: /
+  Disallow: /classes
+  Disallow: /admin
+  Disallow: /students
+  Sitemap: https://yoursite.com/sitemap.xml
+  ```
+- [ ] `/sitemap.xml` auto-generated, lists all public URLs with `<lastmod>` dates and `<priority>` (homepage 1.0, others 0.5–0.8)
+- [ ] All public URLs use canonical form (consistent trailing-slash policy, lowercase, etc.)
+- [ ] Submit sitemap in **Google Search Console** for indexing + ranking monitoring
 
 ### Tools
 
 - Browser DevTools → Elements → inspect `<head>`
-- <https://www.opengraph.xyz/> to preview the social card
+- <https://www.opengraph.xyz/> — preview Facebook / LINE / Twitter cards
+- <https://search.google.com/test/rich-results> — validate Schema.org JSON-LD
+- <https://search.google.com/search-console> — Google Search Console for ranking monitoring (need to verify ownership of domain first)
+- <https://pagespeed.web.dev/> — Core Web Vitals (LCP / FID / CLS) — Google ranking factor
 
 ## i18n
 
