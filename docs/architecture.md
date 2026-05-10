@@ -118,6 +118,64 @@ After the web app is stable, package via **Capacitor** for iOS + Android.
 - Google Play Developer: $25 USD one-time
 - iOS builds need a Mac (or cloud build: EAS Build / Codemagic / GitHub Actions macOS runners)
 
+## Marketing site (Phase 8 — separate codebase)
+
+The app itself is auth-gated and `noindex`'d, so it can't compete in search. To acquire users via Google, a **separate marketing site** will be built later, served from a different surface than the app.
+
+### Surface separation
+
+```
+grades.com           — Marketing site (separate repo, Astro, fully public)
+                       Homepage, features, blog, docs, pricing, privacy, terms
+app.grades.com       — App (this repo, Vite SPA, fully auth-gated)
+                       Classes, students, grades, etc.
+```
+
+Both deploy independently. Marketing changes don't risk breaking the app and vice versa. SEO authority concentrates on `grades.com`; the app subdomain stays unindexed.
+
+### Stack: Astro + markdown
+
+[Astro](https://astro.build) chosen over Next.js / WordPress / Ghost for the marketing site:
+
+| Why Astro | |
+|---|---|
+| Lighthouse 100/100/100/100 by default | Critical for SEO — Core Web Vitals are a ranking factor |
+| Markdown-first content (no CMS) | Each blog post = one `.md` file in repo. Author writes in VS Code, pushes, deploys |
+| Zero-runtime JavaScript by default | Pages are pure HTML, scripts only where interactivity needed |
+| React components work inside Astro | Can reuse Tailwind components from the app's component library |
+| Static deploy → near-zero hosting cost | Vercel / Netlify / Cloudflare Pages free tier |
+
+### Content strategy: Cluster content for SEO
+
+Standard pattern for ranking on broad topics:
+
+- **Pillar pages** (1 per major topic) — long-form (1500–3000 words) that comprehensively covers a topic
+- **Cluster pages** (5–15 per pillar) — narrower posts, all linking back to the pillar and to each other
+- Topic example: pillar = "老師如何高效記錄學生成績"; clusters = "5 種 Excel 成績表範本", "段考小考評分權重設計", "點數獎勵制度怎麼運作", etc.
+
+This gives Google strong topical-authority signals.
+
+### URL structure
+
+```
+grades.com/                    Homepage
+grades.com/features            Features overview
+grades.com/for-teachers        Use-case landing
+grades.com/pricing             Pricing (when applicable)
+grades.com/about               About / vision
+grades.com/blog                Blog index
+grades.com/blog/{slug}         Individual posts
+grades.com/docs                Public docs
+grades.com/privacy             Privacy policy (trust signal + SEO)
+grades.com/terms               Terms of service
+
+app.grades.com/                The app (everything in this repo)
+```
+
+### When (Phase 8)
+
+After Phase 5 (CRUD) and Phase 6 (grade entry + product polish) are stable, with at least one Phase 7 (deploy) cycle proving the architecture works. Marketing without a real product to point at is wasted effort. See [roadmap.md](roadmap.md) for the planned issue list.
+
 ## Build phases
 
 1. **Scaffold** — frontend + backend repos, Supabase project, first Alembic migration, basic dev loop
@@ -125,8 +183,10 @@ After the web app is stable, package via **Capacitor** for iOS + Android.
 3. **Manual CRUD** — class, student (incl. Excel batch import), subject, category, semester, item, point rule
 4. **Grade entry + point award** — `/grades/new` flow, automatic point computation
 5. **Duotopia import** — see `docs/duotopia-api.md`
-6. **Phase 2** — Google Classroom import
-7. **Phase 3** — Capacitor wrap + store submissions
+6. **(Phase 2) Google Classroom import**
+7. **Frontend deploy to Vercel** — public URL for testing
+8. **Marketing site + blog (Astro)** — separate repo, content for SEO; see "Marketing site" section above
+9. **(Phase 3) Capacitor wrap** + store submissions
 
 ## Related docs
 

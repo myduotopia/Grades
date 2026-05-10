@@ -70,6 +70,19 @@ Independent of CRUD work. Can be done early to validate the Supabase Auth flow a
 |---|---|---|
 | [#18](../../issues/18) | Frontend deployment to Vercel | S |
 
+### Phase 8 — Marketing site + blog
+After M3 + #18 stable. Built in a **separate repo** with Astro (markdown-based blog, SSG for SEO). Issues will be opened then. See [architecture.md](architecture.md) "Marketing site" section for the design.
+
+Anticipated slices (not yet GitHub issues):
+
+- Astro scaffold + design system (reuse Tailwind palette from app)
+- Pillar pages: homepage, /features, /for-teachers
+- Blog setup + first 3-5 cluster posts
+- /privacy, /terms, /about (trust signals)
+- Schema.org JSON-LD (Organization, SoftwareApplication, BlogPosting, FAQPage) per [page-checklist.md](page-checklist.md)
+- sitemap.xml + robots.txt + Search Console verification
+- Domain setup: `grades.com` (marketing) + `app.grades.com` (this repo)
+
 ## Size key
 
 - **S** = ~1.5–2 hrs
