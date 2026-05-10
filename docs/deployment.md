@@ -65,3 +65,26 @@ Supabase exposes three connection modes; alembic + FastAPI need different ones:
 | Direct | `db.<ref>.supabase.co:5432` | ❌ IPv6-only | Nothing in this project — GH Actions and Vercel are IPv4-only |
 | Session pooler | `aws-1-*.pooler.supabase.com:5432` | ✅ | **alembic in CI** + **local dev**. Long-lived script-style connections; supports the session-scoped state alembic needs for DDL. |
 | Transaction pooler | `aws-1-*.pooler.supabase.com:6543` | ✅ | **FastAPI on Vercel**. Vercel opens a new connection per request — Transaction pooler keeps Postgres from running out of slots. Don't use for alembic — breaks DDL. |
+
+## Renaming or re-hosting — checklist
+
+Vercel preview URLs embed the team owner and branch name (`grades-frontend-git-<branch>-<owner>.vercel.app`). Any time the **owner**, **project name**, or a long-lived **branch name** changes, the new hostname must be propagated to every place that hard-codes it. Missing one breaks deploy silently — usually as CORS errors or OAuth redirect-mismatch errors that only show up in the deployed environment.
+
+When changing any of those, walk through this list:
+
+1. **Frontend env var** — `grades-frontend` project, `VITE_API_BASE_URL` (Preview + Production scopes) → must point at the matching new backend hostname.
+2. **Backend CORS** — `grades-backend` project, `CORS_ALLOWED_ORIGINS` (Preview + Production scopes) → must include the new frontend hostname. Comma-separated, `https://`, no trailing slash.
+3. **Supabase Auth** — Site URL + Redirect URLs allow-list, **for each Supabase project** (Staging + Production are independent). Update both single-host entries and any `*` wildcard patterns.
+4. **Google Cloud OAuth client** — Authorized redirect URIs must still cover `https://<supabase-ref>.supabase.co/auth/v1/callback`. This rarely changes (it's keyed by Supabase ref, not Vercel host) but worth confirming if the Supabase project itself moves.
+5. **`docs/deployment.md`** — update the Environments table, the Supabase Auth URL block, and any other place hostnames appear. This file is the source of truth; if reality drifts from it, future debugging gets harder.
+6. **Redeploy** — Vercel env var changes don't auto-trigger a redeploy. After updating env vars, redeploy the affected project (Deployments → latest → Redeploy) or push an empty commit.
+
+Symptom-to-cause cheatsheet for failures during/after a rename:
+
+| Symptom | First place to check |
+|---|---|
+| `404: NOT_FOUND` on a client-side route after login | Frontend SPA rewrite ([frontend/vercel.json](../frontend/vercel.json)) — unrelated to renames, but commonly noticed at the same time |
+| `blocked by CORS policy` on `/api/*` | Backend `CORS_ALLOWED_ORIGINS` missing the new frontend hostname |
+| OAuth returns to `localhost` or to a stale host | Supabase **Site URL** still points at the old hostname |
+| OAuth returns `redirect_uri_mismatch` | Supabase **Redirect URLs** allow-list missing the new pattern |
+| Frontend loads but every API call 404s | `VITE_API_BASE_URL` still points at the old backend hostname |
