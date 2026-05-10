@@ -50,6 +50,21 @@ npm install
 
 For most issues you can skip this — just run dev servers from the main `Grades/` checkout against the same Supabase, and edit code in the worktree. The worktree is for git isolation, not necessarily runtime isolation.
 
+### Running dev servers from inside the worktree
+
+If you want to *see* your branch's changes locally (without merging into staging first), you must start the dev servers from the worktree directory itself. Two pieces don't carry across automatically because they're git-ignored:
+
+```powershell
+# .env files — copy from main checkout (one-time per worktree; re-copy if values change)
+cp ..\..\backend\.env .\backend\.env
+cp ..\..\frontend\.env .\frontend\.env
+
+# frontend/node_modules — link to main checkout's install instead of re-installing
+cmd /c "mklink /J .\frontend\node_modules ..\..\frontend\node_modules"
+```
+
+Then start the servers from inside the worktree as usual (`uvicorn main:app --reload --port 8000` and `npm run dev`).
+
 ## 4. Implement
 
 **Order within an issue**: backend first, then frontend.
