@@ -22,13 +22,13 @@ Confirm with the user before starting; don't grab an issue and run.
 cd C:\Users\mixca\Grades
 git checkout staging
 git pull origin staging
-git worktree add .worktree/N -b issue-N-slug staging
+git worktree add .worktree/N -b claude/issue-N staging
 cd .worktree/N
 ```
 
-- `N` = issue number — used as the worktree directory name (`.worktree/1`, `.worktree/2`, ...)
-- `slug` = short kebab-case description (e.g., `classroom-crud` for #1) — used in the **branch name** only, since branch names show up in GitHub PRs/URLs
-- Full example: worktree at `.worktree/1`, branch `issue-1-classroom-crud`
+- `N` = issue number — used both as the worktree directory name (`.worktree/1`, `.worktree/2`, ...) and inside the branch name
+- Branch name is **always** `claude/issue-<N>` — no slug. The `claude/` prefix marks branches authored by Claude Code; PR titles carry the human-readable description.
+- Full example: worktree at `.worktree/1`, branch `claude/issue-1`
 
 A worktree is a separate working directory sharing one `.git`. You can have many worktrees concurrently for different issues. Branch lives **inside** the worktree.
 
@@ -115,7 +115,7 @@ Multiple commits per PR is fine — split logically (e.g., one commit for backen
 ## 7. Push the branch
 
 ```powershell
-git push -u origin issue-N-slug
+git push -u origin claude/issue-N
 ```
 
 The `-u` sets upstream tracking so subsequent `git push` works without args.
@@ -125,7 +125,7 @@ The `-u` sets upstream tracking so subsequent `git push` works without args.
 ```powershell
 gh pr create --repo myduotopia/Grades \
   --base staging \
-  --head issue-N-slug \
+  --head claude/issue-N \
   --title "[#N] short title" \
   --body "..."
 ```
@@ -159,10 +159,10 @@ cd C:\Users\mixca\Grades
 git checkout staging
 git pull origin staging
 git worktree remove .worktree/N
-git branch -D issue-N-slug
+git branch -D claude/issue-N
 ```
 
-The branch on `origin` is auto-deleted by GitHub if "automatically delete head branches" is on. If not, also: `git push origin --delete issue-N-slug`.
+The branch on `origin` is auto-deleted by GitHub if "automatically delete head branches" is on. If not, also: `git push origin --delete claude/issue-N`.
 
 ---
 
@@ -187,7 +187,7 @@ For typo fixes, broken-link patches, or README touch-ups that don't touch any co
 | Action | Command |
 |---|---|
 | Sync staging | `git checkout staging && git pull` |
-| New worktree | `git worktree add .worktree/N -b issue-N-slug staging` |
+| New worktree | `git worktree add .worktree/N -b claude/issue-N staging` |
 | List worktrees | `git worktree list` |
 | Remove worktree | `git worktree remove .worktree/N` |
 | Open PR | `gh pr create --base staging --head <branch>` |
