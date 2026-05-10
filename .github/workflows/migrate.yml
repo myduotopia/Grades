@@ -30,11 +30,8 @@ jobs:
 
       - name: Run alembic upgrade
         env:
-          # Use Session pooler (IPv4, port 5432). Supabase's "Direct connection"
-          # is IPv6-only and GitHub-hosted runners have no IPv6 — it fails with
-          # "Network is unreachable". Transaction pooler also won't work because
-          # alembic runs DDL inside transactions. Despite the secret name, the
-          # value stored in DATABASE_URL_DIRECT is the Session pooler string.
+          # Direct connection (port 5432) is fine here — single-shot CLI run,
+          # not the per-request connections that need the Supavisor pooler.
           DATABASE_URL: ${{ secrets.DATABASE_URL_DIRECT }}
           # Settings() requires these — values aren't read by alembic but
           # config.py validates on import.
