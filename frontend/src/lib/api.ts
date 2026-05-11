@@ -4,7 +4,17 @@
  */
 import { supabase } from './supabase'
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL
+const RAW_API_BASE = import.meta.env.VITE_API_BASE_URL ?? ''
+if (RAW_API_BASE.endsWith('/')) {
+  // A trailing slash combined with paths like `/api/me/seed` produces `//api/me/seed`,
+  // which Vercel 308-redirects to the single-slash version. Browsers refuse to follow
+  // redirects on CORS preflight (OPTIONS), so every API call fails with a misleading
+  // "Redirect is not allowed for a preflight request" error. Strip it defensively.
+  console.warn(
+    '[api] VITE_API_BASE_URL has a trailing slash; stripping it. Fix the env var to avoid CORS preflight failures.',
+  )
+}
+const API_BASE = RAW_API_BASE.replace(/\/+$/, '')
 
 export interface MeResponse {
   user: { id: string; email: string | null }

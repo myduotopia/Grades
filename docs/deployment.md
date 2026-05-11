@@ -29,7 +29,7 @@ Each project has its own Environment Variables panel (Settings → Environment V
 |---|---|---|---|
 | `VITE_SUPABASE_URL` | ✅ (Production = W, Preview = N) | — | — |
 | `VITE_SUPABASE_ANON_KEY` | ✅ | — | — |
-| `VITE_API_BASE_URL` | ✅ (points to matching backend URL) | — | — |
+| `VITE_API_BASE_URL` | ✅ (points to matching backend URL — **no trailing slash**) | — | — |
 | `DATABASE_URL` (Session pooler) | — | ✅ | — |
 | `SUPABASE_URL` | — | ✅ | ✅ |
 | `SUPABASE_SERVICE_ROLE_KEY` | — | ✅ | ✅ |
@@ -88,3 +88,4 @@ Symptom-to-cause cheatsheet for failures during/after a rename:
 | OAuth returns to `localhost` or to a stale host | Supabase **Site URL** still points at the old hostname |
 | OAuth returns `redirect_uri_mismatch` | Supabase **Redirect URLs** allow-list missing the new pattern |
 | Frontend loads but every API call 404s | `VITE_API_BASE_URL` still points at the old backend hostname |
+| `Redirect is not allowed for a preflight request` in browser console | `VITE_API_BASE_URL` has a trailing slash → produces `//api/...` → Vercel 308-redirects → preflight blocked. Strip the trailing slash and redeploy. |
