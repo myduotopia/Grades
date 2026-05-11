@@ -1,0 +1,123 @@
+name: PR preview check
+
+# Per-issue preview gate. On every push to a `claude/issue-N` branch:
+#   1. Wait for Vercel to finish deploying frontend + backend previews
+#   2. Smoke-check the preview URLs
+#   3. Comment the results on issue N
+# A failure here turns the commit status red so reviewers see it on the PR.
+
+on:
+  push:
+    branches:
+      - 'claude/issue-*'
+
+permissions:
+  contents: read
+  issues: write
+  checks: read
+
+jobs:
+  preview-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Parse issue number and preview URLs from branch
+        id: parse
+        run: |
+          BRANCH="${GITHUB_REF_NAME}"
+          if [[ ! "$BRANCH" =~ ^claude/issue-([0-9]+)$ ]]; then
+            echo "::error::Branch '$BRANCH' does not match claude/issue-<N> pattern"
+            exit 1
+          fi
+          ISSUE_NUM="${BASH_REMATCH[1]}"
+          SLUG=$(echo "$BRANCH" | tr '/_' '-' | tr '[:upper:]' '[:lower:]')
+          {
+            echo "issue_num=$ISSUE_NUM"
+            echo "frontend_url=https://grades-frontend-git-${SLUG}-kaddyeunice.vercel.app"
+            echo "backend_url=https://grades-backend-git-${SLUG}-kaddyeunice.vercel.app"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Wait for Vercel frontend deployment
+        uses: fountainhead/action-wait-for-check@v1.2.0
+        id: wait-frontend
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          checkName: 'Vercel – grades-frontend'
+          ref: ${{ github.sha }}
+          timeoutSeconds: 600
+          intervalSeconds: 10
+
+      - name: Wait for Vercel backend deployment
+        uses: fountainhead/action-wait-for-check@v1.2.0
+        id: wait-backend
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          checkName: 'Vercel – grades-backend'
+          ref: ${{ github.sha }}
+          timeoutSeconds: 600
+          intervalSeconds: 10
+
+      - name: Verify both Vercel deployments succeeded
+        run: |
+          fe="${{ steps.wait-frontend.outputs.conclusion }}"
+          be="${{ steps.wait-backend.outputs.conclusion }}"
+          echo "frontend conclusion: $fe"
+          echo "backend conclusion:  $be"
+          if [[ "$fe" != "success" || "$be" != "success" ]]; then
+            echo "::error::At least one Vercel deployment did not succeed"
+            exit 1
+          fi
+
+      - name: Smoke check preview endpoints
+        run: |
+          FE="${{ steps.parse.outputs.frontend_url }}"
+          BE="${{ steps.parse.outputs.backend_url }}"
+          fail=0
+          check() {
+            local url="$1" expected="$2" label="$3"
+            local code
+            code=$(curl -sS -o /dev/null -w "%{http_code}" "$url" || echo "000")
+            if [[ "$code" == "$expected" ]]; then
+              echo "  PASS  $label  ->  $code"
+            else
+              echo "  FAIL  $label  ->  $code (expected $expected)"
+              fail=1
+            fi
+          }
+          echo "Smoke checks:"
+          check "$BE/health"      200 "GET /health"
+          check "$BE/api/version" 200 "GET /api/version"
+          check "$FE/"            200 "GET / (frontend)"
+          check "$BE/api/me"      401 "GET /api/me (no token)"
+          if [[ $fail -ne 0 ]]; then
+            echo "::error::One or more smoke checks failed"
+            exit 1
+          fi
+
+      - name: Comment success on issue
+        if: success()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue comment "${{ steps.parse.outputs.issue_num }}" \
+            --repo "${{ github.repository }}" \
+            --body "$(printf '%s\n' \
+              ':rocket: **Preview ready** — commit \`${{ github.sha }}\`' \
+              '' \
+              '| | URL | Smoke |' \
+              '|---|---|---|' \
+              '| Frontend | ${{ steps.parse.outputs.frontend_url }} | :white_check_mark: 200 |' \
+              '| Backend | ${{ steps.parse.outputs.backend_url }} | :white_check_mark: /health, /api/version, /api/me=401 |' \
+              '' \
+              'DB: shared staging Supabase. [Workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})')"
+
+      - name: Comment failure on issue
+        if: failure() && steps.parse.outputs.issue_num != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue comment "${{ steps.parse.outputs.issue_num }}" \
+            --repo "${{ github.repository }}" \
+            --body "$(printf '%s\n' \
+              ':x: **Preview check failed** — commit \`${{ github.sha }}\`' \
+              '' \
+              '[Workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) — check the log for which step failed (Vercel deployment vs. smoke check).')"
