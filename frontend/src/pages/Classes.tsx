@@ -39,23 +39,26 @@ export function Classes() {
         subtitle={isEmpty ? t('classes.empty.subheading') : t('classes.subtitle')}
         actions={
           !isLoading && !isError && classrooms.length > 0 ? (
-            <div className="flex flex-wrap items-center gap-2 justify-end">
+            <div className="flex flex-wrap items-center gap-2 sm:justify-end">
               <button
                 disabled
                 title={t('classes.cta.classroom_disabled')}
                 className={SECONDARY_BTN}
               >
-                {t('classes.cta.import_classroom')}
+                <span className="sm:hidden">{t('classes.cta.import_classroom_short')}</span>
+                <span className="hidden sm:inline">{t('classes.cta.import_classroom')}</span>
               </button>
               <button
                 disabled
                 title={t('classes.cta.duotopia_disabled')}
                 className={SECONDARY_BTN}
               >
-                {t('classes.cta.import_duotopia')}
+                <span className="sm:hidden">{t('classes.cta.import_duotopia_short')}</span>
+                <span className="hidden sm:inline">{t('classes.cta.import_duotopia')}</span>
               </button>
               <button onClick={() => setModal({ kind: 'add' })} className={PRIMARY_BTN}>
-                {t('classes.cta.add_manual')}
+                <span className="sm:hidden">{t('classes.cta.add_manual_short')}</span>
+                <span className="hidden sm:inline">{t('classes.cta.add_manual')}</span>
               </button>
             </div>
           ) : undefined

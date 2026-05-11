@@ -62,8 +62,11 @@
     },
     "cta": {
       "import_classroom": "Import from Google Classroom",
+      "import_classroom_short": "Classroom",
       "import_duotopia": "Import from Duotopia",
+      "import_duotopia_short": "Duotopia",
       "add_manual": "Add manually",
+      "add_manual_short": "Add",
       "classroom_disabled": "Coming soon",
       "duotopia_disabled": "Coming soon",
       "add_manual_hint": "Just enter a name to get started"
