@@ -13,8 +13,11 @@ class Settings(BaseSettings):
     supabase_service_role_key: str
     supabase_jwt_secret: str
 
-    # CORS — comma-separated origins, parsed via cors_origins property
+    # CORS — comma-separated exact origins (prod host, localhost), parsed via
+    # cors_origins. For per-issue Vercel previews, set cors_allowed_origin_regex
+    # to a pattern that covers all preview frontends (see docs/deployment.md).
     cors_allowed_origins: str = "http://localhost:5000"
+    cors_allowed_origin_regex: str = ""
 
     # App
     app_env: str = "development"

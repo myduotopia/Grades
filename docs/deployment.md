@@ -7,7 +7,8 @@ Where each environment lives, which Supabase project it talks to, and where its 
 | Environment | Frontend URL | Backend URL | Supabase project | Supabase ref |
 |---|---|---|---|---|
 | Local dev | `http://localhost:5000` (Vite) | `http://localhost:8000` (uvicorn) | **Staging** (shared with Vercel Preview) | `nvufhrviaxblxlmiqive` |
-| Vercel Preview (= staging) | `https://grades-frontend-git-staging-kaddyeunice.vercel.app` | `https://grades-backend-git-staging-kaddyeunice.vercel.app` | **Staging** | `nvufhrviaxblxlmiqive` |
+| Vercel Preview (`staging` branch) | `https://grades-frontend-git-staging-kaddyeunice.vercel.app` | `https://grades-backend-git-staging-kaddyeunice.vercel.app` | **Staging** | `nvufhrviaxblxlmiqive` |
+| Vercel Preview (PR branch — per issue) | `https://grades-frontend-git-claude-issue-<N>-kaddyeunice.vercel.app` | `https://grades-backend-git-claude-issue-<N>-kaddyeunice.vercel.app` | **Staging** (shared) | `nvufhrviaxblxlmiqive` |
 | Vercel Production | `https://grades-rho.vercel.app` | `https://grades-backend.vercel.app` (also aliased as `grades-backend-kaddyeunice.vercel.app`) | **Production** | `wtwpwmizwzlkbqfctbir` |
 
 > Vercel team owner is `kaddyeunice` (renamed from `kaddt`). Branch/preview URLs include the owner suffix; custom production aliases (`grades-rho`, `grades-backend`) do not.
@@ -36,6 +37,7 @@ Each project has its own Environment Variables panel (Settings → Environment V
 | `SUPABASE_JWT_SECRET` | — | ✅ | ✅ |
 | `DATABASE_URL_DIRECT` (Session pooler — see [migrate.yml](../.github/workflows/migrate.yml)) | — | — | ✅ |
 | `CORS_ALLOWED_ORIGINS` | — | ✅ (Production = `https://grades-rho.vercel.app`) | — |
+| `CORS_ALLOWED_ORIGIN_REGEX` | — | ✅ (Preview only = `https://grades-frontend-git-.*-kaddyeunice\.vercel\.app`) | — |
 
 GitHub Actions secrets are **production-only** — the `migrate` workflow runs on push to `main` and applies migrations to Production Supabase. Staging migrations are run manually for now (see [workflow.md](workflow.md)).
 
@@ -66,6 +68,18 @@ Supabase exposes three connection modes; alembic + FastAPI need different ones:
 | Session pooler | `aws-1-*.pooler.supabase.com:5432` | ✅ | **alembic in CI** + **local dev**. Long-lived script-style connections; supports the session-scoped state alembic needs for DDL. |
 | Transaction pooler | `aws-1-*.pooler.supabase.com:6543` | ✅ | **FastAPI on Vercel**. Vercel opens a new connection per request — Transaction pooler keeps Postgres from running out of slots. Don't use for alembic — breaks DDL. |
 
+## Per-issue preview environments
+
+Every push to a PR branch produces an isolated preview. Two pieces wire it together:
+
+1. **Frontend → backend URL is derived at build time.** [frontend/vite.config.ts](../frontend/vite.config.ts) reads `VERCEL_GIT_COMMIT_REF` on Vercel preview builds and, for branches other than `staging` / `main`, overrides `VITE_API_BASE_URL` to `https://grades-backend-git-<slug>-kaddyeunice.vercel.app`. The slug is the branch name with `/` and `_` replaced by `-`, lowercased — matching Vercel's URL slugification.
+2. **Backend CORS is regex-based on previews.** [backend/main.py](../backend/main.py) passes `allow_origin_regex` to `CORSMiddleware`. The `CORS_ALLOWED_ORIGIN_REGEX` env var (set only on `grades-backend` Preview scope) is `https://grades-frontend-git-.*-kaddyeunice\.vercel\.app`, covering every preview frontend with one rule. Production leaves the regex empty and keeps exact-match `CORS_ALLOWED_ORIGINS`.
+
+**DB is shared with staging.** Previews run against the staging Supabase project — no per-PR database, no schema isolation. Two consequences:
+
+- Multiple open PRs see each other's rows. Use scratch / prefixed data when testing.
+- **Migrations don't run on previews.** A PR that depends on new schema must be merged to `staging` first and the migration run manually against staging Supabase before the next round of previews will work correctly. See [workflow.md](workflow.md) §8a.
+
 ## Renaming or re-hosting — checklist
 
 Vercel preview URLs embed the team owner and branch name (`grades-frontend-git-<branch>-<owner>.vercel.app`). Any time the **owner**, **project name**, or a long-lived **branch name** changes, the new hostname must be propagated to every place that hard-codes it. Missing one breaks deploy silently — usually as CORS errors or OAuth redirect-mismatch errors that only show up in the deployed environment.
@@ -73,7 +87,7 @@ Vercel preview URLs embed the team owner and branch name (`grades-frontend-git-<
 When changing any of those, walk through this list:
 
 1. **Frontend env var** — `grades-frontend` project, `VITE_API_BASE_URL` (Preview + Production scopes) → must point at the matching new backend hostname.
-2. **Backend CORS** — `grades-backend` project, `CORS_ALLOWED_ORIGINS` (Preview + Production scopes) → must include the new frontend hostname. Comma-separated, `https://`, no trailing slash.
+2. **Backend CORS** — `grades-backend` project, `CORS_ALLOWED_ORIGINS` (Production scope) → must include the new frontend hostname. Comma-separated, `https://`, no trailing slash. The Preview scope uses `CORS_ALLOWED_ORIGIN_REGEX` instead — update the regex pattern if the owner suffix or project name changes.
 3. **Supabase Auth** — Site URL + Redirect URLs allow-list, **for each Supabase project** (Staging + Production are independent). Update both single-host entries and any `*` wildcard patterns.
 4. **Google Cloud OAuth client** — Authorized redirect URIs must still cover `https://<supabase-ref>.supabase.co/auth/v1/callback`. This rarely changes (it's keyed by Supabase ref, not Vercel host) but worth confirming if the Supabase project itself moves.
 5. **`docs/deployment.md`** — update the Environments table, the Supabase Auth URL block, and any other place hostnames appear. This file is the source of truth; if reality drifts from it, future debugging gets harder.
