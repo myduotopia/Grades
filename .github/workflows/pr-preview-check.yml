@@ -36,36 +36,36 @@ jobs:
             echo "backend_url=https://grades-backend-git-${SLUG}-kaddyeunice.vercel.app"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Wait for Vercel frontend deployment
-        uses: fountainhead/action-wait-for-check@v1.2.0
-        id: wait-frontend
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          checkName: 'Vercel – grades-frontend'
-          ref: ${{ github.sha }}
-          timeoutSeconds: 600
-          intervalSeconds: 10
-
-      - name: Wait for Vercel backend deployment
-        uses: fountainhead/action-wait-for-check@v1.2.0
-        id: wait-backend
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          checkName: 'Vercel – grades-backend'
-          ref: ${{ github.sha }}
-          timeoutSeconds: 600
-          intervalSeconds: 10
-
-      - name: Verify both Vercel deployments succeeded
+      - name: Wait for both Vercel deployments
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          fe="${{ steps.wait-frontend.outputs.conclusion }}"
-          be="${{ steps.wait-backend.outputs.conclusion }}"
-          echo "frontend conclusion: $fe"
-          echo "backend conclusion:  $be"
-          if [[ "$fe" != "success" || "$be" != "success" ]]; then
-            echo "::error::At least one Vercel deployment did not succeed"
-            exit 1
-          fi
+          # Vercel reports via the legacy commit-statuses API (not check-runs),
+          # so poll /commits/<sha>/statuses until both contexts reach a terminal
+          # state. Timeout 10 minutes to bound flaky-deploy waits.
+          SHA="${{ github.sha }}"
+          FE_CTX="Vercel – grades-frontend"
+          BE_CTX="Vercel – grades-backend"
+          deadline=$(( $(date +%s) + 600 ))
+          while :; do
+            payload=$(gh api "repos/${{ github.repository }}/commits/$SHA/statuses")
+            # Latest state per context (statuses API returns history; first row per context wins)
+            fe=$(echo "$payload" | jq -r --arg c "$FE_CTX" 'map(select(.context==$c)) | .[0].state // "missing"')
+            be=$(echo "$payload" | jq -r --arg c "$BE_CTX" 'map(select(.context==$c)) | .[0].state // "missing"')
+            echo "frontend=$fe  backend=$be"
+            if [[ "$fe" == "success" && "$be" == "success" ]]; then
+              exit 0
+            fi
+            if [[ "$fe" == "failure" || "$fe" == "error" || "$be" == "failure" || "$be" == "error" ]]; then
+              echo "::error::Vercel deployment failed (frontend=$fe, backend=$be)"
+              exit 1
+            fi
+            if (( $(date +%s) > deadline )); then
+              echo "::error::Timed out waiting for Vercel deployments (frontend=$fe, backend=$be)"
+              exit 1
+            fi
+            sleep 10
+          done
 
       - name: Smoke check preview endpoints
         run: |
