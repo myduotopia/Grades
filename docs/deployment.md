@@ -7,7 +7,7 @@ Where each environment lives, which Supabase project it talks to, and where its 
 | Environment | Frontend URL | Backend URL | Supabase project | Supabase ref |
 |---|---|---|---|---|
 | Local dev | `http://localhost:5000` (Vite) | `http://localhost:8000` (uvicorn) | **Staging** (shared with Vercel Preview) | `nvufhrviaxblxlmiqive` |
-| Vercel Preview (= staging) | `https://grades-git-staging-kaddyeunice.vercel.app` | `https://grades-backend-git-staging-kaddyeunice.vercel.app` | **Staging** | `nvufhrviaxblxlmiqive` |
+| Vercel Preview (= staging) | `https://grades-frontend-git-staging-kaddyeunice.vercel.app` | `https://grades-backend-git-staging-kaddyeunice.vercel.app` | **Staging** | `nvufhrviaxblxlmiqive` |
 | Vercel Production | `https://grades-rho.vercel.app` | `https://grades-backend.vercel.app` (also aliased as `grades-backend-kaddyeunice.vercel.app`) | **Production** | `wtwpwmizwzlkbqfctbir` |
 
 > Vercel team owner is `kaddyeunice` (renamed from `kaddt`). Branch/preview URLs include the owner suffix; custom production aliases (`grades-rho`, `grades-backend`) do not.
@@ -48,9 +48,9 @@ Each Supabase project has its own allow-list. Both must be set; they don't share
 - Redirect URLs: `https://grades-rho.vercel.app/**`
 
 **Staging project (`nvufhrviaxblxlmiqive`):**
-- Site URL: `https://grades-git-staging-kaddyeunice.vercel.app`
+- Site URL: `https://grades-frontend-git-staging-kaddyeunice.vercel.app`
 - Redirect URLs:
-  - `https://grades-git-staging-kaddyeunice.vercel.app/**`
+  - `https://grades-frontend-git-staging-kaddyeunice.vercel.app/**`
   - `https://grades-*-kaddyeunice.vercel.app/**` (other preview branches)
   - `http://localhost:5000/**`
 
