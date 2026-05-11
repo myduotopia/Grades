@@ -165,6 +165,25 @@ Closes #N
 2. ...
 ```
 
+## 8a. Per-issue preview environment
+
+Every push to a PR branch triggers Vercel to deploy **two** preview deployments — one frontend, one backend — with predictable URLs:
+
+- Frontend: `https://grades-frontend-git-claude-issue-N-kaddyeunice.vercel.app`
+- Backend:  `https://grades-backend-git-claude-issue-N-kaddyeunice.vercel.app`
+
+The frontend preview is wired (via [vite.config.ts](../frontend/vite.config.ts)) to call **its own branch's backend**, not staging's. Use these URLs to verify the PR end-to-end in a real deployed environment before merge.
+
+**DB caveat:** previews share the **staging** Supabase project. Multiple open PRs see each other's data — use scratch accounts / clearly-prefixed data to avoid stepping on parallel previews.
+
+**Migration caveat:** previews do **not** run `alembic upgrade`. A PR whose code depends on a new schema cannot be fully tested on its own preview — the shared staging DB hasn't been migrated yet. For such PRs:
+
+1. Merge the PR to `staging` first.
+2. Manually run the migration against staging Supabase.
+3. Re-deploy any other open preview branches that depend on the new schema.
+
+In other words: **schema-changing PRs are tested on staging, not on their own preview.** Plain code-change PRs are tested on their preview.
+
 ## 9. Wait for review
 
 User reviews + merges. Don't auto-merge — even if the user gave general approval, get explicit go-ahead per PR.
