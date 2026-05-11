@@ -1,10 +1,12 @@
 name: PR preview check
 
 # Per-issue preview gate. On every push to a `claude/issue-N` branch:
-#   1. Wait for Vercel to finish deploying frontend + backend previews
-#   2. Smoke-check the preview URLs
-#   3. Comment the results on issue N
-# A failure here turns the commit status red so reviewers see it on the PR.
+#   1. parse       — extract issue number + preview URLs from branch name
+#   2. wait-vercel — wait for both Vercel previews to finish deploying
+#   3. smoke       — HTTP smoke check the preview URLs
+#   4. comment     — post URLs + result on issue N (always runs)
+# Split into separate jobs so each phase shows up in the Actions run page
+# with its own status icon — no need to drill into a single job's steps.
 
 on:
   push:
@@ -15,10 +17,16 @@ permissions:
   contents: read
   issues: write
   checks: read
+  statuses: read
 
 jobs:
-  preview-check:
+  parse:
+    name: Parse branch
     runs-on: ubuntu-latest
+    outputs:
+      issue_num: ${{ steps.parse.outputs.issue_num }}
+      frontend_url: ${{ steps.parse.outputs.frontend_url }}
+      backend_url: ${{ steps.parse.outputs.backend_url }}
     steps:
       - name: Parse issue number and preview URLs from branch
         id: parse
@@ -36,7 +44,12 @@ jobs:
             echo "backend_url=https://grades-backend-git-${SLUG}-kaddyeunice.vercel.app"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Wait for both Vercel deployments
+  wait-vercel:
+    name: Wait for Vercel previews
+    needs: parse
+    runs-on: ubuntu-latest
+    steps:
+      - name: Poll commit statuses for both Vercel deployments
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -49,7 +62,6 @@ jobs:
           deadline=$(( $(date +%s) + 600 ))
           while :; do
             payload=$(gh api "repos/${{ github.repository }}/commits/$SHA/statuses")
-            # Latest state per context (statuses API returns history; first row per context wins)
             fe=$(echo "$payload" | jq -r --arg c "$FE_CTX" 'map(select(.context==$c)) | .[0].state // "missing"')
             be=$(echo "$payload" | jq -r --arg c "$BE_CTX" 'map(select(.context==$c)) | .[0].state // "missing"')
             echo "frontend=$fe  backend=$be"
@@ -67,10 +79,15 @@ jobs:
             sleep 10
           done
 
-      - name: Smoke check preview endpoints
+  smoke:
+    name: Smoke check
+    needs: [parse, wait-vercel]
+    runs-on: ubuntu-latest
+    steps:
+      - name: HTTP smoke check preview endpoints
         run: |
-          FE="${{ steps.parse.outputs.frontend_url }}"
-          BE="${{ steps.parse.outputs.backend_url }}"
+          FE="${{ needs.parse.outputs.frontend_url }}"
+          BE="${{ needs.parse.outputs.backend_url }}"
           fail=0
           check() {
             local url="$1" expected="$2" label="$3"
@@ -93,31 +110,39 @@ jobs:
             exit 1
           fi
 
-      - name: Comment success on issue
-        if: success()
+  comment:
+    name: Comment on issue
+    needs: [parse, wait-vercel, smoke]
+    if: ${{ always() && needs.parse.result == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Post success comment
+        if: ${{ needs.wait-vercel.result == 'success' && needs.smoke.result == 'success' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh issue comment "${{ steps.parse.outputs.issue_num }}" \
+          gh issue comment "${{ needs.parse.outputs.issue_num }}" \
             --repo "${{ github.repository }}" \
             --body "$(printf '%s\n' \
               ':rocket: **Preview ready** — commit \`${{ github.sha }}\`' \
               '' \
               '| | URL | Smoke |' \
               '|---|---|---|' \
-              '| Frontend | ${{ steps.parse.outputs.frontend_url }} | :white_check_mark: 200 |' \
-              '| Backend | ${{ steps.parse.outputs.backend_url }} | :white_check_mark: /health, /api/version, /api/me=401 |' \
+              '| Frontend | ${{ needs.parse.outputs.frontend_url }} | :white_check_mark: 200 |' \
+              '| Backend | ${{ needs.parse.outputs.backend_url }} | :white_check_mark: /health, /api/version, /api/me=401 |' \
               '' \
               'DB: shared staging Supabase. [Workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})')"
 
-      - name: Comment failure on issue
-        if: failure() && steps.parse.outputs.issue_num != ''
+      - name: Post failure comment
+        if: ${{ needs.wait-vercel.result != 'success' || needs.smoke.result != 'success' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh issue comment "${{ steps.parse.outputs.issue_num }}" \
+          gh issue comment "${{ needs.parse.outputs.issue_num }}" \
             --repo "${{ github.repository }}" \
             --body "$(printf '%s\n' \
               ':x: **Preview check failed** — commit \`${{ github.sha }}\`' \
               '' \
-              '[Workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) — check the log for which step failed (Vercel deployment vs. smoke check).')"
+              'wait-vercel: ${{ needs.wait-vercel.result }}, smoke: ${{ needs.smoke.result }}' \
+              '' \
+              '[Workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})')"
