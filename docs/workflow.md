@@ -174,6 +174,8 @@ Every push to a PR branch triggers Vercel to deploy **two** preview deployments 
 
 The frontend preview is wired (via [vite.config.ts](../frontend/vite.config.ts)) to call **its own branch's backend**, not staging's. Use these URLs to verify the PR end-to-end in a real deployed environment before merge.
 
+**Automated preview check** ([.github/workflows/pr-preview-check.yml](../.github/workflows/pr-preview-check.yml)): every push to `claude/issue-N` runs an Actions workflow that waits for both Vercel previews, runs HTTP smoke checks (`/health`, `/api/version`, `/`, `/api/me` 401), and comments the result on issue N. Failure turns the commit status red. You'll see the comment appear on the issue without needing to open a PR first.
+
 **DB caveat:** previews share the **staging** Supabase project. Multiple open PRs see each other's data — use scratch accounts / clearly-prefixed data to avoid stepping on parallel previews.
 
 **Migration caveat:** previews do **not** run `alembic upgrade`. A PR whose code depends on a new schema cannot be fully tested on its own preview — the shared staging DB hasn't been migrated yet. For such PRs:
