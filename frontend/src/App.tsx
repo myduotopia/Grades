@@ -3,6 +3,7 @@ import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import { AuthProvider } from './auth/AuthProvider'
 import { ProtectedRoute } from './auth/ProtectedRoute'
 import { AppShell } from './layout/AppShell'
+import { AdminCategories } from './pages/AdminCategories'
 import { AuthCallback } from './pages/AuthCallback'
 import { Classes } from './pages/Classes'
 import { Home } from './pages/Home'
@@ -19,6 +20,7 @@ function App() {
             <Route element={<AppShell />}>
               <Route path="/" element={<Home />} />
               <Route path="/classes" element={<Classes />} />
+              <Route path="/admin/categories" element={<AdminCategories />} />
             </Route>
           </Route>
         </Routes>
