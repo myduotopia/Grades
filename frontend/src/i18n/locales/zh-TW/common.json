@@ -107,10 +107,77 @@
     "actions": {
       "edit": "編輯",
       "delete": "刪除",
+      "view_students": "查看學生",
       "confirm_delete": "確定刪除「{{name}}」？此動作會一併刪除學生與成績。"
     },
     "errors": {
       "duplicate_name": "已經有同名的班級了"
+    }
+  },
+  "students": {
+    "title": "學生名單",
+    "subtitle": "管理這個班級的學生資料、座號與各類別標準分。",
+    "back_to_classes": "返回班級列表",
+    "no_name": "（未填姓名）",
+    "standards_heading": "各類別達標分數（選填）",
+    "confirm_delete": "確定刪除座號 {{seat}} 的學生？此動作不可復原。",
+    "view": {
+      "list": "列表",
+      "card": "卡片"
+    },
+    "col": {
+      "seat": "座號",
+      "name": "姓名",
+      "email": "Email",
+      "actions": "動作"
+    },
+    "actions": {
+      "add": "新增學生",
+      "edit": "編輯",
+      "delete": "刪除",
+      "import": "批次匯入 Excel"
+    },
+    "empty": {
+      "heading": "這個班級還沒有學生",
+      "subheading": "用 Excel 批次匯入，或一筆一筆手動新增。"
+    },
+    "modal": {
+      "add_title": "新增學生",
+      "edit_title": "編輯學生"
+    },
+    "import": {
+      "title": "批次匯入學生",
+      "intro": "上傳 .xlsx 檔案，系統會先解析給你預覽，確認後才會寫入資料。",
+      "download_template": "下載空白範本",
+      "file_label": "選擇 Excel 檔",
+      "preview": "解析預覽",
+      "confirm": "確認匯入",
+      "choose_another": "重新選檔",
+      "action": "動作",
+      "errors": "錯誤訊息",
+      "action_label": {
+        "create": "新增",
+        "update": "更新",
+        "error": "錯誤"
+      },
+      "summary": {
+        "total": "共 {{n}} 筆",
+        "create": "{{n}} 筆新增",
+        "update": "{{n}} 筆更新",
+        "errors": "{{n}} 筆錯誤"
+      }
+    },
+    "errors": {
+      "duplicate_seat": "這個班級已經有相同座號的學生了"
+    }
+  },
+  "errors": {
+    "import": {
+      "bad_file_type": "檔案必須是 .xlsx 格式",
+      "unreadable": "Excel 檔案無法解析",
+      "empty": "Excel 內容是空的",
+      "bad_header": "Excel 表頭欄位不正確（缺少必要欄位）",
+      "has_errors": "預覽中有錯誤，請先修正後再匯入"
     }
   }
 }

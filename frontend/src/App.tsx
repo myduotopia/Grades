@@ -8,6 +8,7 @@ import { AuthCallback } from './pages/AuthCallback'
 import { Classes } from './pages/Classes'
 import { Home } from './pages/Home'
 import { Login } from './pages/Login'
+import { Students } from './pages/Students'
 
 function App() {
   return (
@@ -20,6 +21,10 @@ function App() {
             <Route element={<AppShell />}>
               <Route path="/" element={<Home />} />
               <Route path="/classes" element={<Classes />} />
+              <Route
+                path="/classes/:classroomId/students"
+                element={<Students />}
+              />
               <Route path="/admin/categories" element={<AdminCategories />} />
             </Route>
           </Route>

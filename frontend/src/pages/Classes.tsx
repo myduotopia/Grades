@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { Link } from 'react-router-dom'
 
 import { ActionCard } from '../components/ActionCard'
 import {
@@ -158,6 +159,12 @@ function ClassroomGrid({
             </span>
           </div>
           <div className="mt-auto flex gap-3 text-sm border-t border-slate-100 pt-3">
+            <Link
+              to={`/classes/${c.id}/students`}
+              className="text-slate-700 hover:text-slate-900 font-medium"
+            >
+              {t('classes.actions.view_students')}
+            </Link>
             <button
               onClick={() => onEdit(c)}
               className="text-amber-700 hover:text-amber-900 font-medium"

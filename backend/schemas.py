@@ -88,3 +88,81 @@ class ClassroomDetailOut(ClassroomOut):
 class ClassroomList(BaseModel):
     data: list[ClassroomOut]
     meta: ListMeta
+
+
+# ---------- /api/students ----------
+
+# Maps Chinese Excel header → category system_key.
+STANDARD_COLUMNS: dict[str, str] = {
+    "段考_標準": "major_exam",
+    "小考_標準": "quiz",
+    "作業_標準": "homework",
+    "出席率_標準": "attendance",
+    "額外加分_標準": "extra",
+}
+
+
+class StudentStandardOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    system_key: str
+    threshold: float
+
+
+class StudentCreate(BaseModel):
+    seat_number: int = Field(ge=1, le=99)
+    name: str | None = Field(default=None, max_length=200)
+    email: str | None = Field(default=None, max_length=255)
+    standards: dict[str, float] | None = None  # {system_key: threshold}
+
+
+class StudentUpdate(BaseModel):
+    classroom_id: UUID | None = None  # set to transfer
+    seat_number: int = Field(ge=1, le=99)
+    name: str | None = Field(default=None, max_length=200)
+    email: str | None = Field(default=None, max_length=255)
+    standards: dict[str, float] | None = None
+
+
+class StudentOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    classroom_id: UUID
+    seat_number: int
+    name: str | None
+    email: str | None
+    source: str
+    created_at: datetime
+    updated_at: datetime
+    standards: list[StudentStandardOut] = []
+
+
+class StudentList(BaseModel):
+    data: list[StudentOut]
+    meta: ListMeta
+
+
+# Excel import preview row
+class ImportRowPreview(BaseModel):
+    row_number: int  # 1-based Excel row; header is row 1, first data row = 2
+    action: Literal["create", "update", "error"]
+    seat_number: int | None
+    name: str | None
+    email: str | None
+    standards: dict[str, float]
+    existing_id: UUID | None = None
+    errors: list[str] = []
+
+
+class ImportPreviewSummary(BaseModel):
+    total_rows: int
+    to_create: int
+    to_update: int
+    errors: int
+
+
+class ImportResult(BaseModel):
+    dry_run: bool
+    summary: ImportPreviewSummary
+    rows: list[ImportRowPreview]

@@ -69,21 +69,39 @@ The active semester selector lives in the top nav so users can switch context gl
 
 **Quick stats on cards** (TBD — mentioned by user as a possible nice-to-have, defer until v0.1).
 
-### `/classes/:id`
+### `/classes/:id` (planned)
 
-**Header:** class name + student count + edit/delete buttons.
+Tabbed detail page (學生 / 成績總覽 / 點數). Until other tabs exist, the student
+roster lives at `/classes/:id/students` (see below).
 
-**Tabs:**
-- **學生** — table or card list of (seat number, name). Actions: 「批次匯入 Excel」, 「新增學生」 (single-row form).
-- **成績總覽** — items applied to this class, grouped by semester. Each row: item name + scores summary (graded count / total).
-- **點數** — per-student running totals for the current semester.
+### `/classes/:classroomId/students`
+
+**Header:** class display name (`六年甲班` / `Grade 6 · 甲`), with "返回班級列表"
++ "批次匯入 Excel" + "新增學生" actions.
+
+**View toggle:** above the list, a "列表 / 卡片" toggle. Choice persists in
+`localStorage` under `students.view`.
+
+- **List view** — table: 座號 / 姓名 / Email / 動作（編輯）.
+- **Card view** — grid of cards: seat badge + name + email + 編輯 link.
+
+Empty state: centered card with both actions (匯入 + 新增).
+
+**Single-row form (新增 / 編輯 modal):**
+- 座號 (required) / 姓名 / email
+- 各類別達標分數（選填）: 段考、小考、作業、出席率、額外加分 — 0–100
+- Edit modal also has a 刪除 button (with confirm dialog)
 
 **Batch import flow:**
-1. Click 「批次匯入 Excel」 → file picker
-2. Backend parses → returns preview (parsed rows + any unknown class names)
-3. If unknown classes → confirm dialog: 「這些班級不存在，要一併建嗎？」
-4. Confirm → backend upserts on `(classroom_id, seat_number)`
-5. Toast: "新增 N 筆，更新 M 筆"
+1. Click 「批次匯入 Excel」 → modal opens with template-download link + file picker
+2. Pick `.xlsx` → "解析預覽" → backend parses with `dry_run=true`
+3. Modal shows a preview table: each row marked 新增 / 更新 / 錯誤
+4. If any row has errors, "確認匯入" is disabled — teacher must fix the file and re-pick
+5. "確認匯入" → backend re-uploads with `dry_run=false` → roster refreshes
+
+One file = one classroom (classroom is in the URL, not in the Excel). Re-import
+is pure upsert: matching 座號 overwrites; new 座號 appends; existing students
+not in the file are left alone.
 
 ### `/grades/new`
 

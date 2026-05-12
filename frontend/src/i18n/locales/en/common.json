@@ -107,10 +107,77 @@
     "actions": {
       "edit": "Edit",
       "delete": "Delete",
+      "view_students": "View students",
       "confirm_delete": "Delete \"{{name}}\"? This will also remove its students and grades."
     },
     "errors": {
       "duplicate_name": "A class with this name already exists"
+    }
+  },
+  "students": {
+    "title": "Students",
+    "subtitle": "Manage this class's roster, seat numbers, and per-category standards.",
+    "back_to_classes": "Back to classes",
+    "no_name": "(No name)",
+    "standards_heading": "Per-category standards (optional)",
+    "confirm_delete": "Delete student at seat {{seat}}? This cannot be undone.",
+    "view": {
+      "list": "List",
+      "card": "Cards"
+    },
+    "col": {
+      "seat": "Seat",
+      "name": "Name",
+      "email": "Email",
+      "actions": "Actions"
+    },
+    "actions": {
+      "add": "Add student",
+      "edit": "Edit",
+      "delete": "Delete",
+      "import": "Batch import (Excel)"
+    },
+    "empty": {
+      "heading": "No students yet",
+      "subheading": "Use the Excel batch import, or add students one at a time."
+    },
+    "modal": {
+      "add_title": "Add student",
+      "edit_title": "Edit student"
+    },
+    "import": {
+      "title": "Batch import students",
+      "intro": "Upload an .xlsx file. The server will parse and show you a preview before any data is written.",
+      "download_template": "Download blank template",
+      "file_label": "Choose Excel file",
+      "preview": "Parse preview",
+      "confirm": "Confirm import",
+      "choose_another": "Choose another file",
+      "action": "Action",
+      "errors": "Errors",
+      "action_label": {
+        "create": "Create",
+        "update": "Update",
+        "error": "Error"
+      },
+      "summary": {
+        "total": "{{n}} total",
+        "create": "{{n}} to create",
+        "update": "{{n}} to update",
+        "errors": "{{n}} with errors"
+      }
+    },
+    "errors": {
+      "duplicate_seat": "Seat number already exists in this class"
+    }
+  },
+  "errors": {
+    "import": {
+      "bad_file_type": "File must be .xlsx format",
+      "unreadable": "Excel file could not be parsed",
+      "empty": "Workbook is empty",
+      "bad_header": "Excel header row is missing required columns",
+      "has_errors": "Preview contains errors; fix them before importing"
     }
   }
 }

@@ -133,37 +133,85 @@ Idempotent. Called by `/auth/callback` on first sign-in to create the 7 default 
 
 ### Students
 
+One Excel file maps to one classroom — the classroom is in the URL, never in
+the file. Re-importing is a pure upsert keyed on `seat_number`: matching seats
+overwrite, new seats append, missing seats are left untouched (no auto-delete).
+
 | Method | Path | Description |
 |---|---|---|
-| GET | `/api/classrooms/:id/students` | Students in a classroom |
-| POST | `/api/students` | Create one student |
+| GET | `/api/classrooms/:id/students` | List students in a classroom |
+| POST | `/api/classrooms/:id/students` | Create one student in the classroom |
 | PUT | `/api/students/:id` | Update (incl. transfer via `classroom_id`) |
 | DELETE | `/api/students/:id` | Cascade-delete grades, standards, point_records |
-| POST | `/api/students/import` | Excel batch import |
+| POST | `/api/classrooms/:id/students/import` | Excel batch import (preview + commit) |
+| GET | `/api/classrooms/:id/students/template.xlsx` | Download blank template |
 
-#### `POST /api/students/import`
+#### Student payload (POST / PUT body)
 
-Multipart form:
-- `file`: `.xlsx` file
-- `auto_create_classrooms`: `"true"` / `"false"` (default `false`)
-
-Excel columns expected (header row required):
-- 班級 / `class`
-- 座號 / `seat_number`
-- 姓名 / `name`
-- (optional) `<category_name>_標準` columns, e.g., `段考_標準`, `小考_標準`
-
-Response:
 ```json
 {
-  "created": 12,
-  "updated": 8,
-  "missing_classrooms": ["六年丙班", "六年丁班"],
-  "errors": [{ "row": 5, "message_key": "import.bad_score", "details": {...} }]
+  "seat_number": 1,
+  "name": "小明",
+  "email": "ming@example.com",
+  "standards": { "major_exam": 80, "quiz": 70 }
 }
 ```
 
-If `missing_classrooms` is non-empty and `auto_create_classrooms=false`, returns `409 CONFLICT`. Frontend shows confirm dialog, re-submits with `auto_create_classrooms=true`.
+- `seat_number` required, 1–99
+- `name`, `email` optional (null allowed)
+- `standards` is an optional map of `{ category.system_key: threshold }`.
+  Unknown keys are ignored; keys not in the payload are left untouched.
+- PUT-only: include `classroom_id` to transfer the student to a different
+  classroom (also owned by the current user).
+
+#### `POST /api/classrooms/:id/students/import`
+
+Two-phase: preview first, then confirm.
+
+Multipart form:
+- `file`: `.xlsx`
+
+Query param:
+- `dry_run`: `true` (default) returns preview only — nothing is written;
+  `false` writes the parsed rows.
+
+Excel columns (header row in row 1):
+
+| Header | Required | Notes |
+|---|---|---|
+| 座號 | ✓ | integer 1–99 |
+| 姓名 | | optional |
+| email | | optional |
+| 段考_標準 | | 0–100 |
+| 小考_標準 | | 0–100 |
+| 作業_標準 | | 0–100 |
+| 出席率_標準 | | 0–100 |
+| 額外加分_標準 | | 0–100 |
+
+Response:
+
+```json
+{
+  "dry_run": true,
+  "summary": { "total_rows": 28, "to_create": 22, "to_update": 5, "errors": 1 },
+  "rows": [
+    {
+      "row_number": 2,
+      "action": "create",
+      "seat_number": 1,
+      "name": "小明",
+      "email": null,
+      "standards": { "major_exam": 80 },
+      "existing_id": null,
+      "errors": []
+    }
+  ]
+}
+```
+
+A `dry_run=false` request returns `400 BAD_REQUEST` (`errors.import.has_errors`)
+if the preview contains any row with `action: "error"` — fix the file and
+re-upload.
 
 ### Subjects
 

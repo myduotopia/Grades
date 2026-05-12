@@ -109,6 +109,93 @@ export interface CategoryWeightUpdate {
   weight: number
 }
 
+export interface StudentStandard {
+  system_key: string
+  threshold: number
+}
+
+export interface Student {
+  id: string
+  classroom_id: string
+  seat_number: number
+  name: string | null
+  email: string | null
+  source: ClassroomSource
+  created_at: string
+  updated_at: string
+  standards: StudentStandard[]
+}
+
+export interface StudentList {
+  data: Student[]
+  meta: { total: number }
+}
+
+export interface StudentPayload {
+  seat_number: number
+  name?: string | null
+  email?: string | null
+  standards?: Record<string, number>
+}
+
+export interface ImportRowPreview {
+  row_number: number
+  action: 'create' | 'update' | 'error'
+  seat_number: number | null
+  name: string | null
+  email: string | null
+  standards: Record<string, number>
+  existing_id: string | null
+  errors: string[]
+}
+
+export interface ImportResult {
+  dry_run: boolean
+  summary: {
+    total_rows: number
+    to_create: number
+    to_update: number
+    errors: number
+  }
+  rows: ImportRowPreview[]
+}
+
+async function uploadMultipart<T>(
+  path: string,
+  formData: FormData,
+): Promise<T> {
+  const token = await authedToken()
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: formData,
+  })
+  const text = await res.text()
+  const json = text ? JSON.parse(text) : null
+  if (!res.ok) {
+    const body: ApiErrorBody | null = json?.error ?? null
+    throw new ApiError(res.status, body)
+  }
+  return json as T
+}
+
+async function downloadFile(path: string, filename: string): Promise<void> {
+  const token = await authedToken()
+  const res = await fetch(`${API_BASE}${path}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (!res.ok) {
+    throw new ApiError(res.status, null)
+  }
+  const blob = await res.blob()
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
 export const api = {
   me: {
     get: () => request<MeResponse>('/api/me'),
@@ -137,5 +224,34 @@ export const api = {
         method: 'PUT',
         body: JSON.stringify(body),
       }),
+  },
+  students: {
+    list: (classroomId: string) =>
+      request<StudentList>(`/api/classrooms/${classroomId}/students`),
+    create: (classroomId: string, body: StudentPayload) =>
+      request<Student>(`/api/classrooms/${classroomId}/students`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+    update: (id: string, body: StudentPayload & { classroom_id?: string }) =>
+      request<Student>(`/api/students/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(body),
+      }),
+    remove: (id: string) =>
+      request<void>(`/api/students/${id}`, { method: 'DELETE' }),
+    import: (classroomId: string, file: File, dryRun: boolean) => {
+      const fd = new FormData()
+      fd.append('file', file)
+      return uploadMultipart<ImportResult>(
+        `/api/classrooms/${classroomId}/students/import?dry_run=${dryRun}`,
+        fd,
+      )
+    },
+    downloadTemplate: (classroomId: string) =>
+      downloadFile(
+        `/api/classrooms/${classroomId}/students/template.xlsx`,
+        'students_template.xlsx',
+      ),
   },
 }
