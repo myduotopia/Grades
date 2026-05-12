@@ -43,14 +43,20 @@
     }
   },
   "category": {
-    "first_midterm": "第一次段考",
-    "second_midterm": "第二次段考",
-    "third_midterm": "第三次段考",
-    "midterm": "期中考",
-    "final": "期末考",
-    "major_exam": "大考",
+    "major_exam": "段考",
     "quiz": "小考",
     "homework": "作業"
+  },
+  "subject": {
+    "chinese": "國語",
+    "math": "數學",
+    "english": "英文",
+    "science": "自然",
+    "social_studies": "社會",
+    "music": "音樂",
+    "art": "美術",
+    "pe": "體育",
+    "integrated": "綜合"
   },
   "classes": {
     "title": "班級管理",

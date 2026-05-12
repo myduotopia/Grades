@@ -22,21 +22,35 @@ if TYPE_CHECKING:
     from models.grading import Grade, PointRule, StudentStandard
 
 
-# 8 system-default category keys (seeded per user on signup).
-# Users cannot add custom categories in v1 — keep this list stable.
+# 3 system-default category keys (seeded per user on signup).
+# Users cannot add custom categories in v1.
+# i18n: front-end resolves system_key via the `category.*` dictionary.
 SYSTEM_CATEGORY_KEYS = (
-    "first_midterm",
-    "second_midterm",
-    "third_midterm",
-    "midterm",
-    "final",
-    "major_exam",
-    "quiz",
-    "homework",
+    "major_exam",  # 段考
+    "quiz",        # 小考
+    "homework",    # 作業
 )
 
 
-class Subject(Base, UserScopedMixin, TimestampMixin):
+# Global built-in subjects (one row per key, user_id IS NULL).
+# i18n: front-end resolves system_key via the `subject.*` dictionary.
+SYSTEM_SUBJECT_KEYS = (
+    "chinese",
+    "math",
+    "english",
+    "science",
+    "social_studies",
+    "music",
+    "art",
+    "pe",
+    "integrated",
+)
+
+
+class Subject(Base, TimestampMixin):
+    """Subject = either a global built-in (user_id NULL, system_key set)
+    or a teacher-owned custom (user_id set, display_name set).
+    """
     __tablename__ = "subject"
 
     id: Mapped[UUID] = mapped_column(
@@ -44,10 +58,27 @@ class Subject(Base, UserScopedMixin, TimestampMixin):
         primary_key=True,
         server_default=text("gen_random_uuid()"),
     )
-    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    # Nullable on purpose: NULL means a global built-in shared by every user.
+    user_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True),
+        nullable=True,
+        index=True,
+    )
+    system_key: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    display_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
     __table_args__ = (
-        UniqueConstraint("user_id", "name", name="uq_subject_user_name"),
+        # Built-in row (user_id NULL, system_key set, display_name NULL)
+        # vs custom row (user_id set, system_key NULL, display_name set).
+        CheckConstraint(
+            "(user_id IS NULL AND system_key IS NOT NULL AND display_name IS NULL)"
+            " OR (user_id IS NOT NULL AND system_key IS NULL AND display_name IS NOT NULL)",
+            name="ck_subject_builtin_xor_custom",
+        ),
+        UniqueConstraint("system_key", name="uq_subject_system_key"),
+        UniqueConstraint(
+            "user_id", "display_name", name="uq_subject_user_display_name"
+        ),
     )
 
 
@@ -59,11 +90,7 @@ class Category(Base, UserScopedMixin, TimestampMixin):
         primary_key=True,
         server_default=text("gen_random_uuid()"),
     )
-    name: Mapped[str] = mapped_column(String(100), nullable=False)
-    system_key: Mapped[str | None] = mapped_column(String(50), nullable=True)
-    is_system_default: Mapped[bool] = mapped_column(
-        nullable=False, server_default=text("false")
-    )
+    system_key: Mapped[str] = mapped_column(String(50), nullable=False)
 
     standards: Mapped[list["StudentStandard"]] = relationship(
         back_populates="category"
@@ -73,7 +100,9 @@ class Category(Base, UserScopedMixin, TimestampMixin):
     )
 
     __table_args__ = (
-        UniqueConstraint("user_id", "name", name="uq_category_user_name"),
+        UniqueConstraint(
+            "user_id", "system_key", name="uq_category_user_system_key"
+        ),
     )
 
 
