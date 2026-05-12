@@ -34,6 +34,26 @@ class SeedResult(BaseModel):
     semesters_created: int
 
 
+# ---------- /api/categories ----------
+
+
+class CategoryOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    system_key: str
+    weight: int
+
+
+class CategoryList(BaseModel):
+    data: list[CategoryOut]
+
+
+class CategoryWeightUpdate(BaseModel):
+    system_key: str
+    weight: int = Field(ge=0, le=100)
+
+
 # ---------- /api/classrooms ----------
 
 ClassroomSource = Literal["manual", "duotopia", "google_classroom"]

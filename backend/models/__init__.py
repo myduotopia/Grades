@@ -3,6 +3,7 @@ from models.access import AccountLink
 from models.base import Base
 from models.classroom import Classroom, Student
 from models.curriculum import (
+    SYSTEM_CATEGORY_DEFAULTS,
     SYSTEM_CATEGORY_KEYS,
     SYSTEM_SUBJECT_KEYS,
     Category,
@@ -22,6 +23,7 @@ __all__ = [
     "Item",
     "PointRecord",
     "PointRule",
+    "SYSTEM_CATEGORY_DEFAULTS",
     "SYSTEM_CATEGORY_KEYS",
     "SYSTEM_SUBJECT_KEYS",
     "Semester",
