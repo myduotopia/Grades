@@ -88,6 +88,26 @@ Backend first because:
 
 ## 5. Verify
 
+### 5a. Schema-changing branches: run migration FIRST
+
+**If this branch added a file under `backend/alembic/versions/*.py` or changed `backend/models/*.py`**, you MUST run alembic against staging Supabase before any kind of testing:
+
+```powershell
+cd C:\Users\mixca\Grades\backend
+.\venv\Scripts\Activate.ps1
+alembic upgrade head
+```
+
+Why:
+- Local `.env` points at **staging Supabase**.
+- Preview deployments + staging both hit the same staging Supabase.
+- If code expects a new column/table but the DB hasn't been upgraded, every related API call 500s. No amount of local restart fixes this — the DB itself needs upgrading.
+- Production DB is auto-upgraded by `.github/workflows/migrate.yml` on push to `main`, so it never needs manual `alembic`. Only staging does.
+
+Sanity-check after upgrade: `alembic current` should print the latest revision id and `(head)`.
+
+### 5b. Run the app
+
 ```powershell
 # Terminal 1 — backend
 cd backend
