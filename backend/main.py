@@ -13,6 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from auth import get_current_user
 from config import settings
+from routers import categories as categories_router
 from routers import classroom as classroom_router
 from routers import me as me_router
 
@@ -44,6 +45,9 @@ def version() -> dict[str, str]:
 app.include_router(me_router.router, prefix="/api/me", tags=["me"])
 app.include_router(
     classroom_router.router, prefix="/api/classrooms", tags=["classrooms"]
+)
+app.include_router(
+    categories_router.router, prefix="/api/categories", tags=["categories"]
 )
 
 

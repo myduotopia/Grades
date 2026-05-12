@@ -94,6 +94,21 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return json as T
 }
 
+export interface Category {
+  id: string
+  system_key: string
+  weight: number
+}
+
+export interface CategoryList {
+  data: Category[]
+}
+
+export interface CategoryWeightUpdate {
+  system_key: string
+  weight: number
+}
+
 export const api = {
   me: {
     get: () => request<MeResponse>('/api/me'),
@@ -114,5 +129,13 @@ export const api = {
       }),
     remove: (id: string) =>
       request<void>(`/api/classrooms/${id}`, { method: 'DELETE' }),
+  },
+  categories: {
+    list: () => request<CategoryList>('/api/categories'),
+    updateWeights: (body: CategoryWeightUpdate[]) =>
+      request<CategoryList>('/api/categories/weights', {
+        method: 'PUT',
+        body: JSON.stringify(body),
+      }),
   },
 }
