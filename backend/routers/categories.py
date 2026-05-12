@@ -11,10 +11,21 @@ from sqlalchemy.orm import Session
 
 from auth import require_user_id
 from database import get_db
-from models.curriculum import Category
+from models.curriculum import SYSTEM_CATEGORY_KEYS, Category
 from schemas import CategoryList, CategoryOut, CategoryWeightUpdate
 
 router = APIRouter()
+
+# Canonical display order: 段考 → 小考 → 作業 → 出席率 → 額外加分.
+# Alphabetical sort by system_key is wrong (puts attendance/extra first),
+# and front-ends should not have to re-sort.
+_CANONICAL_INDEX: dict[str, int] = {
+    key: idx for idx, key in enumerate(SYSTEM_CATEGORY_KEYS)
+}
+
+
+def _by_canonical_order(c: Category) -> int:
+    return _CANONICAL_INDEX[c.system_key]
 
 
 @router.get("", response_model=CategoryList)
@@ -22,12 +33,8 @@ def list_categories(
     user_id: Annotated[UUID, Depends(require_user_id)],
     db: Annotated[Session, Depends(get_db)],
 ) -> CategoryList:
-    rows = (
-        db.query(Category)
-        .filter(Category.user_id == user_id)
-        .order_by(Category.system_key)
-        .all()
-    )
+    rows = db.query(Category).filter(Category.user_id == user_id).all()
+    rows.sort(key=_by_canonical_order)
     return CategoryList(data=[CategoryOut.model_validate(r) for r in rows])
 
 
@@ -65,5 +72,5 @@ def update_weights(
     db.commit()
     for c in rows.values():
         db.refresh(c)
-    ordered = sorted(rows.values(), key=lambda c: c.system_key)
+    ordered = sorted(rows.values(), key=_by_canonical_order)
     return CategoryList(data=[CategoryOut.model_validate(r) for r in ordered])
