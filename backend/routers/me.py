@@ -14,21 +14,6 @@ from schemas import SeedResult
 router = APIRouter()
 
 
-# Display fallback names for system-default categories. Frontend prefers
-# system_key for i18n; this `name` only matters when localizing fails and as
-# the value enforced by the (user_id, name) UNIQUE constraint.
-_SYSTEM_CATEGORY_NAMES: dict[str, str] = {
-    "first_midterm": "第一次段考",
-    "second_midterm": "第二次段考",
-    "third_midterm": "第三次段考",
-    "midterm": "期中考",
-    "final": "期末考",
-    "major_exam": "大考",
-    "quiz": "小考",
-    "homework": "作業",
-}
-
-
 def _default_semester_for(today: date) -> tuple[int, int]:
     """Return (academic_year_minguo, term) for the seed default.
 
@@ -48,27 +33,22 @@ def seed(
     user_id: Annotated[UUID, Depends(require_user_id)],
     db: Annotated[Session, Depends(get_db)],
 ) -> SeedResult:
-    """Idempotent: create the 7 system categories + a current semester if missing."""
+    """Idempotent: create the system categories + a current semester if missing.
+
+    Subjects are global (seeded by migration, user_id IS NULL) — nothing per-user.
+    """
     existing_keys: set[str] = {
         key
         for (key,) in db.query(Category.system_key)
-        .filter(Category.user_id == user_id, Category.is_system_default.is_(True))
+        .filter(Category.user_id == user_id)
         .all()
-        if key is not None
     }
 
     categories_created = 0
     for key in SYSTEM_CATEGORY_KEYS:
         if key in existing_keys:
             continue
-        db.add(
-            Category(
-                user_id=user_id,
-                name=_SYSTEM_CATEGORY_NAMES[key],
-                system_key=key,
-                is_system_default=True,
-            )
-        )
+        db.add(Category(user_id=user_id, system_key=key))
         categories_created += 1
 
     semesters_created = 0
