@@ -43,14 +43,20 @@
     }
   },
   "category": {
-    "first_midterm": "First Midterm",
-    "second_midterm": "Second Midterm",
-    "third_midterm": "Third Midterm",
-    "midterm": "Midterm Exam",
-    "final": "Final Exam",
     "major_exam": "Major Exam",
     "quiz": "Quiz",
     "homework": "Homework"
+  },
+  "subject": {
+    "chinese": "Chinese",
+    "math": "Math",
+    "english": "English",
+    "science": "Science",
+    "social_studies": "Social Studies",
+    "music": "Music",
+    "art": "Art",
+    "pe": "Physical Education",
+    "integrated": "Integrated Activities"
   },
   "classes": {
     "title": "Classes",
@@ -62,8 +68,11 @@
     },
     "cta": {
       "import_classroom": "Import from Google Classroom",
+      "import_classroom_short": "Classroom",
       "import_duotopia": "Import from Duotopia",
+      "import_duotopia_short": "Duotopia",
       "add_manual": "Add manually",
+      "add_manual_short": "Add",
       "classroom_disabled": "Coming soon",
       "duotopia_disabled": "Coming soon",
       "add_manual_hint": "Just enter a name to get started"

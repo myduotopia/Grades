@@ -190,7 +190,17 @@ In other words: **schema-changing PRs are tested on staging, not on their own pr
 
 User reviews + merges. Don't auto-merge — even if the user gave general approval, get explicit go-ahead per PR.
 
-## 10. After merge: cleanup
+## 10. After merge: cleanup (deferred)
+
+**Don't clean up immediately after merge.** Keep the worktree and branch around so that if a problem surfaces post-merge (on staging or production), you still have the exact commit checked out and the worktree environment available to reproduce / inspect without re-creating it.
+
+Wait until at least one of these is true:
+
+- The change has been promoted to `main` and verified on production
+- You're starting a new issue and want to free the slot
+- Enough time has passed that issues would have surfaced
+
+Then, when **you (the user) explicitly say "clean up issue N"**, run:
 
 ```powershell
 cd C:\Users\mixca\Grades
@@ -201,6 +211,8 @@ git branch -D claude/issue-N
 ```
 
 The branch on `origin` is auto-deleted by GitHub if "automatically delete head branches" is on. If not, also: `git push origin --delete claude/issue-N`.
+
+**Claude's role:** Claude does **not** auto-clean up after merge. Claude may proactively ask "want me to clean up issue N now?" when it notices stale merged worktrees — but the trigger to actually run the cleanup commands is always the user's explicit OK.
 
 ---
 

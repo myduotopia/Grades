@@ -4,6 +4,7 @@ from models.base import Base
 from models.classroom import Classroom, Student
 from models.curriculum import (
     SYSTEM_CATEGORY_KEYS,
+    SYSTEM_SUBJECT_KEYS,
     Category,
     Item,
     Semester,
@@ -22,6 +23,7 @@ __all__ = [
     "PointRecord",
     "PointRule",
     "SYSTEM_CATEGORY_KEYS",
+    "SYSTEM_SUBJECT_KEYS",
     "Semester",
     "Student",
     "StudentStandard",
