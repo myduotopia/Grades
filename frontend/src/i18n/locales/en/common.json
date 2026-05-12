@@ -15,6 +15,9 @@
   },
   "common": {
     "save": "Save",
+    "saving": "Saving…",
+    "saved": "Saved",
+    "reset": "Reset",
     "cancel": "Cancel",
     "loading": "Loading…",
     "retry": "Retry",
@@ -23,7 +26,16 @@
   "nav": {
     "home": "Home",
     "classes": "Classes",
+    "admin_categories": "Category weights",
     "open_menu": "Open menu"
+  },
+  "admin_categories": {
+    "title": "Category weights",
+    "subtitle": "Set how much each category contributes to the final grade. Non-bonus weights must sum to 100%.",
+    "sum_label": "Current sum (excluding bonus)",
+    "sum_invalid_hint": "Sum must equal 100",
+    "extra_hint": "Bonus is added on top of the final grade (capped at 100), not part of the 100% split.",
+    "saved": "Saved"
   },
   "home": {
     "welcome": "Welcome back",
@@ -45,7 +57,9 @@
   "category": {
     "major_exam": "Major Exam",
     "quiz": "Quiz",
-    "homework": "Homework"
+    "homework": "Homework",
+    "attendance": "Attendance",
+    "extra": "Bonus"
   },
   "subject": {
     "chinese": "Chinese",

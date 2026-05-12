@@ -15,6 +15,9 @@
   },
   "common": {
     "save": "儲存",
+    "saving": "儲存中…",
+    "saved": "已儲存",
+    "reset": "重設",
     "cancel": "取消",
     "loading": "載入中…",
     "retry": "重試",
@@ -23,7 +26,16 @@
   "nav": {
     "home": "首頁",
     "classes": "班級管理",
+    "admin_categories": "類別權重",
     "open_menu": "開啟選單"
+  },
+  "admin_categories": {
+    "title": "類別權重",
+    "subtitle": "設定每個評量類別在總分中的占比，非「額外加分」項目加總須為 100%。",
+    "sum_label": "目前加總（不含額外加分）",
+    "sum_invalid_hint": "加總必須等於 100",
+    "extra_hint": "額外加分不計入 100%，直接加在學生最後總分（封頂 100）",
+    "saved": "已儲存"
   },
   "home": {
     "welcome": "歡迎回來",
@@ -45,7 +57,9 @@
   "category": {
     "major_exam": "段考",
     "quiz": "小考",
-    "homework": "作業"
+    "homework": "作業",
+    "attendance": "出席率",
+    "extra": "額外加分"
   },
   "subject": {
     "chinese": "國語",

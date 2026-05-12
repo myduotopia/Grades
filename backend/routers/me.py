@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from auth import require_user_id
 from database import get_db
-from models.curriculum import SYSTEM_CATEGORY_KEYS, Category, Semester
+from models.curriculum import SYSTEM_CATEGORY_DEFAULTS, Category, Semester
 from schemas import SeedResult
 
 router = APIRouter()
@@ -45,10 +45,10 @@ def seed(
     }
 
     categories_created = 0
-    for key in SYSTEM_CATEGORY_KEYS:
+    for key, weight in SYSTEM_CATEGORY_DEFAULTS:
         if key in existing_keys:
             continue
-        db.add(Category(user_id=user_id, system_key=key))
+        db.add(Category(user_id=user_id, system_key=key, weight=weight))
         categories_created += 1
 
     semesters_created = 0

@@ -22,14 +22,18 @@ if TYPE_CHECKING:
     from models.grading import Grade, PointRule, StudentStandard
 
 
-# 3 system-default category keys (seeded per user on signup).
-# Users cannot add custom categories in v1.
+# System-default category keys (seeded per user on signup) and their
+# default weights (percent). Users cannot add custom categories in v1.
 # i18n: front-end resolves system_key via the `category.*` dictionary.
-SYSTEM_CATEGORY_KEYS = (
-    "major_exam",  # 段考
-    "quiz",        # 小考
-    "homework",    # 作業
+# `extra` is excluded from the 100% sum (additional bonus bucket).
+SYSTEM_CATEGORY_DEFAULTS: tuple[tuple[str, int], ...] = (
+    ("major_exam", 50),  # 段考
+    ("quiz", 20),        # 小考
+    ("homework", 20),    # 作業
+    ("attendance", 10),  # 出席率
+    ("extra", 0),        # 額外加分（不計入 100%）
 )
+SYSTEM_CATEGORY_KEYS: tuple[str, ...] = tuple(k for k, _ in SYSTEM_CATEGORY_DEFAULTS)
 
 
 # Global built-in subjects (one row per key, user_id IS NULL).
@@ -91,6 +95,7 @@ class Category(Base, UserScopedMixin, TimestampMixin):
         server_default=text("gen_random_uuid()"),
     )
     system_key: Mapped[str] = mapped_column(String(50), nullable=False)
+    weight: Mapped[int] = mapped_column(nullable=False)
 
     standards: Mapped[list["StudentStandard"]] = relationship(
         back_populates="category"
@@ -103,6 +108,7 @@ class Category(Base, UserScopedMixin, TimestampMixin):
         UniqueConstraint(
             "user_id", "system_key", name="uq_category_user_system_key"
         ),
+        CheckConstraint("weight BETWEEN 0 AND 100", name="ck_category_weight_range"),
     )
 
 
