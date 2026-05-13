@@ -668,254 +668,88 @@ function ImportModal({
   )
 }
 
+
 function PreviewTable({ result }: { result: ImportResult }) {
   const { t } = useTranslation()
   const s = result.summary
   return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
-        <SummaryCard
-          label={t('students.import.summary.students')}
-          create={s.student_create}
-          update={s.student_update}
-          total={s.student_total}
-        />
-        <SummaryCard
-          label={t('students.import.summary.items')}
-          create={s.item_create}
-          update={s.item_reuse}
-          total={s.item_total}
-          updateLabel={t('students.import.summary.reuse_word')}
-        />
-        <SummaryCard
-          label={t('students.import.summary.grades')}
-          create={s.grade_create}
-          update={s.grade_overwrite}
-          total={s.grade_total}
-          updateLabel={t('students.import.summary.overwrite_word')}
-        />
-      </div>
-      {s.errors > 0 && (
-        <div className="bg-rose-50 border border-rose-200 text-rose-700 rounded-lg p-3 text-sm">
-          {t('students.import.summary.errors', { n: s.errors })}
-        </div>
-      )}
-
-      {result.columns.length > 0 && (
-        <section>
-          <h3 className="text-sm font-semibold text-slate-700 mb-2">
-            {t('students.import.columns_heading')}
-          </h3>
-          <div className="overflow-x-auto border border-slate-200 rounded-lg">
-            <table className="min-w-full text-xs">
-              <thead className="bg-slate-50 text-slate-600">
-                <tr>
-                  <th className="px-2 py-2 text-left font-medium">
-                    {t('students.import.col.column')}
-                  </th>
-                  <th className="px-2 py-2 text-left font-medium">
-                    {t('students.import.col.subject')}
-                  </th>
-                  <th className="px-2 py-2 text-left font-medium">
-                    {t('students.import.col.category')}
-                  </th>
-                  <th className="px-2 py-2 text-left font-medium">
-                    {t('students.import.col.date')}
-                  </th>
-                  <th className="px-2 py-2 text-left font-medium">
-                    {t('students.import.col.name')}
-                  </th>
-                  <th className="px-2 py-2 text-left font-medium">
-                    {t('students.import.col.fate')}
-                  </th>
-                  <th className="px-2 py-2 text-left font-medium">
-                    {t('students.import.errors')}
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {result.columns.map((c) => {
-                  const isErr = c.errors.length > 0
-                  return (
-                    <tr
-                      key={c.column_index}
-                      className={`border-t border-slate-100 ${
-                        isErr ? 'bg-rose-50' : ''
-                      }`}
-                    >
-                      <td className="px-2 py-1.5 text-slate-500">
-                        {colLetter(c.column_index)}
-                      </td>
-                      <td className="px-2 py-1.5 text-slate-700">
-                        {c.subject_input ?? '—'}
-                      </td>
-                      <td className="px-2 py-1.5 text-slate-700">
-                        {c.category_input ?? '—'}
-                      </td>
-                      <td className="px-2 py-1.5 text-slate-500">
-                        {c.exam_date ?? '—'}
-                      </td>
-                      <td className="px-2 py-1.5 text-slate-700">
-                        {c.exam_name}
-                      </td>
-                      <td className="px-2 py-1.5">
-                        <span
-                          className={
-                            isErr
-                              ? 'text-rose-700 font-medium'
-                              : c.reuses_existing
-                                ? 'text-amber-700'
-                                : 'text-emerald-700'
-                          }
-                        >
-                          {isErr
-                            ? t('students.import.action_label.error')
-                            : c.reuses_existing
-                              ? t('students.import.summary.reuse_word')
-                              : t('students.import.action_label.create')}
-                        </span>
-                      </td>
-                      <td className="px-2 py-1.5 text-rose-700">
-                        {c.errors.join('; ')}
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      )}
-
-      <section>
-        <h3 className="text-sm font-semibold text-slate-700 mb-2">
-          {t('students.import.students_heading')}
-        </h3>
-        <div className="overflow-x-auto border border-slate-200 rounded-lg">
-          <table className="min-w-full text-xs">
-            <thead className="bg-slate-50 text-slate-600">
-              <tr>
-                <th className="px-2 py-2 text-left font-medium">#</th>
-                <th className="px-2 py-2 text-left font-medium">
-                  {t('students.import.action')}
-                </th>
-                <th className="px-2 py-2 text-left font-medium">
-                  {t('students.col.seat')}
-                </th>
-                <th className="px-2 py-2 text-left font-medium">
-                  {t('students.col.name')}
-                </th>
-                <th className="px-2 py-2 text-left font-medium">
-                  {t('students.col.email')}
-                </th>
-                {result.columns.map((c) => (
-                  <th
-                    key={c.column_index}
-                    className="px-2 py-2 text-left font-medium"
-                  >
-                    {c.exam_name}
-                  </th>
-                ))}
-                <th className="px-2 py-2 text-left font-medium">
-                  {t('students.import.errors')}
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {result.students.map((r) => {
-                const isErr = r.action === 'error'
-                return (
-                  <tr
-                    key={r.row_number}
-                    className={`border-t border-slate-100 ${
-                      isErr ? 'bg-rose-50' : ''
-                    }`}
-                  >
-                    <td className="px-2 py-1.5 text-slate-500">{r.row_number}</td>
-                    <td className="px-2 py-1.5">
-                      <span
-                        className={
-                          r.action === 'create'
-                            ? 'text-emerald-700'
-                            : r.action === 'update'
-                              ? 'text-amber-700'
-                              : 'text-rose-700 font-medium'
-                        }
-                      >
-                        {t(`students.import.action_label.${r.action}`)}
-                      </span>
-                    </td>
-                    <td className="px-2 py-1.5 text-slate-700">
-                      {r.seat_number ?? '—'}
-                    </td>
-                    <td className="px-2 py-1.5 text-slate-700">
-                      {r.name ?? '—'}
-                    </td>
-                    <td className="px-2 py-1.5 text-slate-500 break-all">
-                      {r.email ?? '—'}
-                    </td>
-                    {result.columns.map((c) => (
-                      <td
-                        key={c.column_index}
-                        className="px-2 py-1.5 text-slate-700"
-                      >
-                        {r.scores[c.column_index] ?? '—'}
-                      </td>
-                    ))}
-                    <td className="px-2 py-1.5 text-rose-700">
-                      {r.errors.join('; ')}
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-      </section>
-    </div>
-  )
-}
-
-function SummaryCard({
-  label,
-  create,
-  update,
-  total,
-  updateLabel,
-}: {
-  label: string
-  create: number
-  update: number
-  total: number
-  updateLabel?: string
-}) {
-  const { t } = useTranslation()
-  return (
-    <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
-      <div className="text-xs uppercase tracking-wide text-slate-500 mb-1">
-        {label}
-      </div>
-      <div className="text-slate-900 font-semibold mb-1">{total}</div>
-      <div className="text-xs text-slate-600">
+    <div>
+      <div className="flex flex-wrap gap-4 mb-4 text-sm">
+        <span className="text-slate-600">
+          {t('students.import.summary.total', { n: s.total_rows })}
+        </span>
         <span className="text-emerald-700">
-          {t('students.import.action_label.create')} {create}
+          {t('students.import.summary.create', { n: s.to_create })}
         </span>
-        {' · '}
         <span className="text-amber-700">
-          {updateLabel ?? t('students.import.action_label.update')} {update}
+          {t('students.import.summary.update', { n: s.to_update })}
         </span>
+        {s.errors > 0 && (
+          <span className="text-rose-700 font-medium">
+            {t('students.import.summary.errors', { n: s.errors })}
+          </span>
+        )}
+      </div>
+      <div className="overflow-x-auto border border-slate-200 rounded-lg">
+        <table className="min-w-full text-xs">
+          <thead className="bg-slate-50 text-slate-600">
+            <tr>
+              <th className="px-2 py-2 text-left font-medium">#</th>
+              <th className="px-2 py-2 text-left font-medium">
+                {t('students.import.action')}
+              </th>
+              <th className="px-2 py-2 text-left font-medium">
+                {t('students.col.seat')}
+              </th>
+              <th className="px-2 py-2 text-left font-medium">
+                {t('students.col.name')}
+              </th>
+              <th className="px-2 py-2 text-left font-medium">
+                {t('students.col.email')}
+              </th>
+              <th className="px-2 py-2 text-left font-medium">
+                {t('students.import.errors')}
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {result.rows.map((r) => {
+              const isErr = r.action === 'error'
+              return (
+                <tr
+                  key={r.row_number}
+                  className={`border-t border-slate-100 ${
+                    isErr ? 'bg-rose-50' : ''
+                  }`}
+                >
+                  <td className="px-2 py-1.5 text-slate-500">{r.row_number}</td>
+                  <td className="px-2 py-1.5">
+                    <span
+                      className={
+                        r.action === 'create'
+                          ? 'text-emerald-700'
+                          : r.action === 'update'
+                            ? 'text-amber-700'
+                            : 'text-rose-700 font-medium'
+                      }
+                    >
+                      {t(`students.import.action_label.${r.action}`)}
+                    </span>
+                  </td>
+                  <td className="px-2 py-1.5 text-slate-700">{r.seat_number ?? '—'}</td>
+                  <td className="px-2 py-1.5 text-slate-700">{r.name ?? '—'}</td>
+                  <td className="px-2 py-1.5 text-slate-500 break-all">
+                    {r.email ?? '—'}
+                  </td>
+                  <td className="px-2 py-1.5 text-rose-700">
+                    {r.errors.join('; ')}
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
       </div>
     </div>
   )
-}
-
-function colLetter(index: number): string {
-  // 0 → A, 25 → Z, 26 → AA …
-  let n = index
-  let s = ''
-  while (n >= 0) {
-    s = String.fromCharCode((n % 26) + 65) + s
-    n = Math.floor(n / 26) - 1
-  }
-  return s
 }
