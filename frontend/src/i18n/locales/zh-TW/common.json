@@ -113,6 +113,7 @@
       "source": "來源",
       "actions": "動作"
     },
+    "open_grades_aria": "點開 {{name}} 的成績總覽",
     "actions": {
       "edit": "編輯",
       "delete": "刪除",
@@ -183,6 +184,20 @@
     }
   },
   "grades": {
+    "title": "成績總覽",
+    "title_with_class": "{{name}} 成績",
+    "subtitle": "依類別權重自動計算每位學生在每個科目的加權總分。",
+    "semester_label": "學期：",
+    "semester_format": "{{year}} 學年第 {{term}} 學期",
+    "current": "目前",
+    "overall_avg": "總平均",
+    "pick_subject": "選擇科目：",
+    "formula_hint": "加權公式：各類別在有成績的範圍內依權重重新比例化計算；額外加分直接加在加權總分上（封頂 100）。",
+    "empty": "這個學期還沒有成績資料。先到班級頁的「匯入成績」上傳檔案。",
+    "view": {
+      "by_student": "依學生",
+      "by_subject": "依科目"
+    },
     "import": {
       "title": "批次匯入成績",
       "intro": "上傳 .xlsx 檔案。檔案 A 欄是座號，B 欄起每一欄是一次考試（類別、日期、考試名稱）。預覽時為每一欄選擇科目，學生必須已經在這個班的名單裡。",

@@ -38,10 +38,17 @@ from models.classroom import Classroom, Student
 from models.curriculum import Category, Item, Semester, Subject
 from models.grading import Grade
 from schemas import (
+    CategoryWeightOut,
+    ClassroomGradesView,
+    GradeEntryOut,
     GradeImportColumnPreview,
     GradeImportPreviewSummary,
     GradeImportResult,
     GradeImportStudentRow,
+    ItemOut,
+    SemesterList,
+    SemesterOut,
+    StudentBriefOut,
 )
 
 router = APIRouter()
@@ -534,3 +541,143 @@ def _commit_grades(
                         source="manual",
                     )
                 )
+
+
+# ---------- view: list semesters ----------
+
+@router.get("/api/semesters", response_model=SemesterList)
+def list_semesters(
+    user_id: Annotated[UUID, Depends(require_user_id)],
+    db: Annotated[Session, Depends(get_db)],
+) -> SemesterList:
+    rows = (
+        db.query(Semester)
+        .filter(Semester.user_id == user_id)
+        .order_by(
+            Semester.academic_year.desc(),
+            Semester.term.desc(),
+        )
+        .all()
+    )
+    return SemesterList(data=[SemesterOut.model_validate(r) for r in rows])
+
+
+# ---------- view: classroom grades bundle ----------
+
+@router.get(
+    "/api/classrooms/{classroom_id}/grades",
+    response_model=ClassroomGradesView,
+)
+def get_classroom_grades(
+    classroom_id: UUID,
+    user_id: Annotated[UUID, Depends(require_user_id)],
+    db: Annotated[Session, Depends(get_db)],
+    semester_id: UUID | None = None,
+) -> ClassroomGradesView:
+    """Return one classroom's full grade bundle for one semester.
+
+    Frontend computes weighted totals from `category_weights` × `grades`. The
+    payload is bounded by classroom size × items per semester — small enough
+    to ship as a single response.
+    """
+    classroom = _get_owned_classroom(db, user_id, classroom_id)
+
+    if semester_id is not None:
+        semester = (
+            db.query(Semester)
+            .filter(Semester.id == semester_id, Semester.user_id == user_id)
+            .one_or_none()
+        )
+        if semester is None:
+            raise _not_found("semester")
+    else:
+        semester = (
+            db.query(Semester)
+            .filter(Semester.user_id == user_id, Semester.is_current.is_(True))
+            .one_or_none()
+        )
+        if semester is None:
+            raise _bad_request(
+                "errors.import.no_current_semester",
+                "No current semester is set.",
+            )
+
+    # Category weights — for the frontend to apply.
+    cats = (
+        db.query(Category)
+        .filter(Category.user_id == user_id)
+        .all()
+    )
+    category_weights = [
+        CategoryWeightOut(system_key=c.system_key, weight=c.weight) for c in cats
+    ]
+    cat_id_to_key: dict[UUID, str] = {c.id: c.system_key for c in cats}
+
+    # Roster
+    students = (
+        db.query(Student)
+        .filter(
+            Student.classroom_id == classroom_id, Student.user_id == user_id
+        )
+        .order_by(Student.seat_number.asc())
+        .all()
+    )
+    student_ids = {s.id for s in students}
+
+    # Items linked to this classroom in this semester
+    items = (
+        db.query(Item)
+        .filter(
+            Item.user_id == user_id,
+            Item.semester_id == semester.id,
+            Item.classrooms.any(Classroom.id == classroom_id),
+        )
+        .all()
+    )
+
+    # Resolve subject system_key (we only seed global built-in subjects).
+    subj_id_to_key: dict[UUID, str | None] = {}
+    if items:
+        subj_ids = {i.subject_id for i in items}
+        subj_rows = (
+            db.query(Subject).filter(Subject.id.in_(subj_ids)).all()
+        )
+        subj_id_to_key = {s.id: s.system_key for s in subj_rows}
+
+    item_outs = [
+        ItemOut(
+            id=i.id,
+            name=i.name,
+            subject_system_key=subj_id_to_key.get(i.subject_id),
+            category_system_key=cat_id_to_key.get(i.category_id, ""),
+        )
+        for i in items
+    ]
+
+    # Grades for those items × this roster
+    item_ids = [i.id for i in items]
+    grades: list[Grade] = []
+    if item_ids and student_ids:
+        grades = (
+            db.query(Grade)
+            .filter(
+                Grade.item_id.in_(item_ids),
+                Grade.student_id.in_(student_ids),
+            )
+            .all()
+        )
+
+    return ClassroomGradesView(
+        semester=SemesterOut.model_validate(semester),
+        category_weights=category_weights,
+        students=[StudentBriefOut.model_validate(s) for s in students],
+        items=item_outs,
+        grades=[
+            GradeEntryOut(
+                item_id=g.item_id,
+                student_id=g.student_id,
+                score=float(g.score),
+            )
+            for g in grades
+        ],
+    )

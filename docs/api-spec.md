@@ -269,8 +269,29 @@ When PUT sets `is_current=true`, the backend automatically sets all other rows f
 | POST | `/api/grades/bulk` | Submit many grade entries at once |
 | PUT | `/api/grades/:id` | Update single grade |
 | DELETE | `/api/grades/:id` | Delete grade (and any point_record) |
+| GET | `/api/semesters` | List the current user's semesters |
+| GET | `/api/classrooms/:id/grades?semester_id=` | One classroom's grade bundle for one semester (defaults to current). Frontend computes weighted totals from `category_weights`. |
 | GET | `/api/classrooms/:id/grades/template.xlsx` | Download grade batch-import template |
 | POST | `/api/classrooms/:id/grades/import` | Excel batch import (preview + commit) |
+
+#### `GET /api/classrooms/:id/grades`
+
+Returns the full data needed to render the grade page — bounded by classroom
+size × items in this semester, so it ships as a single response. Frontend
+applies the weighting (`lib/gradeMath.ts`).
+
+```json
+{
+  "semester": { "id": "...", "academic_year": 2026, "term": 1, "is_current": true },
+  "category_weights": [ { "system_key": "major_exam", "weight": 50 }, ... ],
+  "students":  [ { "id": "...", "seat_number": 1, "name": "小明", "email": null } ],
+  "items":     [ { "id": "...", "name": "期中考", "subject_system_key": "chinese", "category_system_key": "major_exam", "exam_date": null } ],
+  "grades":    [ { "item_id": "...", "student_id": "...", "score": 87.5 } ]
+}
+```
+
+If no `semester_id` is given and no current semester is set, returns `400` with
+`errors.import.no_current_semester` (re-used).
 
 #### `POST /api/classrooms/:id/grades/import`
 

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 
 import { ActionCard } from '../components/ActionCard'
 import { GradeImportModal } from '../components/GradeImportModal'
@@ -34,6 +34,7 @@ const SECONDARY_BTN =
 
 export function Classes() {
   const { t } = useTranslation()
+  const navigate = useNavigate()
   const { data, isLoading, isError, error, refetch } = useClassrooms()
   const [modal, setModal] = useState<ModalState>({ kind: 'closed' })
   const [view, setView] = useState<View>(
@@ -161,6 +162,7 @@ export function Classes() {
           onImportGrades={(c) =>
             setModal({ kind: 'import-grades', classroomId: c.id })
           }
+          onOpen={(c) => navigate(`/classes/${c.id}/grades`)}
         />
       )}
 
@@ -174,6 +176,7 @@ export function Classes() {
           onImportGrades={(c) =>
             setModal({ kind: 'import-grades', classroomId: c.id })
           }
+          onOpen={(c) => navigate(`/classes/${c.id}/grades`)}
         />
       )}
 
@@ -218,34 +221,49 @@ function RowActions({
   onDelete,
 }: RowActionProps) {
   const { t } = useTranslation()
+  // Stop click bubbling so a row/card click doesn't navigate-to-grades.
+  const stop = (e: React.MouseEvent) => e.stopPropagation()
   return (
     <>
       <Link
         to={`/classes/${classroom.id}/students`}
+        onClick={stop}
         className="text-slate-700 hover:text-slate-900 font-medium"
       >
         {t('classes.actions.view_students')}
       </Link>
       <button
-        onClick={() => onImportStudents(classroom)}
+        onClick={(e) => {
+          stop(e)
+          onImportStudents(classroom)
+        }}
         className="text-slate-700 hover:text-slate-900 font-medium"
       >
         {t('classes.actions.bulk_add_students')}
       </button>
       <button
-        onClick={() => onImportGrades(classroom)}
+        onClick={(e) => {
+          stop(e)
+          onImportGrades(classroom)
+        }}
         className="text-slate-700 hover:text-slate-900 font-medium"
       >
         {t('classes.actions.import_grades')}
       </button>
       <button
-        onClick={() => onEdit(classroom)}
+        onClick={(e) => {
+          stop(e)
+          onEdit(classroom)
+        }}
         className="text-amber-700 hover:text-amber-900 font-medium"
       >
         {t('classes.actions.edit')}
       </button>
       <button
-        onClick={() => onDelete(classroom)}
+        onClick={(e) => {
+          stop(e)
+          onDelete(classroom)
+        }}
         className="text-rose-600 hover:text-rose-800 font-medium"
       >
         {t('classes.actions.delete')}
@@ -261,11 +279,13 @@ function ClassroomCards({
   onEdit,
   onImportStudents,
   onImportGrades,
+  onOpen,
 }: {
   classrooms: Classroom[]
   onEdit: (c: Classroom) => void
   onImportStudents: (c: Classroom) => void
   onImportGrades: (c: Classroom) => void
+  onOpen: (c: Classroom) => void
 }) {
   const { t, i18n } = useTranslation()
   const del = useDeleteClassroom()
@@ -286,7 +306,19 @@ function ClassroomCards({
       {sorted.map((c) => (
         <li
           key={c.id}
-          className="group bg-white border border-slate-200 rounded-xl p-5 shadow-sm hover:shadow-md hover:border-slate-300 transition-all flex flex-col gap-4"
+          onClick={() => onOpen(c)}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault()
+              onOpen(c)
+            }
+          }}
+          className="group cursor-pointer bg-white border border-slate-200 rounded-xl p-5 shadow-sm hover:shadow-md hover:border-amber-300 transition-all flex flex-col gap-4 focus:outline-none focus:ring-2 focus:ring-amber-500"
+          aria-label={t('classes.open_grades_aria', {
+            name: classroomDisplayName(c.grade, c.name, i18n.language),
+          })}
         >
           <div className="flex items-start justify-between gap-2">
             <h3 className="font-semibold text-slate-900 break-all tracking-tight">
@@ -318,11 +350,13 @@ function ClassroomTable({
   onEdit,
   onImportStudents,
   onImportGrades,
+  onOpen,
 }: {
   classrooms: Classroom[]
   onEdit: (c: Classroom) => void
   onImportStudents: (c: Classroom) => void
   onImportGrades: (c: Classroom) => void
+  onOpen: (c: Classroom) => void
 }) {
   const { t, i18n } = useTranslation()
   const del = useDeleteClassroom()
@@ -357,7 +391,19 @@ function ClassroomTable({
           </thead>
           <tbody>
             {sorted.map((c) => (
-              <tr key={c.id} className="border-b border-slate-100 last:border-b-0">
+              <tr
+                key={c.id}
+                onClick={() => onOpen(c)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    onOpen(c)
+                  }
+                }}
+                className="border-b border-slate-100 last:border-b-0 cursor-pointer hover:bg-slate-50 focus:outline-none focus:bg-amber-50"
+              >
                 <td className="px-4 py-3 text-slate-900 font-medium">
                   {classroomDisplayName(c.grade, c.name, i18n.language)}
                 </td>

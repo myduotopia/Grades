@@ -113,6 +113,7 @@
       "source": "Source",
       "actions": "Actions"
     },
+    "open_grades_aria": "Open grades for {{name}}",
     "actions": {
       "edit": "Edit",
       "delete": "Delete",
@@ -183,6 +184,20 @@
     }
   },
   "grades": {
+    "title": "Grades overview",
+    "title_with_class": "{{name}} — Grades",
+    "subtitle": "Per-subject weighted totals by category weight, computed live.",
+    "semester_label": "Semester:",
+    "semester_format": "Year {{year}}, Term {{term}}",
+    "current": "current",
+    "overall_avg": "Overall avg",
+    "pick_subject": "Pick subject:",
+    "formula_hint": "Weighting: categories with no grades are excluded and the remaining weights are re-normalised. Extra bonus is added on top (capped at 100).",
+    "empty": "No grade data for this semester yet. Use 「Import grades」 on the class page to upload a file.",
+    "view": {
+      "by_student": "By student",
+      "by_subject": "By subject"
+    },
     "import": {
       "title": "Batch import grades",
       "intro": "Upload an .xlsx file. Column A is the seat number; each column from B onward is one exam (category / date / name). In the preview, pick a subject per column — students must already exist in this class roster.",

@@ -196,3 +196,58 @@ class GradeImportResult(BaseModel):
     summary: GradeImportPreviewSummary
     columns: list[GradeImportColumnPreview]
     students: list[GradeImportStudentRow]
+
+
+# ---------- /api/semesters ----------
+
+class SemesterOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    academic_year: int
+    term: int  # 1 = 上學期, 2 = 下學期
+    is_current: bool
+
+
+class SemesterList(BaseModel):
+    data: list[SemesterOut]
+
+
+# ---------- /api/classrooms/:id/grades (view) ----------
+
+class CategoryWeightOut(BaseModel):
+    system_key: str
+    weight: int
+
+
+class StudentBriefOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    seat_number: int
+    name: str | None
+    email: str | None
+
+
+class ItemOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    name: str
+    subject_system_key: str | None  # global subjects use system_key; custom future
+    category_system_key: str
+    exam_date: date | None = None  # NOTE: not yet stored; placeholder for future
+
+
+class GradeEntryOut(BaseModel):
+    item_id: UUID
+    student_id: UUID
+    score: float
+
+
+class ClassroomGradesView(BaseModel):
+    semester: SemesterOut
+    category_weights: list[CategoryWeightOut]
+    students: list[StudentBriefOut]
+    items: list[ItemOut]
+    grades: list[GradeEntryOut]

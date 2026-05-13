@@ -190,6 +190,51 @@ export interface GradeImportStudentRow {
   errors: string[]
 }
 
+export interface Semester {
+  id: string
+  academic_year: number
+  term: 1 | 2
+  is_current: boolean
+}
+
+export interface SemesterList {
+  data: Semester[]
+}
+
+export interface CategoryWeight {
+  system_key: string
+  weight: number
+}
+
+export interface StudentBrief {
+  id: string
+  seat_number: number
+  name: string | null
+  email: string | null
+}
+
+export interface GradeItem {
+  id: string
+  name: string
+  subject_system_key: string | null
+  category_system_key: string
+  exam_date: string | null
+}
+
+export interface GradeEntry {
+  item_id: string
+  student_id: string
+  score: number
+}
+
+export interface ClassroomGradesView {
+  semester: Semester
+  category_weights: CategoryWeight[]
+  students: StudentBrief[]
+  items: GradeItem[]
+  grades: GradeEntry[]
+}
+
 export interface GradeImportResult {
   dry_run: boolean
   summary: {
@@ -296,7 +341,16 @@ export const api = {
         'students_template.xlsx',
       ),
   },
+  semesters: {
+    list: () => request<SemesterList>('/api/semesters'),
+  },
   grades: {
+    view: (classroomId: string, semesterId?: string) => {
+      const qs = semesterId ? `?semester_id=${semesterId}` : ''
+      return request<ClassroomGradesView>(
+        `/api/classrooms/${classroomId}/grades${qs}`,
+      )
+    },
     downloadTemplate: (classroomId: string) =>
       downloadFile(
         `/api/classrooms/${classroomId}/grades/template.xlsx`,
