@@ -15,6 +15,7 @@ from auth import get_current_user
 from config import settings
 from routers import categories as categories_router
 from routers import classroom as classroom_router
+from routers import grades as grades_router
 from routers import me as me_router
 from routers import student as student_router
 
@@ -53,6 +54,7 @@ app.include_router(
 # Student router uses absolute paths (mixes /api/classrooms/{id}/students/* and
 # /api/students/{id}) — mounted with no prefix.
 app.include_router(student_router.router, tags=["students"])
+app.include_router(grades_router.router, tags=["grades"])
 
 
 @app.get("/api/me")

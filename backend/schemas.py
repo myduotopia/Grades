@@ -2,7 +2,7 @@
 
 Kept in one file for now; split per-entity once this grows past ~300 lines.
 """
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 from uuid import UUID
 
@@ -159,3 +159,40 @@ class ImportResult(BaseModel):
     dry_run: bool
     summary: ImportPreviewSummary
     rows: list[ImportRowPreview]
+
+
+# ---------- /api/classrooms/:id/grades/import ----------
+
+# One score column = one future Item. Subject is NOT in the file — teacher
+# picks it per column in the preview UI (sent back via the `subjects` form
+# field on commit).
+class GradeImportColumnPreview(BaseModel):
+    column_index: int  # 0-based; column B = 1
+    category_input: str | None
+    category_system_key: str | None
+    exam_date: date | None
+    exam_name: str  # resolved (auto-generated if blank)
+    errors: list[str] = []
+
+
+class GradeImportStudentRow(BaseModel):
+    row_number: int
+    seat_number: int | None
+    student_id: UUID | None  # null when seat doesn't match any existing student
+    # column_index → score; only filled cells appear here.
+    scores: dict[int, float] = {}
+    errors: list[str] = []
+
+
+class GradeImportPreviewSummary(BaseModel):
+    column_total: int
+    row_total: int
+    score_total: int
+    errors: int
+
+
+class GradeImportResult(BaseModel):
+    dry_run: bool
+    summary: GradeImportPreviewSummary
+    columns: list[GradeImportColumnPreview]
+    students: list[GradeImportStudentRow]

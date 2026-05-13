@@ -159,6 +159,49 @@ export interface ImportResult {
   rows: ImportRowPreview[]
 }
 
+export const SYSTEM_SUBJECT_KEYS = [
+  'chinese',
+  'math',
+  'english',
+  'science',
+  'social_studies',
+  'music',
+  'art',
+  'pe',
+  'integrated',
+] as const
+
+export type SystemSubjectKey = (typeof SYSTEM_SUBJECT_KEYS)[number]
+
+export interface GradeImportColumnPreview {
+  column_index: number
+  category_input: string | null
+  category_system_key: string | null
+  exam_date: string | null
+  exam_name: string
+  errors: string[]
+}
+
+export interface GradeImportStudentRow {
+  row_number: number
+  seat_number: number | null
+  student_id: string | null
+  scores: Record<number, number>
+  errors: string[]
+}
+
+export interface GradeImportResult {
+  dry_run: boolean
+  summary: {
+    column_total: number
+    row_total: number
+    score_total: number
+    errors: number
+  }
+  columns: GradeImportColumnPreview[]
+  students: GradeImportStudentRow[]
+}
+
 async function uploadMultipart<T>(
   path: string,
   formData: FormData,
@@ -252,5 +295,33 @@ export const api = {
         `/api/classrooms/${classroomId}/students/template.xlsx`,
         'students_template.xlsx',
       ),
+  },
+  grades: {
+    downloadTemplate: (classroomId: string) =>
+      downloadFile(
+        `/api/classrooms/${classroomId}/grades/template.xlsx`,
+        'grades_template.xlsx',
+      ),
+    preview: (classroomId: string, file: File) => {
+      const fd = new FormData()
+      fd.append('file', file)
+      return uploadMultipart<GradeImportResult>(
+        `/api/classrooms/${classroomId}/grades/import?dry_run=true`,
+        fd,
+      )
+    },
+    commit: (
+      classroomId: string,
+      file: File,
+      subjects: Record<number, SystemSubjectKey>,
+    ) => {
+      const fd = new FormData()
+      fd.append('file', file)
+      fd.append('subjects', JSON.stringify(subjects))
+      return uploadMultipart<GradeImportResult>(
+        `/api/classrooms/${classroomId}/grades/import?dry_run=false`,
+        fd,
+      )
+    },
   },
 }

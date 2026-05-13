@@ -269,6 +269,74 @@ When PUT sets `is_current=true`, the backend automatically sets all other rows f
 | POST | `/api/grades/bulk` | Submit many grade entries at once |
 | PUT | `/api/grades/:id` | Update single grade |
 | DELETE | `/api/grades/:id` | Delete grade (and any point_record) |
+| GET | `/api/classrooms/:id/grades/template.xlsx` | Download grade batch-import template |
+| POST | `/api/classrooms/:id/grades/import` | Excel batch import (preview + commit) |
+
+#### `POST /api/classrooms/:id/grades/import`
+
+Two-phase. The Excel file carries category / date / exam-name per column but
+**no subject** — the teacher picks the subject for each column in the preview
+UI and posts the choices back on commit.
+
+Multipart form:
+- `file`: `.xlsx`
+- `subjects` (commit only): JSON string `{ "<column_index>": "<subject_system_key>" }`
+
+Query param:
+- `dry_run`: `true` (default) parses + previews only; `false` commits.
+
+Excel layout (column A is the roster key; column B onward is one exam each):
+
+| Cell | Content |
+|---|---|
+| A1 | `座號` (literal) |
+| A4+ | seat number (integer 1–99) |
+| B1, C1, ... | category — `段考` / `小考` / `作業` (dropdown in the template) |
+| B2, C2, ... | date (optional; falls back to today if blank) |
+| B3, C3, ... | exam name (optional; falls back to `<類別>-<日期>`) |
+| B4+, C4+, ... | score in `[0, 100]`; blank cells skipped |
+
+Behavior:
+- Requires a current semester (`Semester.is_current = true`) for the user; otherwise `400` with `errors.import.no_current_semester`.
+- Seats with no matching student in the roster → row-level error. Import students first.
+- On commit, each column resolves to an `Item` keyed on
+  `(user_id, subject_id, category_id, current_semester_id, exam_name)` —
+  existing items are reused and grades upserted on `(item_id, student_id)`.
+  Picking a *different* subject for the same column on a later upload creates a
+  *new* item (subject is part of the key).
+- The classroom is linked to each item via `item_classroom`.
+- 出席率 / 額外加分 are excluded from this flow (separate UIs).
+
+Preview response:
+
+```json
+{
+  "dry_run": true,
+  "summary": { "column_total": 1, "row_total": 4, "score_total": 4, "errors": 0 },
+  "columns": [
+    {
+      "column_index": 1,
+      "category_input": "段考", "category_system_key": "major_exam",
+      "exam_date": "2026-05-13",
+      "exam_name": "期中考",
+      "errors": []
+    }
+  ],
+  "students": [
+    {
+      "row_number": 4,
+      "seat_number": 1,
+      "student_id": "uuid",
+      "scores": { "1": 80 },
+      "errors": []
+    }
+  ]
+}
+```
+
+A `dry_run=false` request returns `400` with `errors.import.has_errors` if any
+column or student row has errors, or with `errors.import.subject_required_for_commit`
+if the `subjects` map doesn't cover every non-error column.
 
 `GET /api/items/:id/grades` response:
 ```json

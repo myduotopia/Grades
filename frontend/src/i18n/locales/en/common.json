@@ -104,10 +104,21 @@
       "name_label": "Class label",
       "name_placeholder": "e.g. 甲, A, 1, Red"
     },
+    "view": {
+      "list": "List",
+      "card": "Cards"
+    },
+    "col": {
+      "name": "Class",
+      "source": "Source",
+      "actions": "Actions"
+    },
     "actions": {
       "edit": "Edit",
       "delete": "Delete",
       "view_students": "View students",
+      "bulk_add_students": "Batch add students",
+      "import_grades": "Import grades",
       "confirm_delete": "Delete \"{{name}}\"? This will also remove its students and grades."
     },
     "errors": {
@@ -171,13 +182,47 @@
       "duplicate_seat": "Seat number already exists in this class"
     }
   },
+  "grades": {
+    "import": {
+      "title": "Batch import grades",
+      "intro": "Upload an .xlsx file. Column A is the seat number; each column from B onward is one exam (category / date / name). In the preview, pick a subject per column — students must already exist in this class roster.",
+      "download_template": "Download blank template",
+      "file_label": "Choose Excel file",
+      "preview": "Parse preview",
+      "confirm": "Confirm import",
+      "choose_another": "Choose another file",
+      "errors": "Errors",
+      "columns_heading": "Exam items",
+      "students_heading": "Students & scores",
+      "subject_picker": "Pick subject…",
+      "subject_missing_hint": "Pick a subject for every column before importing",
+      "col": {
+        "column": "Col",
+        "category": "Category",
+        "date": "Date",
+        "name": "Exam name",
+        "subject": "Subject"
+      },
+      "summary": {
+        "columns": "{{n}} exam column(s)",
+        "rows": "{{n}} student row(s)",
+        "scores": "{{n}} score(s)",
+        "errors": "{{n}} error(s)"
+      }
+    }
+  },
   "errors": {
     "import": {
       "bad_file_type": "File must be .xlsx format",
       "unreadable": "Excel file could not be parsed",
       "empty": "Workbook is empty",
       "bad_header": "Excel header row is missing required columns",
-      "has_errors": "Preview contains errors; fix them before importing"
+      "has_errors": "Preview contains errors; fix them before importing",
+      "no_current_semester": "No current semester is set — configure it before importing grades",
+      "subject_required_for_commit": "Pick a subject for every column before importing",
+      "bad_subjects_payload": "Subject choices payload is malformed",
+      "subject_invalid": "Unknown subject",
+      "category_not_seeded": "This category isn't seeded for your account yet — visit 「Category weights」 to initialize"
     }
   }
 }

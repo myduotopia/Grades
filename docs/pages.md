@@ -65,7 +65,23 @@ The active semester selector lives in the top nav so users can switch context gl
 2. 「從 Duotopia 匯入」 / "Import from Duotopia"
 3. 「手動新增班級」 / "Add class manually"
 
-**Populated state:** grid of class cards. Each card: class name + student count. Top-right action: 「新增班級」.
+**Populated state:** a list/card view toggle (persisted to `localStorage['classes.view']`) renders either a row table or a grid of cards. Both views show class display name + source badge, plus the same **five row actions**:
+
+1. 查看學生 → `/classes/:id/students`
+2. 批次新增學生 → opens the student-import dialog in-page (reused from `<StudentImportModal>`)
+3. 匯入成績 → opens the grade-import dialog in-page (`<GradeImportModal>`), see below
+4. 編輯 → opens the existing add/edit modal
+5. 刪除 → `window.confirm` + DELETE
+
+Top-right action: 「新增班級」.
+
+**Grade-import dialog** (opened from any class row):
+1. Pick `.xlsx` → "解析預覽" → `POST /api/classrooms/:id/grades/import?dry_run=true`
+2. Preview shows three summary chips (考試欄數 / 學生筆數 / 分數筆數), a columns table (one row per score column with category / date / name + a **subject `<select>`**), and a students × scores matrix.
+3. "確認匯入" stays disabled until every non-error column has a subject picked and no row has errors.
+4. Confirm → `POST /api/classrooms/:id/grades/import?dry_run=false` with `subjects` form field carrying the chosen `{ column_index: system_key }`.
+
+Subject is **never in the Excel** — it's a per-column dropdown in the preview UI. Reusing a previously-imported column metadata + the same subject reuses the existing `Item` (and overwrites grades); picking a different subject creates a new item.
 
 **Quick stats on cards** (TBD — mentioned by user as a possible nice-to-have, defer until v0.1).
 

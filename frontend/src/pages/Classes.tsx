@@ -1,8 +1,10 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 
 import { ActionCard } from '../components/ActionCard'
+import { GradeImportModal } from '../components/GradeImportModal'
+import { StudentImportModal } from '../components/StudentImportModal'
 import {
   useClassrooms,
   useCreateClassroom,
@@ -18,6 +20,11 @@ type ModalState =
   | { kind: 'closed' }
   | { kind: 'add' }
   | { kind: 'edit'; classroom: Classroom }
+  | { kind: 'import-students'; classroomId: string }
+  | { kind: 'import-grades'; classroomId: string }
+
+type View = 'list' | 'card'
+const VIEW_KEY = 'classes.view'
 
 const PRIMARY_BTN =
   'inline-flex items-center px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white text-sm font-medium shadow-sm transition-colors disabled:bg-slate-300 disabled:shadow-none'
@@ -29,6 +36,13 @@ export function Classes() {
   const { t } = useTranslation()
   const { data, isLoading, isError, error, refetch } = useClassrooms()
   const [modal, setModal] = useState<ModalState>({ kind: 'closed' })
+  const [view, setView] = useState<View>(
+    (localStorage.getItem(VIEW_KEY) as View) || 'card',
+  )
+
+  useEffect(() => {
+    localStorage.setItem(VIEW_KEY, view)
+  }, [view])
 
   const classrooms = data?.data ?? []
   const isEmpty = !isLoading && !isError && classrooms.length === 0
@@ -65,6 +79,33 @@ export function Classes() {
           ) : undefined
         }
       />
+
+      {!isLoading && !isError && classrooms.length > 0 && (
+        <div className="flex items-center justify-end gap-1 mb-4">
+          <button
+            onClick={() => setView('list')}
+            className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
+              view === 'list'
+                ? 'bg-slate-900 text-white'
+                : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+            }`}
+            aria-pressed={view === 'list'}
+          >
+            {t('classes.view.list')}
+          </button>
+          <button
+            onClick={() => setView('card')}
+            className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
+              view === 'card'
+                ? 'bg-slate-900 text-white'
+                : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+            }`}
+            aria-pressed={view === 'card'}
+          >
+            {t('classes.view.card')}
+          </button>
+        </div>
+      )}
 
       {isLoading && (
         <div className="text-center text-slate-400 py-16">{t('common.loading')}</div>
@@ -110,17 +151,48 @@ export function Classes() {
         </section>
       )}
 
-      {!isLoading && !isError && classrooms.length > 0 && (
-        <ClassroomGrid
+      {!isLoading && !isError && classrooms.length > 0 && view === 'card' && (
+        <ClassroomCards
           classrooms={classrooms}
           onEdit={(c) => setModal({ kind: 'edit', classroom: c })}
+          onImportStudents={(c) =>
+            setModal({ kind: 'import-students', classroomId: c.id })
+          }
+          onImportGrades={(c) =>
+            setModal({ kind: 'import-grades', classroomId: c.id })
+          }
         />
       )}
 
-      {modal.kind !== 'closed' && (
+      {!isLoading && !isError && classrooms.length > 0 && view === 'list' && (
+        <ClassroomTable
+          classrooms={classrooms}
+          onEdit={(c) => setModal({ kind: 'edit', classroom: c })}
+          onImportStudents={(c) =>
+            setModal({ kind: 'import-students', classroomId: c.id })
+          }
+          onImportGrades={(c) =>
+            setModal({ kind: 'import-grades', classroomId: c.id })
+          }
+        />
+      )}
+
+      {(modal.kind === 'add' || modal.kind === 'edit') && (
         <ClassroomModal
           mode={modal.kind}
           classroom={modal.kind === 'edit' ? modal.classroom : undefined}
+          onClose={() => setModal({ kind: 'closed' })}
+        />
+      )}
+      {modal.kind === 'import-students' && (
+        <StudentImportModal
+          classroomId={modal.classroomId}
+          onClose={() => setModal({ kind: 'closed' })}
+        />
+      )}
+      {modal.kind === 'import-grades' && (
+        <GradeImportModal
+          classroomId={modal.classroomId}
           onClose={() => setModal({ kind: 'closed' })}
         />
       )}
@@ -128,20 +200,86 @@ export function Classes() {
   )
 }
 
-function ClassroomGrid({
+// ---------- shared action helpers ----------
+
+interface RowActionProps {
+  classroom: Classroom
+  onEdit: (c: Classroom) => void
+  onImportStudents: (c: Classroom) => void
+  onImportGrades: (c: Classroom) => void
+  onDelete: (c: Classroom) => void
+}
+
+function RowActions({
+  classroom,
+  onEdit,
+  onImportStudents,
+  onImportGrades,
+  onDelete,
+}: RowActionProps) {
+  const { t } = useTranslation()
+  return (
+    <>
+      <Link
+        to={`/classes/${classroom.id}/students`}
+        className="text-slate-700 hover:text-slate-900 font-medium"
+      >
+        {t('classes.actions.view_students')}
+      </Link>
+      <button
+        onClick={() => onImportStudents(classroom)}
+        className="text-slate-700 hover:text-slate-900 font-medium"
+      >
+        {t('classes.actions.bulk_add_students')}
+      </button>
+      <button
+        onClick={() => onImportGrades(classroom)}
+        className="text-slate-700 hover:text-slate-900 font-medium"
+      >
+        {t('classes.actions.import_grades')}
+      </button>
+      <button
+        onClick={() => onEdit(classroom)}
+        className="text-amber-700 hover:text-amber-900 font-medium"
+      >
+        {t('classes.actions.edit')}
+      </button>
+      <button
+        onClick={() => onDelete(classroom)}
+        className="text-rose-600 hover:text-rose-800 font-medium"
+      >
+        {t('classes.actions.delete')}
+      </button>
+    </>
+  )
+}
+
+// ---------- card view ----------
+
+function ClassroomCards({
   classrooms,
   onEdit,
+  onImportStudents,
+  onImportGrades,
 }: {
   classrooms: Classroom[]
   onEdit: (c: Classroom) => void
+  onImportStudents: (c: Classroom) => void
+  onImportGrades: (c: Classroom) => void
 }) {
   const { t, i18n } = useTranslation()
   const del = useDeleteClassroom()
 
-  // Sort by grade then name so visually-grouped output matches teacher mental model
   const sorted = [...classrooms].sort(
     (a, b) => a.grade - b.grade || a.name.localeCompare(b.name),
   )
+
+  function onDelete(c: Classroom) {
+    const display = classroomDisplayName(c.grade, c.name, i18n.language)
+    if (window.confirm(t('classes.actions.confirm_delete', { name: display }))) {
+      del.mutate(c.id)
+    }
+  }
 
   return (
     <ul className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -158,36 +296,97 @@ function ClassroomGrid({
               {t(`classes.source.${c.source}`)}
             </span>
           </div>
-          <div className="mt-auto flex gap-3 text-sm border-t border-slate-100 pt-3">
-            <Link
-              to={`/classes/${c.id}/students`}
-              className="text-slate-700 hover:text-slate-900 font-medium"
-            >
-              {t('classes.actions.view_students')}
-            </Link>
-            <button
-              onClick={() => onEdit(c)}
-              className="text-amber-700 hover:text-amber-900 font-medium"
-            >
-              {t('classes.actions.edit')}
-            </button>
-            <button
-              onClick={() => {
-                const display = classroomDisplayName(c.grade, c.name, i18n.language)
-                if (window.confirm(t('classes.actions.confirm_delete', { name: display }))) {
-                  del.mutate(c.id)
-                }
-              }}
-              className="text-rose-600 hover:text-rose-800 font-medium"
-            >
-              {t('classes.actions.delete')}
-            </button>
+          <div className="mt-auto flex flex-wrap gap-x-3 gap-y-1.5 text-sm border-t border-slate-100 pt-3">
+            <RowActions
+              classroom={c}
+              onEdit={onEdit}
+              onImportStudents={onImportStudents}
+              onImportGrades={onImportGrades}
+              onDelete={onDelete}
+            />
           </div>
         </li>
       ))}
     </ul>
   )
 }
+
+// ---------- list view ----------
+
+function ClassroomTable({
+  classrooms,
+  onEdit,
+  onImportStudents,
+  onImportGrades,
+}: {
+  classrooms: Classroom[]
+  onEdit: (c: Classroom) => void
+  onImportStudents: (c: Classroom) => void
+  onImportGrades: (c: Classroom) => void
+}) {
+  const { t, i18n } = useTranslation()
+  const del = useDeleteClassroom()
+
+  const sorted = [...classrooms].sort(
+    (a, b) => a.grade - b.grade || a.name.localeCompare(b.name),
+  )
+
+  function onDelete(c: Classroom) {
+    const display = classroomDisplayName(c.grade, c.name, i18n.language)
+    if (window.confirm(t('classes.actions.confirm_delete', { name: display }))) {
+      del.mutate(c.id)
+    }
+  }
+
+  return (
+    <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+      <div className="overflow-x-auto">
+        <table className="min-w-full text-sm">
+          <thead className="bg-slate-50 border-b border-slate-200 text-slate-600">
+            <tr>
+              <th className="px-4 py-3 text-left font-medium">
+                {t('classes.col.name')}
+              </th>
+              <th className="px-4 py-3 text-left font-medium">
+                {t('classes.col.source')}
+              </th>
+              <th className="px-4 py-3 text-left font-medium">
+                {t('classes.col.actions')}
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {sorted.map((c) => (
+              <tr key={c.id} className="border-b border-slate-100 last:border-b-0">
+                <td className="px-4 py-3 text-slate-900 font-medium">
+                  {classroomDisplayName(c.grade, c.name, i18n.language)}
+                </td>
+                <td className="px-4 py-3">
+                  <span className="text-[10px] uppercase tracking-wider text-slate-500 bg-slate-100 rounded-full px-2 py-1">
+                    {t(`classes.source.${c.source}`)}
+                  </span>
+                </td>
+                <td className="px-4 py-3">
+                  <div className="flex flex-wrap gap-x-3 gap-y-1">
+                    <RowActions
+                      classroom={c}
+                      onEdit={onEdit}
+                      onImportStudents={onImportStudents}
+                      onImportGrades={onImportGrades}
+                      onDelete={onDelete}
+                    />
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+// ---------- add / edit modal (unchanged) ----------
 
 function ClassroomModal({
   mode,
