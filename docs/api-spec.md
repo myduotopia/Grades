@@ -134,8 +134,12 @@ Idempotent. Called by `/auth/callback` on first sign-in to create the 7 default 
 ### Students
 
 One Excel file maps to one classroom — the classroom is in the URL, never in
-the file. Re-importing is a pure upsert keyed on `seat_number`: matching seats
+the file. The file carries both the roster (columns A–C) **and** zero or more
+exam columns (columns D onward); a single import upserts students and writes
+their grades in one pass. Re-importing is a pure upsert: matching seat numbers
 overwrite, new seats append, missing seats are left untouched (no auto-delete).
+Per-student standard thresholds are **not** in Excel — those are edited on the
+website (single-student modal).
 
 | Method | Path | Description |
 |---|---|---|
@@ -173,35 +177,63 @@ Multipart form:
 
 Query param:
 - `dry_run`: `true` (default) returns preview only — nothing is written;
-  `false` writes the parsed rows.
+  `false` parses + commits in one transaction.
 
-Excel columns (header row in row 1):
+**Excel layout** — fixed structure, no headers in the score columns:
 
-| Header | Required | Notes |
+| Cell | Content | Notes |
 |---|---|---|
-| 座號 | ✓ | integer 1–99 |
-| 姓名 | | optional |
-| email | | optional |
-| 段考_標準 | | 0–100 |
-| 小考_標準 | | 0–100 |
-| 作業_標準 | | 0–100 |
-| 出席率_標準 | | 0–100 |
-| 額外加分_標準 | | 0–100 |
+| A1 | `座號` | literal header text (required) |
+| B1 | `姓名（選填）` | informational |
+| C1 | `email（選填）` | informational |
+| D1, E1, ... | subject name | e.g. `國語`, `數學`. Built-in subject display names; `EN` aliases accepted. |
+| D2, E2, ... | category | `段考` / `小考` / `作業` only (dropdown in template). 出席率 and 額外加分 are excluded — they have dedicated UIs. |
+| D3, E3, ... | date | optional; YYYY-MM-DD, YYYYMMDD, or Excel date. Blank → today. |
+| D4, E4, ... | exam name | optional; blank → `<類別>-<日期>` (e.g. `段考-2026-05-13`) |
+| A5+ | seat number | integer 1–99, required per row |
+| B5+ | name | optional |
+| C5+ | email | optional |
+| D5+, ... | score | 0–100; blank cells skipped |
+
+Each score column resolves to an `Item` keyed on
+`(user_id, subject_id, category_id, current_semester_id, exam_name)`.
+Re-importing the same column metadata reuses the existing item and overwrites
+that student's score. `Item` is linked to the URL's classroom via
+`item_classroom`. Current semester comes from the user's `is_current=true`
+`semester` row — if none is set, import returns `400` with
+`errors.import.no_current_semester`.
 
 Response:
 
 ```json
 {
   "dry_run": true,
-  "summary": { "total_rows": 28, "to_create": 22, "to_update": 5, "errors": 1 },
-  "rows": [
+  "summary": {
+    "student_total": 28, "student_create": 22, "student_update": 5,
+    "item_total": 3, "item_create": 2, "item_reuse": 1,
+    "grade_total": 84, "grade_create": 70, "grade_overwrite": 14,
+    "errors": 1
+  },
+  "columns": [
     {
-      "row_number": 2,
+      "column_index": 3,
+      "subject_input": "國語", "subject_system_key": "chinese",
+      "category_input": "段考", "category_system_key": "major_exam",
+      "exam_date": "2026-05-13",
+      "exam_name": "期中考",
+      "existing_item_id": null,
+      "reuses_existing": false,
+      "errors": []
+    }
+  ],
+  "students": [
+    {
+      "row_number": 5,
       "action": "create",
       "seat_number": 1,
       "name": "小明",
       "email": null,
-      "standards": { "major_exam": 80 },
+      "scores": { "3": 85 },
       "existing_id": null,
       "errors": []
     }
@@ -210,8 +242,7 @@ Response:
 ```
 
 A `dry_run=false` request returns `400 BAD_REQUEST` (`errors.import.has_errors`)
-if the preview contains any row with `action: "error"` — fix the file and
-re-upload.
+if any column or student row has errors — fix the file and re-upload.
 
 ### Subjects
 

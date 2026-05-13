@@ -146,8 +146,8 @@
       "edit_title": "Edit student"
     },
     "import": {
-      "title": "Batch import students",
-      "intro": "Upload an .xlsx file. The server will parse and show you a preview before any data is written.",
+      "title": "Batch import students & grades",
+      "intro": "Upload an .xlsx file — preview first, then confirm. Columns A–C are the roster (座號 required). Each column from D onward is one exam (subject → category → date → name).",
       "download_template": "Download blank template",
       "file_label": "Choose Excel file",
       "preview": "Parse preview",
@@ -155,16 +155,28 @@
       "choose_another": "Choose another file",
       "action": "Action",
       "errors": "Errors",
+      "columns_heading": "Exam items",
+      "students_heading": "Students & scores",
       "action_label": {
         "create": "Create",
         "update": "Update",
         "error": "Error"
       },
+      "col": {
+        "column": "Col",
+        "subject": "Subject",
+        "category": "Category",
+        "date": "Date",
+        "name": "Exam name",
+        "fate": "Outcome"
+      },
       "summary": {
-        "total": "{{n}} total",
-        "create": "{{n}} to create",
-        "update": "{{n}} to update",
-        "errors": "{{n}} with errors"
+        "students": "Students",
+        "items": "Exam items",
+        "grades": "Grades",
+        "reuse_word": "Reuse",
+        "overwrite_word": "Overwrite",
+        "errors": "{{n}} error(s) — fix the file before importing"
       }
     },
     "errors": {
@@ -176,8 +188,9 @@
       "bad_file_type": "File must be .xlsx format",
       "unreadable": "Excel file could not be parsed",
       "empty": "Workbook is empty",
-      "bad_header": "Excel header row is missing required columns",
-      "has_errors": "Preview contains errors; fix them before importing"
+      "bad_header": "Excel header row is invalid (A1 must be 座號)",
+      "has_errors": "Preview contains errors; fix them before importing",
+      "no_current_semester": "No current semester is set — configure it before importing grades"
     }
   }
 }

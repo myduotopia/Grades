@@ -95,13 +95,20 @@ Empty state: centered card with both actions (匯入 + 新增).
 **Batch import flow:**
 1. Click 「批次匯入 Excel」 → modal opens with template-download link + file picker
 2. Pick `.xlsx` → "解析預覽" → backend parses with `dry_run=true`
-3. Modal shows a preview table: each row marked 新增 / 更新 / 錯誤
-4. If any row has errors, "確認匯入" is disabled — teacher must fix the file and re-pick
-5. "確認匯入" → backend re-uploads with `dry_run=false` → roster refreshes
+3. Modal shows a preview with three summary cards (學生 / 考試項目 / 分數) plus two
+   detail tables: one row per exam column (subject/category/date/name/處理) and one
+   row per student (with one cell per exam column showing the score)
+4. If any column or student row has errors, "確認匯入" is disabled — teacher must
+   fix the file and re-pick
+5. "確認匯入" → backend re-uploads with `dry_run=false` → roster + grades refresh
 
-One file = one classroom (classroom is in the URL, not in the Excel). Re-import
-is pure upsert: matching 座號 overwrites; new 座號 appends; existing students
-not in the file are left alone.
+One file = one classroom (classroom is in the URL, not in the Excel). The first
+three columns (座號 / 姓名 / email) handle the roster as pure upsert. From
+column D onward, each column is one exam item — keyed on
+`(老師, 科目, 類別, 目前學期, 考試名稱)`. Existing items are reused (and their
+grades for matching seat numbers overwritten); brand-new items are created.
+Existing students not in the file are left alone. Per-student standard
+thresholds are edited in the single-student modal, not in Excel.
 
 ### `/grades/new`
 

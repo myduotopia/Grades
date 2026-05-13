@@ -2,7 +2,7 @@
 
 Kept in one file for now; split per-entity once this grows past ~300 lines.
 """
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 from uuid import UUID
 
@@ -92,13 +92,41 @@ class ClassroomList(BaseModel):
 
 # ---------- /api/students ----------
 
-# Maps Chinese Excel header → category system_key.
-STANDARD_COLUMNS: dict[str, str] = {
-    "段考_標準": "major_exam",
-    "小考_標準": "quiz",
-    "作業_標準": "homework",
-    "出席率_標準": "attendance",
-    "額外加分_標準": "extra",
+# Excel score columns: only categories that map cleanly to a "one exam = one
+# score" model. 出席率 (attendance) and 額外加分 (extra) are excluded — they have
+# dedicated UIs because they don't fit the per-item-per-score shape.
+CATEGORY_NAME_TO_KEY: dict[str, str] = {
+    "段考": "major_exam",
+    "小考": "quiz",
+    "作業": "homework",
+    # English fallbacks for teachers who switch the template to English.
+    "Major Exam": "major_exam",
+    "Quiz": "quiz",
+    "Homework": "homework",
+}
+
+# Chinese / English subject display name → built-in subject system_key.
+SUBJECT_NAME_TO_KEY: dict[str, str] = {
+    "國語": "chinese",
+    "數學": "math",
+    "英文": "english",
+    "英語": "english",
+    "自然": "science",
+    "社會": "social_studies",
+    "音樂": "music",
+    "美術": "art",
+    "體育": "pe",
+    "綜合": "integrated",
+    "Chinese": "chinese",
+    "Math": "math",
+    "English": "english",
+    "Science": "science",
+    "Social Studies": "social_studies",
+    "Music": "music",
+    "Art": "art",
+    "Physical Education": "pe",
+    "PE": "pe",
+    "Integrated Activities": "integrated",
 }
 
 
@@ -143,26 +171,48 @@ class StudentList(BaseModel):
     meta: ListMeta
 
 
-# Excel import preview row
-class ImportRowPreview(BaseModel):
-    row_number: int  # 1-based Excel row; header is row 1, first data row = 2
+# Excel import preview — describes one score column (one future Item).
+class ImportColumnPreview(BaseModel):
+    column_index: int  # 0-based; D-column = 3
+    subject_input: str | None  # raw cell value
+    subject_system_key: str | None
+    category_input: str | None
+    category_system_key: str | None
+    exam_date: date | None
+    exam_name: str  # resolved (auto-generated if blank in file)
+    existing_item_id: UUID | None = None
+    reuses_existing: bool = False
+    errors: list[str] = []
+
+
+# Per-student row (seat / name / email + scores per column).
+class ImportStudentRow(BaseModel):
+    row_number: int  # 1-based Excel row
     action: Literal["create", "update", "error"]
     seat_number: int | None
     name: str | None
     email: str | None
-    standards: dict[str, float]
+    # column_index → score; only filled cells appear here.
+    scores: dict[int, float] = {}
     existing_id: UUID | None = None
     errors: list[str] = []
 
 
 class ImportPreviewSummary(BaseModel):
-    total_rows: int
-    to_create: int
-    to_update: int
+    student_total: int
+    student_create: int
+    student_update: int
+    item_total: int
+    item_create: int
+    item_reuse: int
+    grade_total: int
+    grade_create: int
+    grade_overwrite: int
     errors: int
 
 
 class ImportResult(BaseModel):
     dry_run: bool
     summary: ImportPreviewSummary
-    rows: list[ImportRowPreview]
+    columns: list[ImportColumnPreview]
+    students: list[ImportStudentRow]

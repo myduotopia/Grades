@@ -146,8 +146,8 @@
       "edit_title": "編輯學生"
     },
     "import": {
-      "title": "批次匯入學生",
-      "intro": "上傳 .xlsx 檔案，系統會先解析給你預覽，確認後才會寫入資料。",
+      "title": "批次匯入學生與成績",
+      "intro": "上傳 .xlsx 檔案，系統會先解析給你預覽，確認後才會寫入資料。前三欄是學生名單（座號必填），D 欄起每一欄是一次考試（科目 → 類別 → 日期 → 名稱）。",
       "download_template": "下載空白範本",
       "file_label": "選擇 Excel 檔",
       "preview": "解析預覽",
@@ -155,16 +155,28 @@
       "choose_another": "重新選檔",
       "action": "動作",
       "errors": "錯誤訊息",
+      "columns_heading": "考試項目",
+      "students_heading": "學生與分數",
       "action_label": {
         "create": "新增",
         "update": "更新",
         "error": "錯誤"
       },
+      "col": {
+        "column": "欄",
+        "subject": "科目",
+        "category": "類別",
+        "date": "日期",
+        "name": "考試名稱",
+        "fate": "處理"
+      },
       "summary": {
-        "total": "共 {{n}} 筆",
-        "create": "{{n}} 筆新增",
-        "update": "{{n}} 筆更新",
-        "errors": "{{n}} 筆錯誤"
+        "students": "學生",
+        "items": "考試項目",
+        "grades": "分數",
+        "reuse_word": "沿用",
+        "overwrite_word": "覆蓋",
+        "errors": "{{n}} 筆錯誤——請先修正再匯入"
       }
     },
     "errors": {
@@ -176,8 +188,9 @@
       "bad_file_type": "檔案必須是 .xlsx 格式",
       "unreadable": "Excel 檔案無法解析",
       "empty": "Excel 內容是空的",
-      "bad_header": "Excel 表頭欄位不正確（缺少必要欄位）",
-      "has_errors": "預覽中有錯誤，請先修正後再匯入"
+      "bad_header": "Excel 表頭欄位不正確（A1 必須是「座號」）",
+      "has_errors": "預覽中有錯誤，請先修正後再匯入",
+      "no_current_semester": "尚未設定目前學期，請先到「學期設定」設定後再匯入成績"
     }
   }
 }

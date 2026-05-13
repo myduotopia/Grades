@@ -138,13 +138,26 @@ export interface StudentPayload {
   standards?: Record<string, number>
 }
 
-export interface ImportRowPreview {
+export interface ImportColumnPreview {
+  column_index: number
+  subject_input: string | null
+  subject_system_key: string | null
+  category_input: string | null
+  category_system_key: string | null
+  exam_date: string | null
+  exam_name: string
+  existing_item_id: string | null
+  reuses_existing: boolean
+  errors: string[]
+}
+
+export interface ImportStudentRow {
   row_number: number
   action: 'create' | 'update' | 'error'
   seat_number: number | null
   name: string | null
   email: string | null
-  standards: Record<string, number>
+  scores: Record<number, number>
   existing_id: string | null
   errors: string[]
 }
@@ -152,12 +165,19 @@ export interface ImportRowPreview {
 export interface ImportResult {
   dry_run: boolean
   summary: {
-    total_rows: number
-    to_create: number
-    to_update: number
+    student_total: number
+    student_create: number
+    student_update: number
+    item_total: number
+    item_create: number
+    item_reuse: number
+    grade_total: number
+    grade_create: number
+    grade_overwrite: number
     errors: number
   }
-  rows: ImportRowPreview[]
+  columns: ImportColumnPreview[]
+  students: ImportStudentRow[]
 }
 
 async function uploadMultipart<T>(
