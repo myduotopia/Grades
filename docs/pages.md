@@ -17,8 +17,7 @@ The frontend is a SPA built with React Router. All routes require login except `
 | `/grades/:itemId/:classId` | Edit grades | required | Same UI, prefilled |
 | `/students/:id` | Student detail | required | All grades, accumulated points, personal standards |
 | `/admin` | Admin landing | required | Sub-nav to admin pages |
-| `/admin/subjects` | Subjects | required | CRUD |
-| `/admin/categories` | Categories | required | CRUD; system defaults shown but not deletable |
+| `/admin/subjects` | Subject weights | required | Per-subject category-weight matrix + custom subject add/delete. Replaces the old `/admin/categories` page; the 5 categories themselves are system-locked. |
 | `/admin/semesters` | Semesters | required | CRUD; toggle "is_current" |
 | `/admin/items` | Items | required | CRUD; pick subject/category/semester/classes |
 | `/admin/point-rules` | Point rules | required | Set N points per category |
@@ -173,9 +172,7 @@ Same layout as `/grades/new`, but score fields are prefilled from existing grade
 
 All follow the same CRUD shape: list with add/edit/delete buttons + a side panel or modal for the form.
 
-**`/admin/subjects`** — name only.
-
-**`/admin/categories`** — name + (read-only) "system default" badge for the 7 seeded ones. Delete button hidden for system defaults.
+**`/admin/subjects`** — implemented. Matrix where rows = subjects (built-in + custom), columns = the 5 system-locked categories (段考 / 小考 / 作業 / 出席率 / 額外加分), cells = per-subject weight inputs. Each row's non-extra columns must sum to 100 (per-row indicator). Top-right 「新增科目」 opens a modal for a custom subject; new customs seed with the academic profile. Built-in subjects cannot be deleted; custom subjects have a delete action that cascade-removes their items and grades. Save is a single bulk PUT against `/api/subject-weights`.
 
 **`/admin/semesters`** — list of (academic_year, term, is_current). Toggle `is_current` via radio. Adding a new semester picks year + term from selectors.
 
