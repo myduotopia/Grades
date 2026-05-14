@@ -36,3 +36,24 @@ export function useSetCurrentSemester() {
     },
   })
 }
+
+export function useUpdateSemester() {
+  const qc = useQueryClient()
+  return useMutation<
+    Semester,
+    Error,
+    { id: string; academic_year: number; term: 1 | 2 | 3 | 4 }
+  >({
+    mutationFn: ({ id, academic_year, term }) =>
+      api.semesters.update(id, { academic_year, term }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: semestersKey }),
+  })
+}
+
+export function useDeleteSemester() {
+  const qc = useQueryClient()
+  return useMutation<void, Error, string>({
+    mutationFn: (id) => api.semesters.remove(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: semestersKey }),
+  })
+}

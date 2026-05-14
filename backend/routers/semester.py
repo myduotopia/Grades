@@ -22,9 +22,9 @@ from sqlalchemy.orm import Session
 
 from auth import require_user_id
 from database import get_db
-from models.curriculum import Semester
+from models.curriculum import Item, Semester
 from models.settings import UserSettings
-from schemas import ListMeta, SemesterList, SemesterOut
+from schemas import ListMeta, SemesterList, SemesterOut, SemesterUpdate
 
 router = APIRouter()
 
@@ -50,6 +50,32 @@ def _duplicate_error() -> HTTPException:
                 "code": "CONFLICT",
                 "message_key": "errors.semester.duplicate",
                 "message": "This semester slot already exists.",
+            }
+        },
+    )
+
+
+def _delete_blocked_current() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail={
+            "error": {
+                "code": "CONFLICT",
+                "message_key": "errors.semester.delete_current",
+                "message": "Cannot delete the current semester. Set another as current first.",
+            }
+        },
+    )
+
+
+def _delete_blocked_has_items() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail={
+            "error": {
+                "code": "CONFLICT",
+                "message_key": "errors.semester.delete_has_items",
+                "message": "Cannot delete a semester that has tests/grades. Move them to another semester first.",
             }
         },
     )
@@ -159,3 +185,59 @@ def set_current(
     db.commit()
     db.refresh(target)
     return SemesterOut.model_validate(target)
+
+
+@router.put("/{semester_id}", response_model=SemesterOut)
+def update_semester(
+    semester_id: UUID,
+    body: SemesterUpdate,
+    user_id: Annotated[UUID, Depends(require_user_id)],
+    db: Annotated[Session, Depends(get_db)],
+) -> SemesterOut:
+    """Change a semester's (academic_year, term). Duplicate slot → 409."""
+    target = (
+        db.query(Semester)
+        .filter(Semester.id == semester_id, Semester.user_id == user_id)
+        .one_or_none()
+    )
+    if target is None:
+        raise _not_found_error()
+    target.academic_year = body.academic_year
+    target.term = body.term
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise _duplicate_error()
+    db.refresh(target)
+    return SemesterOut.model_validate(target)
+
+
+@router.delete("/{semester_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_semester(
+    semester_id: UUID,
+    user_id: Annotated[UUID, Depends(require_user_id)],
+    db: Annotated[Session, Depends(get_db)],
+) -> None:
+    """Refuse if is_current or if any Item references this semester.
+
+    Item.semester_id is NOT NULL FK; cascading delete would silently destroy
+    the user's grade history, so we require an empty semester instead.
+    """
+    target = (
+        db.query(Semester)
+        .filter(Semester.id == semester_id, Semester.user_id == user_id)
+        .one_or_none()
+    )
+    if target is None:
+        raise _not_found_error()
+    if target.is_current:
+        raise _delete_blocked_current()
+    has_items = (
+        db.query(Item.id).filter(Item.semester_id == semester_id).first()
+        is not None
+    )
+    if has_items:
+        raise _delete_blocked_has_items()
+    db.delete(target)
+    db.commit()

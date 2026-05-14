@@ -72,6 +72,11 @@ class SemesterList(BaseModel):
     meta: ListMeta
 
 
+class SemesterUpdate(BaseModel):
+    academic_year: int = Field(ge=1, le=999)
+    term: Literal[1, 2, 3, 4]
+
+
 # ---------- /api/categories ----------
 
 

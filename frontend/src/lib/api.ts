@@ -407,6 +407,13 @@ export const api = {
       request<Semester>('/api/semesters', { method: 'POST' }),
     setCurrent: (id: string) =>
       request<Semester>(`/api/semesters/${id}/set-current`, { method: 'PUT' }),
+    update: (id: string, body: { academic_year: number; term: 1 | 2 | 3 | 4 }) =>
+      request<Semester>(`/api/semesters/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(body),
+      }),
+    remove: (id: string) =>
+      request<void>(`/api/semesters/${id}`, { method: 'DELETE' }),
   },
   subjects: {
     list: () => request<SubjectList>('/api/subjects'),

@@ -4,12 +4,15 @@ import { useTranslation } from 'react-i18next'
 import { formatSemester } from '../components/SemesterSwitcher'
 import {
   useCreateSemester,
+  useDeleteSemester,
   useSemesters,
   useSetCurrentSemester,
+  useUpdateSemester,
 } from '../hooks/useSemesters'
 import { useMe, useUpdateMeSettings } from '../hooks/useMe'
 import { PageContainer } from '../layout/PageContainer'
 import { PageHeader } from '../layout/PageHeader'
+import { ApiError, type Semester } from '../lib/api'
 
 const PRIMARY_BTN =
   'inline-flex items-center px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white text-sm font-medium shadow-sm transition-colors disabled:bg-slate-300 disabled:shadow-none disabled:cursor-not-allowed'
@@ -22,8 +25,11 @@ export function AdminSemesters() {
   const semestersQ = useSemesters()
   const createSem = useCreateSemester()
   const setCurrent = useSetCurrentSemester()
+  const deleteSem = useDeleteSemester()
   const updateSettings = useUpdateMeSettings()
   const [savedFlash, setSavedFlash] = useState(false)
+  const [editing, setEditing] = useState<Semester | null>(null)
+  const [actionErr, setActionErr] = useState<string | null>(null)
 
   const termsPerYear = meQ.data?.terms_per_year ?? 2
   const semesters = semestersQ.data?.data ?? []
@@ -114,9 +120,9 @@ export function AdminSemesters() {
             {semesters.map((s) => (
               <li
                 key={s.id}
-                className="border-b border-slate-100 last:border-b-0"
+                className="border-b border-slate-100 last:border-b-0 flex items-center justify-between px-5 py-3 hover:bg-slate-50"
               >
-                <label className="flex items-center gap-3 px-5 py-3 cursor-pointer hover:bg-slate-50">
+                <label className="flex items-center gap-3 cursor-pointer flex-1">
                   <input
                     type="radio"
                     name="current_semester"
@@ -136,11 +142,160 @@ export function AdminSemesters() {
                     </span>
                   )}
                 </label>
+                <div className="flex items-center gap-3 text-sm">
+                  <button
+                    onClick={() => {
+                      setActionErr(null)
+                      setEditing(s)
+                    }}
+                    className="text-slate-600 hover:text-slate-900 font-medium"
+                  >
+                    {t('admin_semesters.edit')}
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (
+                        !window.confirm(
+                          t('admin_semesters.confirm_delete', {
+                            label: formatSemester(s),
+                          }),
+                        )
+                      )
+                        return
+                      setActionErr(null)
+                      deleteSem.mutate(s.id, {
+                        onError: (err) => {
+                          if (err instanceof ApiError && err.body?.message_key) {
+                            setActionErr(err.body.message_key)
+                          } else {
+                            setActionErr('common.error_generic')
+                          }
+                        },
+                      })
+                    }}
+                    disabled={deleteSem.isPending}
+                    className="text-rose-600 hover:text-rose-800 font-medium disabled:opacity-50"
+                  >
+                    {t('common.delete')}
+                  </button>
+                </div>
               </li>
             ))}
           </ul>
         )}
+
+        {actionErr && (
+          <div className="border-t border-rose-100 bg-rose-50 px-5 py-3 text-sm text-rose-700">
+            {t(actionErr)}
+          </div>
+        )}
       </section>
+
+      {editing && (
+        <EditSemesterModal
+          semester={editing}
+          onClose={() => setEditing(null)}
+        />
+      )}
     </PageContainer>
+  )
+}
+
+function EditSemesterModal({
+  semester,
+  onClose,
+}: {
+  semester: Semester
+  onClose: () => void
+}) {
+  const { t } = useTranslation()
+  const update = useUpdateSemester()
+  const [year, setYear] = useState(semester.academic_year)
+  const [term, setTerm] = useState<1 | 2 | 3 | 4>(semester.term)
+  const [errKey, setErrKey] = useState<string | null>(null)
+
+  function onSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    setErrKey(null)
+    update.mutate(
+      { id: semester.id, academic_year: year, term },
+      {
+        onSuccess: onClose,
+        onError: (err) => {
+          if (err instanceof ApiError && err.body?.message_key) {
+            setErrKey(err.body.message_key)
+          } else {
+            setErrKey('common.error_generic')
+          }
+        },
+      },
+    )
+  }
+
+  return (
+    <div
+      className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50"
+      onClick={onClose}
+    >
+      <form
+        onSubmit={onSubmit}
+        onClick={(e) => e.stopPropagation()}
+        className="bg-white rounded-2xl shadow-xl border border-slate-200 p-6 w-full max-w-md"
+      >
+        <h2 className="text-lg font-semibold tracking-tight mb-4 text-slate-900">
+          {t('admin_semesters.edit_title')}
+        </h2>
+
+        <label className="block text-sm font-medium text-slate-700 mb-1.5">
+          {t('admin_semesters.year_label')}
+        </label>
+        <input
+          type="number"
+          inputMode="numeric"
+          min={1}
+          max={999}
+          autoFocus
+          value={year}
+          onChange={(e) => setYear(Number(e.target.value))}
+          className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+        />
+
+        <label className="block text-sm font-medium text-slate-700 mb-1.5 mt-4">
+          {t('admin_semesters.term_label')}
+        </label>
+        <select
+          value={term}
+          onChange={(e) => setTerm(Number(e.target.value) as 1 | 2 | 3 | 4)}
+          className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+        >
+          {[1, 2, 3, 4].map((n) => (
+            <option key={n} value={n}>
+              {t('admin_semesters.term_option', { n })}
+            </option>
+          ))}
+        </select>
+
+        {errKey && (
+          <p className="mt-3 text-sm text-rose-600">{t(errKey)}</p>
+        )}
+
+        <div className="mt-6 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 text-slate-700 hover:bg-slate-100 rounded-lg text-sm font-medium"
+          >
+            {t('common.cancel')}
+          </button>
+          <button
+            type="submit"
+            disabled={update.isPending || year < 1 || year > 999}
+            className="inline-flex items-center px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-sm font-medium shadow-sm disabled:bg-slate-300 disabled:cursor-not-allowed"
+          >
+            {update.isPending ? t('common.saving') : t('common.save')}
+          </button>
+        </div>
+      </form>
+    </div>
   )
 }

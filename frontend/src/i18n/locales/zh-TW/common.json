@@ -19,6 +19,7 @@
     "saved": "已儲存",
     "reset": "重設",
     "cancel": "取消",
+    "delete": "刪除",
     "loading": "載入中…",
     "retry": "重試",
     "error_generic": "發生錯誤，請稍後再試"
@@ -46,8 +47,14 @@
     },
     "list_title": "學期列表",
     "add": "+ 新增學期",
+    "edit": "編輯",
     "empty": "尚未建立任何學期。按「新增學期」開始。",
-    "current_badge": "目前學期"
+    "current_badge": "目前學期",
+    "confirm_delete": "確定刪除「{{label}}」?",
+    "edit_title": "編輯學期",
+    "year_label": "學年 (民國)",
+    "term_label": "學期",
+    "term_option": "第 {{n}} 學期"
   },
   "admin_subjects": {
     "title": "科目權重設定",
@@ -270,6 +277,12 @@
       "bad_subjects_payload": "科目選擇資料格式錯誤",
       "subject_invalid": "未知的科目",
       "category_not_seeded": "這個類別還沒在你的帳號裡建立，請先到「類別權重」初始化"
+    },
+    "semester": {
+      "duplicate": "這個學期已經存在",
+      "delete_current": "不能刪除目前學期。請先把另一個學期設為目前學期。",
+      "delete_has_items": "這個學期下還有考試 / 成績，不能刪除。請先把考試移到其他學期。",
+      "not_found": "找不到這個學期"
     }
   }
 }
