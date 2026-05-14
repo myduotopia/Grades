@@ -206,6 +206,8 @@ export interface Semester {
   academic_year: number
   term: 1 | 2 | 3 | 4
   is_current: boolean
+  start_date: string  // YYYY-MM-DD
+  end_date: string    // YYYY-MM-DD
 }
 
 export interface SemesterList {
@@ -407,7 +409,15 @@ export const api = {
       request<Semester>('/api/semesters', { method: 'POST' }),
     setCurrent: (id: string) =>
       request<Semester>(`/api/semesters/${id}/set-current`, { method: 'PUT' }),
-    update: (id: string, body: { academic_year: number; term: 1 | 2 | 3 | 4 }) =>
+    update: (
+      id: string,
+      body: {
+        academic_year: number
+        term: 1 | 2 | 3 | 4
+        start_date: string
+        end_date: string
+      },
+    ) =>
       request<Semester>(`/api/semesters/${id}`, {
         method: 'PUT',
         body: JSON.stringify(body),

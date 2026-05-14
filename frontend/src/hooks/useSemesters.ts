@@ -42,10 +42,15 @@ export function useUpdateSemester() {
   return useMutation<
     Semester,
     Error,
-    { id: string; academic_year: number; term: 1 | 2 | 3 | 4 }
+    {
+      id: string
+      academic_year: number
+      term: 1 | 2 | 3 | 4
+      start_date: string
+      end_date: string
+    }
   >({
-    mutationFn: ({ id, academic_year, term }) =>
-      api.semesters.update(id, { academic_year, term }),
+    mutationFn: ({ id, ...body }) => api.semesters.update(id, body),
     onSuccess: () => qc.invalidateQueries({ queryKey: semestersKey }),
   })
 }

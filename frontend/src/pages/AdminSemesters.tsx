@@ -133,14 +133,21 @@ export function AdminSemesters() {
                     }}
                     className="w-4 h-4 text-amber-500 focus:ring-amber-500"
                   />
-                  <span className="text-slate-900 font-medium">
-                    {formatSemester(s)}
-                  </span>
-                  {s.is_current && (
-                    <span className="text-[10px] uppercase tracking-wider text-amber-700 bg-amber-50 rounded-full px-2 py-0.5">
-                      {t('admin_semesters.current_badge')}
+                  <div className="flex flex-col">
+                    <div className="flex items-center gap-2">
+                      <span className="text-slate-900 font-medium">
+                        {formatSemester(s)}
+                      </span>
+                      {s.is_current && (
+                        <span className="text-[10px] uppercase tracking-wider text-amber-700 bg-amber-50 rounded-full px-2 py-0.5">
+                          {t('admin_semesters.current_badge')}
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-xs text-slate-500 mt-0.5 font-mono">
+                      {s.start_date} ~ {s.end_date}
                     </span>
-                  )}
+                  </div>
                 </label>
                 <div className="flex items-center gap-3 text-sm">
                   <button
@@ -212,13 +219,23 @@ function EditSemesterModal({
   const update = useUpdateSemester()
   const [year, setYear] = useState(semester.academic_year)
   const [term, setTerm] = useState<1 | 2 | 3 | 4>(semester.term)
+  const [startDate, setStartDate] = useState(semester.start_date)
+  const [endDate, setEndDate] = useState(semester.end_date)
   const [errKey, setErrKey] = useState<string | null>(null)
+
+  const dateOrderOk = startDate <= endDate
 
   function onSubmit(e: React.FormEvent) {
     e.preventDefault()
     setErrKey(null)
     update.mutate(
-      { id: semester.id, academic_year: year, term },
+      {
+        id: semester.id,
+        academic_year: year,
+        term,
+        start_date: startDate,
+        end_date: endDate,
+      },
       {
         onSuccess: onClose,
         onError: (err) => {
@@ -275,6 +292,36 @@ function EditSemesterModal({
           ))}
         </select>
 
+        <div className="mt-4 grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">
+              {t('admin_semesters.start_date_label')}
+            </label>
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">
+              {t('admin_semesters.end_date_label')}
+            </label>
+            <input
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+            />
+          </div>
+        </div>
+        {!dateOrderOk && (
+          <p className="mt-2 text-sm text-rose-600">
+            {t('admin_semesters.bad_date_range')}
+          </p>
+        )}
+
         {errKey && (
           <p className="mt-3 text-sm text-rose-600">{t(errKey)}</p>
         )}
@@ -289,7 +336,9 @@ function EditSemesterModal({
           </button>
           <button
             type="submit"
-            disabled={update.isPending || year < 1 || year > 999}
+            disabled={
+              update.isPending || year < 1 || year > 999 || !dateOrderOk
+            }
             className="inline-flex items-center px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-sm font-medium shadow-sm disabled:bg-slate-300 disabled:cursor-not-allowed"
           >
             {update.isPending ? t('common.saving') : t('common.save')}

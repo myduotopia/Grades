@@ -65,6 +65,8 @@ class SemesterOut(BaseModel):
     academic_year: int
     term: int
     is_current: bool
+    start_date: date
+    end_date: date
 
 
 class SemesterList(BaseModel):
@@ -75,6 +77,8 @@ class SemesterList(BaseModel):
 class SemesterUpdate(BaseModel):
     academic_year: int = Field(ge=1, le=999)
     term: Literal[1, 2, 3, 4]
+    start_date: date
+    end_date: date
 
 
 # ---------- /api/categories ----------

@@ -15,6 +15,7 @@ from models.curriculum import (
     Semester,
     Subject,
     SubjectCategoryWeight,
+    default_semester_dates,
 )
 from models.settings import UserSettings
 from schemas import MeSettingsUpdate, SeedResult
@@ -65,12 +66,15 @@ def seed(
     )
     if not has_semester:
         academic_year, term = _default_semester_for(date.today())
+        start_date, end_date = default_semester_dates(academic_year, term, 2)
         db.add(
             Semester(
                 user_id=user_id,
                 academic_year=academic_year,
                 term=term,
                 is_current=True,
+                start_date=start_date,
+                end_date=end_date,
             )
         )
         semesters_created = 1

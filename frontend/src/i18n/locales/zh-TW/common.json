@@ -54,7 +54,10 @@
     "edit_title": "編輯學期",
     "year_label": "學年 (民國)",
     "term_label": "學期",
-    "term_option": "第 {{n}} 學期"
+    "term_option": "第 {{n}} 學期",
+    "start_date_label": "開始日期",
+    "end_date_label": "結束日期",
+    "bad_date_range": "開始日期不能晚於結束日期"
   },
   "admin_subjects": {
     "title": "科目權重設定",
@@ -282,7 +285,8 @@
       "duplicate": "這個學期已經存在",
       "delete_current": "不能刪除目前學期。請先把另一個學期設為目前學期。",
       "delete_has_items": "這個學期下還有考試 / 成績，不能刪除。請先把考試移到其他學期。",
-      "not_found": "找不到這個學期"
+      "not_found": "找不到這個學期",
+      "bad_date_range": "開始日期不能晚於結束日期"
     }
   }
 }

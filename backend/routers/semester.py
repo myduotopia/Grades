@@ -22,7 +22,7 @@ from sqlalchemy.orm import Session
 
 from auth import require_user_id
 from database import get_db
-from models.curriculum import Item, Semester
+from models.curriculum import Item, Semester, default_semester_dates
 from models.settings import UserSettings
 from schemas import ListMeta, SemesterList, SemesterOut, SemesterUpdate
 
@@ -140,11 +140,16 @@ def create_semester(
 ) -> SemesterOut:
     terms_per_year = _get_terms_per_year(db, user_id)
     academic_year, term = _next_slot(db, user_id, terms_per_year)
+    start_date, end_date = default_semester_dates(
+        academic_year, term, terms_per_year
+    )
     semester = Semester(
         user_id=user_id,
         academic_year=academic_year,
         term=term,
         is_current=False,
+        start_date=start_date,
+        end_date=end_date,
     )
     db.add(semester)
     try:
@@ -202,8 +207,21 @@ def update_semester(
     )
     if target is None:
         raise _not_found_error()
+    if body.start_date > body.end_date:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error": {
+                    "code": "INVALID_DATE_RANGE",
+                    "message_key": "errors.semester.bad_date_range",
+                    "message": "start_date must be on or before end_date.",
+                }
+            },
+        )
     target.academic_year = body.academic_year
     target.term = body.term
+    target.start_date = body.start_date
+    target.end_date = body.end_date
     try:
         db.commit()
     except IntegrityError:

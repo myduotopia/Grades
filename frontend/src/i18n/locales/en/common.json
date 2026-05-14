@@ -54,7 +54,10 @@
     "edit_title": "Edit semester",
     "year_label": "Academic year (Minguo)",
     "term_label": "Term",
-    "term_option": "Term {{n}}"
+    "term_option": "Term {{n}}",
+    "start_date_label": "Start date",
+    "end_date_label": "End date",
+    "bad_date_range": "Start date cannot be after end date"
   },
   "admin_subjects": {
     "title": "Subject weights",
@@ -282,7 +285,8 @@
       "duplicate": "This semester slot already exists",
       "delete_current": "Cannot delete the current semester. Set another as current first.",
       "delete_has_items": "This semester has tests/grades and cannot be deleted. Move them to another semester first.",
-      "not_found": "Semester not found"
+      "not_found": "Semester not found",
+      "bad_date_range": "Start date cannot be after end date"
     }
   }
 }
