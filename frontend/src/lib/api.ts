@@ -84,6 +84,12 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
       'Content-Type': 'application/json',
     },
   })
+  if (res.status === 401) {
+    // Backend rejected the token (expired / wrong signer / etc). Clear the
+    // local Supabase session — AuthProvider's onAuthStateChange listener
+    // then sets session=null and ProtectedRoute redirects to /login.
+    void supabase.auth.signOut({ scope: 'local' }).catch(() => {})
+  }
   if (res.status === 204) return undefined as T
   const text = await res.text()
   const json = text ? JSON.parse(text) : null
@@ -297,6 +303,9 @@ async function uploadMultipart<T>(
     headers: { Authorization: `Bearer ${token}` },
     body: formData,
   })
+  if (res.status === 401) {
+    void supabase.auth.signOut({ scope: 'local' }).catch(() => {})
+  }
   const text = await res.text()
   const json = text ? JSON.parse(text) : null
   if (!res.ok) {
