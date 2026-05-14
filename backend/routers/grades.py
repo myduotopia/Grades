@@ -35,10 +35,9 @@ from sqlalchemy.orm import Session
 from auth import require_user_id
 from database import get_db
 from models.classroom import Classroom, Student
-from models.curriculum import Category, Item, Semester, Subject
+from models.curriculum import Category, Item, Semester, Subject, SubjectCategoryWeight
 from models.grading import Grade
 from schemas import (
-    CategoryWeightOut,
     ClassroomGradesView,
     GradeEntryOut,
     GradeImportColumnPreview,
@@ -49,6 +48,7 @@ from schemas import (
     SemesterList,
     SemesterOut,
     StudentBriefOut,
+    SubjectCategoryWeightOut,
 )
 
 router = APIRouter()
@@ -602,16 +602,42 @@ def get_classroom_grades(
                 "No current semester is set.",
             )
 
-    # Category weights — for the frontend to apply.
-    cats = (
-        db.query(Category)
-        .filter(Category.user_id == user_id)
+    # Category id ↔ system_key lookup for resolving item categories below.
+    cats = db.query(Category).filter(Category.user_id == user_id).all()
+    cat_id_to_key: dict[UUID, str] = {c.id: c.system_key for c in cats}
+
+    # All subjects visible to the user (built-in + custom).
+    subjects = (
+        db.query(Subject)
+        .filter((Subject.user_id.is_(None)) | (Subject.user_id == user_id))
         .all()
     )
-    category_weights = [
-        CategoryWeightOut(system_key=c.system_key, weight=c.weight) for c in cats
+    subj_by_id = {s.id: s for s in subjects}
+
+    # Per-subject category weights for this user.
+    scw_rows = (
+        db.query(SubjectCategoryWeight)
+        .filter(SubjectCategoryWeight.user_id == user_id)
+        .all()
+    )
+    subject_category_weights = [
+        SubjectCategoryWeightOut(
+            subject_id=r.subject_id,
+            subject_system_key=(
+                subj_by_id[r.subject_id].system_key
+                if r.subject_id in subj_by_id
+                else None
+            ),
+            subject_display_name=(
+                subj_by_id[r.subject_id].display_name
+                if r.subject_id in subj_by_id
+                else None
+            ),
+            category_system_key=cat_id_to_key.get(r.category_id, ""),
+            weight=r.weight,
+        )
+        for r in scw_rows
     ]
-    cat_id_to_key: dict[UUID, str] = {c.id: c.system_key for c in cats}
 
     # Roster
     students = (
@@ -635,20 +661,21 @@ def get_classroom_grades(
         .all()
     )
 
-    # Resolve subject system_key (we only seed global built-in subjects).
-    subj_id_to_key: dict[UUID, str | None] = {}
-    if items:
-        subj_ids = {i.subject_id for i in items}
-        subj_rows = (
-            db.query(Subject).filter(Subject.id.in_(subj_ids)).all()
-        )
-        subj_id_to_key = {s.id: s.system_key for s in subj_rows}
-
     item_outs = [
         ItemOut(
             id=i.id,
             name=i.name,
-            subject_system_key=subj_id_to_key.get(i.subject_id),
+            subject_id=i.subject_id,
+            subject_system_key=(
+                subj_by_id[i.subject_id].system_key
+                if i.subject_id in subj_by_id
+                else None
+            ),
+            subject_display_name=(
+                subj_by_id[i.subject_id].display_name
+                if i.subject_id in subj_by_id
+                else None
+            ),
             category_system_key=cat_id_to_key.get(i.category_id, ""),
         )
         for i in items
@@ -669,7 +696,7 @@ def get_classroom_grades(
 
     return ClassroomGradesView(
         semester=SemesterOut.model_validate(semester),
-        category_weights=category_weights,
+        subject_category_weights=subject_category_weights,
         students=[StudentBriefOut.model_validate(s) for s in students],
         items=item_outs,
         grades=[

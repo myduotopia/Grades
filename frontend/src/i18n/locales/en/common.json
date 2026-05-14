@@ -26,16 +26,28 @@
   "nav": {
     "home": "Home",
     "classes": "Classes",
-    "admin_categories": "Category weights",
+    "admin_subjects": "Subject weights",
     "open_menu": "Open menu"
   },
-  "admin_categories": {
-    "title": "Category weights",
-    "subtitle": "Set how much each category contributes to the final grade. Non-bonus weights must sum to 100%.",
-    "sum_label": "Current sum (excluding bonus)",
-    "sum_invalid_hint": "Sum must equal 100",
-    "extra_hint": "Bonus is added on top of the final grade (capped at 100), not part of the 100% split.",
-    "saved": "Saved"
+  "admin_subjects": {
+    "title": "Subject weights",
+    "subtitle": "Each subject can have its own category-weight mix. Add custom subjects and adjust how 段考 / 小考 / 作業 / 出席率 / 額外加分 contribute per subject. Non-bonus weights per row must sum to 100%.",
+    "saved": "Saved",
+    "add_subject": "Add subject",
+    "custom_badge": "Custom",
+    "sum_invalid_hint": "Each row (excluding bonus) must equal 100",
+    "formula_hint": "Bonus is added on top of the weighted total (capped at 100), not part of the 100% split.",
+    "confirm_delete": "Delete subject \"{{name}}\"? This will also remove all exams and grades under it.",
+    "col": {
+      "subject": "Subject",
+      "sum": "Sum",
+      "actions": "Actions"
+    },
+    "modal": {
+      "add_title": "Add custom subject",
+      "name_label": "Subject name",
+      "name_placeholder": "e.g., Taiwanese, Homeroom"
+    }
   },
   "home": {
     "welcome": "Welcome back",

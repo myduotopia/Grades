@@ -54,7 +54,10 @@ export function Grades() {
     [view_data],
   )
   const subjectsPresent = useMemo(
-    () => (view_data ? subjectsInView(view_data) : []),
+    () =>
+      view_data
+        ? subjectsInView(view_data, SYSTEM_SUBJECT_KEYS as readonly string[])
+        : [],
     [view_data],
   )
 
@@ -161,6 +164,13 @@ export function Grades() {
   )
 }
 
+type SubjectRef = ReturnType<typeof subjectsInView>[number]
+
+function subjectLabel(s: SubjectRef, t: (k: string) => string): string {
+  if (s.system_key) return t(`subject.${s.system_key}`)
+  return s.display_name ?? '—'
+}
+
 // ---------- 依學生 view (overview matrix) ----------
 
 function ByStudentTable({
@@ -168,25 +178,15 @@ function ByStudentTable({
   matrix,
   subjects,
 }: {
-  view: ReturnType<typeof useQuery>['data'] extends infer T
-    ? T extends undefined
-      ? never
-      : T
-    : never
+  view: import('../lib/api').ClassroomGradesView
   matrix: ReturnType<typeof buildMatrix>
-  subjects: string[]
+  subjects: SubjectRef[]
 }) {
   const { t } = useTranslation()
-  const v = view as import('../lib/api').ClassroomGradesView
 
-  if (v.items.length === 0) {
+  if (view.items.length === 0) {
     return <EmptyHint />
   }
-
-  // Order subjects by the canonical SYSTEM_SUBJECT_KEYS ordering.
-  const orderedSubjects = SYSTEM_SUBJECT_KEYS.filter((k) =>
-    subjects.includes(k),
-  )
 
   return (
     <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
@@ -200,9 +200,12 @@ function ByStudentTable({
               <th className="px-4 py-3 text-left font-medium">
                 {t('students.col.name')}
               </th>
-              {orderedSubjects.map((k) => (
-                <th key={k} className="px-4 py-3 text-left font-medium">
-                  {t(`subject.${k}`)}
+              {subjects.map((sub) => (
+                <th
+                  key={sub.id}
+                  className="px-4 py-3 text-left font-medium"
+                >
+                  {subjectLabel(sub, t)}
                 </th>
               ))}
               <th className="px-4 py-3 text-left font-medium">
@@ -211,10 +214,10 @@ function ByStudentTable({
             </tr>
           </thead>
           <tbody>
-            {v.students.map((s) => {
+            {view.students.map((s) => {
               const row = matrix[s.id] ?? {}
-              const totals = orderedSubjects
-                .map((sub) => row[sub]?.weightedTotal)
+              const totals = subjects
+                .map((sub) => row[sub.id]?.weightedTotal)
                 .filter((n): n is number => typeof n === 'number')
               const overall =
                 totals.length > 0
@@ -229,13 +232,14 @@ function ByStudentTable({
                     {s.seat_number}
                   </td>
                   <td className="px-4 py-2.5 text-slate-700">
-                    {s.name || (
-                      <span className="text-slate-400">—</span>
-                    )}
+                    {s.name || <span className="text-slate-400">—</span>}
                   </td>
-                  {orderedSubjects.map((sub) => (
-                    <td key={sub} className="px-4 py-2.5 text-slate-700">
-                      {formatScore(row[sub]?.weightedTotal)}
+                  {subjects.map((sub) => (
+                    <td
+                      key={sub.id}
+                      className="px-4 py-2.5 text-slate-700"
+                    >
+                      {formatScore(row[sub.id]?.weightedTotal)}
                     </td>
                   ))}
                   <td className="px-4 py-2.5 text-slate-900 font-semibold">
@@ -261,17 +265,15 @@ function BySubjectView({
   subjects,
 }: {
   view: import('../lib/api').ClassroomGradesView
-  subjects: string[]
+  subjects: SubjectRef[]
 }) {
   const { t } = useTranslation()
-  const ordered = SYSTEM_SUBJECT_KEYS.filter((k) => subjects.includes(k))
-  const [picked, setPicked] = useState<string>(ordered[0] ?? '')
+  const [pickedId, setPickedId] = useState<string>(subjects[0]?.id ?? '')
 
   if (view.items.length === 0) return <EmptyHint />
 
-  const items = view.items.filter((i) => i.subject_system_key === picked)
+  const items = view.items.filter((i) => i.subject_id === pickedId)
   const grades = view.grades
-  // index: studentId → itemId → score
   const lookup: Record<string, Record<string, number>> = {}
   for (const g of grades) {
     lookup[g.student_id] ??= {}
@@ -283,13 +285,13 @@ function BySubjectView({
       <label className="text-sm text-slate-600 inline-flex items-center gap-2">
         {t('grades.pick_subject')}
         <select
-          value={picked}
-          onChange={(e) => setPicked(e.target.value)}
+          value={pickedId}
+          onChange={(e) => setPickedId(e.target.value)}
           className="border border-slate-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 bg-white"
         >
-          {ordered.map((k) => (
-            <option key={k} value={k}>
-              {t(`subject.${k}`)}
+          {subjects.map((sub) => (
+            <option key={sub.id} value={sub.id}>
+              {subjectLabel(sub, t)}
             </option>
           ))}
         </select>

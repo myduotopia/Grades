@@ -3,7 +3,7 @@ import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import { AuthProvider } from './auth/AuthProvider'
 import { ProtectedRoute } from './auth/ProtectedRoute'
 import { AppShell } from './layout/AppShell'
-import { AdminCategories } from './pages/AdminCategories'
+import { AdminSubjects } from './pages/AdminSubjects'
 import { AuthCallback } from './pages/AuthCallback'
 import { Classes } from './pages/Classes'
 import { Grades } from './pages/Grades'
@@ -30,7 +30,7 @@ function App() {
                 path="/classes/:classroomId/grades"
                 element={<Grades />}
               />
-              <Route path="/admin/categories" element={<AdminCategories />} />
+              <Route path="/admin/subjects" element={<AdminSubjects />} />
             </Route>
           </Route>
         </Routes>

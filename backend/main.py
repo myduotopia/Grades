@@ -18,6 +18,7 @@ from routers import classroom as classroom_router
 from routers import grades as grades_router
 from routers import me as me_router
 from routers import student as student_router
+from routers import subjects as subjects_router
 
 app = FastAPI(
     title="Grades API",
@@ -55,6 +56,7 @@ app.include_router(
 # /api/students/{id}) — mounted with no prefix.
 app.include_router(student_router.router, tags=["students"])
 app.include_router(grades_router.router, tags=["grades"])
+app.include_router(subjects_router.router, tags=["subjects"])
 
 
 @app.get("/api/me")

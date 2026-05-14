@@ -54,6 +54,45 @@ class CategoryWeightUpdate(BaseModel):
     weight: int = Field(ge=0, le=100)
 
 
+# ---------- /api/subjects + /api/subject-weights ----------
+
+
+class SubjectOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    system_key: str | None
+    display_name: str | None
+    is_custom: bool
+
+
+class SubjectList(BaseModel):
+    data: list[SubjectOut]
+
+
+class SubjectCreate(BaseModel):
+    display_name: str = Field(min_length=1, max_length=100)
+
+
+class SubjectWeightOut(BaseModel):
+    subject_id: UUID
+    subject_system_key: str | None
+    subject_display_name: str | None
+    category_id: UUID
+    category_system_key: str
+    weight: int
+
+
+class SubjectWeightsList(BaseModel):
+    data: list[SubjectWeightOut]
+
+
+class SubjectWeightsUpdate(BaseModel):
+    subject_id: UUID
+    category_id: UUID
+    weight: int = Field(ge=0, le=100)
+
+
 # ---------- /api/classrooms ----------
 
 ClassroomSource = Literal["manual", "duotopia", "google_classroom"]
@@ -215,8 +254,13 @@ class SemesterList(BaseModel):
 
 # ---------- /api/classrooms/:id/grades (view) ----------
 
-class CategoryWeightOut(BaseModel):
-    system_key: str
+class SubjectCategoryWeightOut(BaseModel):
+    """Per-subject category weight; subject identified by id (+ system_key for
+    built-ins, display_name for custom)."""
+    subject_id: UUID
+    subject_system_key: str | None
+    subject_display_name: str | None
+    category_system_key: str
     weight: int
 
 
@@ -230,13 +274,13 @@ class StudentBriefOut(BaseModel):
 
 
 class ItemOut(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     name: str
-    subject_system_key: str | None  # global subjects use system_key; custom future
+    subject_id: UUID
+    subject_system_key: str | None
+    subject_display_name: str | None  # set when subject is a custom one
     category_system_key: str
-    exam_date: date | None = None  # NOTE: not yet stored; placeholder for future
+    exam_date: date | None = None  # placeholder; not yet stored
 
 
 class GradeEntryOut(BaseModel):
@@ -247,7 +291,7 @@ class GradeEntryOut(BaseModel):
 
 class ClassroomGradesView(BaseModel):
     semester: SemesterOut
-    category_weights: list[CategoryWeightOut]
+    subject_category_weights: list[SubjectCategoryWeightOut]
     students: list[StudentBriefOut]
     items: list[ItemOut]
     grades: list[GradeEntryOut]

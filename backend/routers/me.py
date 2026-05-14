@@ -8,7 +8,14 @@ from sqlalchemy.orm import Session
 
 from auth import require_user_id
 from database import get_db
-from models.curriculum import SYSTEM_CATEGORY_DEFAULTS, Category, Semester
+from models.curriculum import (
+    SUBJECT_WEIGHT_PROFILES,
+    SYSTEM_CATEGORY_DEFAULTS,
+    Category,
+    Semester,
+    Subject,
+    SubjectCategoryWeight,
+)
 from schemas import SeedResult
 
 router = APIRouter()
@@ -67,8 +74,54 @@ def seed(
         )
         semesters_created = 1
 
+    # Subject × category weights: fill any missing combinations using the
+    # per-subject profile. Must run after Category rows above are flushed so
+    # we can resolve their ids.
+    db.flush()
+    _seed_subject_weights(db, user_id)
+
     db.commit()
     return SeedResult(
         categories_created=categories_created,
         semesters_created=semesters_created,
     )
+
+
+def _seed_subject_weights(db: Session, user_id: UUID) -> None:
+    """Fill missing subject_category_weight rows for the user.
+
+    Idempotent: walks all built-in subjects × all user categories and inserts
+    only rows that don't yet exist. Custom subjects already have rows seeded
+    at creation time (see /api/subjects POST).
+    """
+    cats = db.query(Category).filter(Category.user_id == user_id).all()
+    cat_by_key = {c.system_key: c for c in cats}
+    builtin_subjects = (
+        db.query(Subject)
+        .filter(Subject.user_id.is_(None), Subject.system_key.isnot(None))
+        .all()
+    )
+    existing = {
+        (row.subject_id, row.category_id)
+        for row in db.query(SubjectCategoryWeight)
+        .filter(SubjectCategoryWeight.user_id == user_id)
+        .all()
+    }
+    for s in builtin_subjects:
+        profile = SUBJECT_WEIGHT_PROFILES.get(s.system_key or "")
+        if profile is None:
+            continue
+        for cat_key, weight in profile.items():
+            cat = cat_by_key.get(cat_key)
+            if cat is None:
+                continue
+            if (s.id, cat.id) in existing:
+                continue
+            db.add(
+                SubjectCategoryWeight(
+                    user_id=user_id,
+                    subject_id=s.id,
+                    category_id=cat.id,
+                    weight=weight,
+                )
+            )

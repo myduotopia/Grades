@@ -206,6 +206,44 @@ export interface CategoryWeight {
   weight: number
 }
 
+export interface Subject {
+  id: string
+  system_key: string | null
+  display_name: string | null
+  is_custom: boolean
+}
+
+export interface SubjectList {
+  data: Subject[]
+}
+
+export interface SubjectWeight {
+  subject_id: string
+  subject_system_key: string | null
+  subject_display_name: string | null
+  category_id: string
+  category_system_key: string
+  weight: number
+}
+
+export interface SubjectWeightsList {
+  data: SubjectWeight[]
+}
+
+export interface SubjectWeightsUpdate {
+  subject_id: string
+  category_id: string
+  weight: number
+}
+
+export interface SubjectCategoryWeightView {
+  subject_id: string
+  subject_system_key: string | null
+  subject_display_name: string | null
+  category_system_key: string
+  weight: number
+}
+
 export interface StudentBrief {
   id: string
   seat_number: number
@@ -216,7 +254,9 @@ export interface StudentBrief {
 export interface GradeItem {
   id: string
   name: string
+  subject_id: string
   subject_system_key: string | null
+  subject_display_name: string | null
   category_system_key: string
   exam_date: string | null
 }
@@ -229,7 +269,7 @@ export interface GradeEntry {
 
 export interface ClassroomGradesView {
   semester: Semester
-  category_weights: CategoryWeight[]
+  subject_category_weights: SubjectCategoryWeightView[]
   students: StudentBrief[]
   items: GradeItem[]
   grades: GradeEntry[]
@@ -343,6 +383,24 @@ export const api = {
   },
   semesters: {
     list: () => request<SemesterList>('/api/semesters'),
+  },
+  subjects: {
+    list: () => request<SubjectList>('/api/subjects'),
+    create: (display_name: string) =>
+      request<Subject>('/api/subjects', {
+        method: 'POST',
+        body: JSON.stringify({ display_name }),
+      }),
+    remove: (id: string) =>
+      request<void>(`/api/subjects/${id}`, { method: 'DELETE' }),
+  },
+  subjectWeights: {
+    list: () => request<SubjectWeightsList>('/api/subject-weights'),
+    update: (body: SubjectWeightsUpdate[]) =>
+      request<SubjectWeightsList>('/api/subject-weights', {
+        method: 'PUT',
+        body: JSON.stringify(body),
+      }),
   },
   grades: {
     view: (classroomId: string, semesterId?: string) => {
