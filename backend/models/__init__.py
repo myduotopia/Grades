@@ -3,6 +3,8 @@ from models.access import AccountLink
 from models.base import Base
 from models.classroom import Classroom, Student
 from models.curriculum import (
+    CUSTOM_SUBJECT_DEFAULT_PROFILE,
+    SUBJECT_WEIGHT_PROFILES,
     SYSTEM_CATEGORY_DEFAULTS,
     SYSTEM_CATEGORY_KEYS,
     SYSTEM_SUBJECT_KEYS,
@@ -10,6 +12,7 @@ from models.curriculum import (
     Item,
     Semester,
     Subject,
+    SubjectCategoryWeight,
     item_classroom,
 )
 from models.grading import Grade, PointRecord, PointRule, StudentStandard
@@ -30,5 +33,8 @@ __all__ = [
     "Student",
     "StudentStandard",
     "Subject",
+    "SubjectCategoryWeight",
+    "SUBJECT_WEIGHT_PROFILES",
+    "CUSTOM_SUBJECT_DEFAULT_PROFILE",
     "item_classroom",
 ]

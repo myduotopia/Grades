@@ -15,7 +15,10 @@ from auth import get_current_user
 from config import settings
 from routers import categories as categories_router
 from routers import classroom as classroom_router
+from routers import grades as grades_router
 from routers import me as me_router
+from routers import student as student_router
+from routers import subjects as subjects_router
 
 app = FastAPI(
     title="Grades API",
@@ -49,6 +52,11 @@ app.include_router(
 app.include_router(
     categories_router.router, prefix="/api/categories", tags=["categories"]
 )
+# Student router uses absolute paths (mixes /api/classrooms/{id}/students/* and
+# /api/students/{id}) — mounted with no prefix.
+app.include_router(student_router.router, tags=["students"])
+app.include_router(grades_router.router, tags=["grades"])
+app.include_router(subjects_router.router, tags=["subjects"])
 
 
 @app.get("/api/me")

@@ -26,16 +26,28 @@
   "nav": {
     "home": "Home",
     "classes": "Classes",
-    "admin_categories": "Category weights",
+    "admin_subjects": "Subject weights",
     "open_menu": "Open menu"
   },
-  "admin_categories": {
-    "title": "Category weights",
-    "subtitle": "Set how much each category contributes to the final grade. Non-bonus weights must sum to 100%.",
-    "sum_label": "Current sum (excluding bonus)",
-    "sum_invalid_hint": "Sum must equal 100",
-    "extra_hint": "Bonus is added on top of the final grade (capped at 100), not part of the 100% split.",
-    "saved": "Saved"
+  "admin_subjects": {
+    "title": "Subject weights",
+    "subtitle": "Each subject can have its own category-weight mix. Add custom subjects and adjust how 段考 / 小考 / 作業 / 出席率 / 額外加分 contribute per subject. Non-bonus weights per row must sum to 100%.",
+    "saved": "Saved",
+    "add_subject": "Add subject",
+    "custom_badge": "Custom",
+    "sum_invalid_hint": "Each row (excluding bonus) must equal 100",
+    "formula_hint": "Bonus is added on top of the weighted total (capped at 100), not part of the 100% split.",
+    "confirm_delete": "Delete subject \"{{name}}\"? This will also remove all exams and grades under it.",
+    "col": {
+      "subject": "Subject",
+      "sum": "Sum",
+      "actions": "Actions"
+    },
+    "modal": {
+      "add_title": "Add custom subject",
+      "name_label": "Subject name",
+      "name_placeholder": "e.g., Taiwanese, Homeroom"
+    }
   },
   "home": {
     "welcome": "Welcome back",
@@ -104,13 +116,140 @@
       "name_label": "Class label",
       "name_placeholder": "e.g. 甲, A, 1, Red"
     },
+    "view": {
+      "list": "List",
+      "card": "Cards"
+    },
+    "col": {
+      "name": "Class",
+      "source": "Source",
+      "actions": "Actions"
+    },
+    "open_grades_aria": "Open grades for {{name}}",
     "actions": {
       "edit": "Edit",
       "delete": "Delete",
+      "view_students": "View students",
+      "bulk_add_students": "Batch add students",
+      "import_grades": "Import grades",
       "confirm_delete": "Delete \"{{name}}\"? This will also remove its students and grades."
     },
     "errors": {
       "duplicate_name": "A class with this name already exists"
+    }
+  },
+  "students": {
+    "title": "Students",
+    "subtitle": "Manage this class's roster, seat numbers, and per-category standards.",
+    "back_to_classes": "Back to classes",
+    "no_name": "(No name)",
+    "standards_heading": "Per-category standards (optional)",
+    "confirm_delete": "Delete student at seat {{seat}}? This cannot be undone.",
+    "view": {
+      "list": "List",
+      "card": "Cards"
+    },
+    "col": {
+      "seat": "Seat",
+      "name": "Name",
+      "email": "Email",
+      "actions": "Actions"
+    },
+    "actions": {
+      "add": "Add student",
+      "edit": "Edit",
+      "delete": "Delete",
+      "import": "Batch import (Excel)"
+    },
+    "empty": {
+      "heading": "No students yet",
+      "subheading": "Use the Excel batch import, or add students one at a time."
+    },
+    "modal": {
+      "add_title": "Add student",
+      "edit_title": "Edit student"
+    },
+    "import": {
+      "title": "Batch import students",
+      "intro": "Upload an .xlsx file — preview first, then confirm. Three columns: seat number (required), name (optional), email (optional). Grade import will be a separate file/flow.",
+      "download_template": "Download blank template",
+      "file_label": "Choose Excel file",
+      "preview": "Parse preview",
+      "confirm": "Confirm import",
+      "choose_another": "Choose another file",
+      "action": "Action",
+      "errors": "Errors",
+      "action_label": {
+        "create": "Create",
+        "update": "Update",
+        "error": "Error"
+      },
+      "summary": {
+        "total": "{{n}} total",
+        "create": "{{n}} to create",
+        "update": "{{n}} to update",
+        "errors": "{{n}} with errors"
+      }
+    },
+    "errors": {
+      "duplicate_seat": "Seat number already exists in this class"
+    }
+  },
+  "grades": {
+    "title": "Grades overview",
+    "title_with_class": "{{name}} — Grades",
+    "subtitle": "Per-subject weighted totals by category weight, computed live.",
+    "semester_label": "Semester:",
+    "semester_format": "Year {{year}}, Term {{term}}",
+    "current": "current",
+    "overall_avg": "Overall avg",
+    "pick_subject": "Pick subject:",
+    "formula_hint": "Weighting: categories with no grades are excluded and the remaining weights are re-normalised. Extra bonus is added on top (capped at 100).",
+    "empty": "No grade data for this semester yet. Use 「Import grades」 on the class page to upload a file.",
+    "view": {
+      "by_student": "By student",
+      "by_subject": "By subject"
+    },
+    "import": {
+      "title": "Batch import grades",
+      "intro": "Upload an .xlsx file. Column A is the seat number; each column from B onward is one exam (category / date / name). In the preview, pick a subject per column — students must already exist in this class roster.",
+      "download_template": "Download blank template",
+      "file_label": "Choose Excel file",
+      "preview": "Parse preview",
+      "confirm": "Confirm import",
+      "choose_another": "Choose another file",
+      "errors": "Errors",
+      "columns_heading": "Exam items",
+      "students_heading": "Students & scores",
+      "subject_picker": "Pick subject…",
+      "subject_missing_hint": "Pick a subject for every column before importing",
+      "col": {
+        "column": "Col",
+        "category": "Category",
+        "date": "Date",
+        "name": "Exam name",
+        "subject": "Subject"
+      },
+      "summary": {
+        "columns": "{{n}} exam column(s)",
+        "rows": "{{n}} student row(s)",
+        "scores": "{{n}} score(s)",
+        "errors": "{{n}} error(s)"
+      }
+    }
+  },
+  "errors": {
+    "import": {
+      "bad_file_type": "File must be .xlsx format",
+      "unreadable": "Excel file could not be parsed",
+      "empty": "Workbook is empty",
+      "bad_header": "Excel header row is missing required columns",
+      "has_errors": "Preview contains errors; fix them before importing",
+      "no_current_semester": "No current semester is set — configure it before importing grades",
+      "subject_required_for_commit": "Pick a subject for every column before importing",
+      "bad_subjects_payload": "Subject choices payload is malformed",
+      "subject_invalid": "Unknown subject",
+      "category_not_seeded": "This category isn't seeded for your account yet — visit 「Category weights」 to initialize"
     }
   }
 }

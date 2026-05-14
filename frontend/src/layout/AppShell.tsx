@@ -8,7 +8,7 @@ import { supabase } from '../lib/supabase'
 const NAV: { to: string; key: string; icon: 'home' | 'classes' | 'categories' }[] = [
   { to: '/', key: 'nav.home', icon: 'home' },
   { to: '/classes', key: 'nav.classes', icon: 'classes' },
-  { to: '/admin/categories', key: 'nav.admin_categories', icon: 'categories' },
+  { to: '/admin/subjects', key: 'nav.admin_subjects', icon: 'categories' },
 ]
 
 export function AppShell() {

@@ -133,37 +133,83 @@ Idempotent. Called by `/auth/callback` on first sign-in to create the 7 default 
 
 ### Students
 
+One Excel file maps to one classroom — the classroom is in the URL, never in
+the file. The file is roster-only (3 columns); grade import is a separate
+endpoint to be added in a future issue. Re-importing is a pure upsert keyed on
+`seat_number`: matching seats overwrite, new seats append, missing seats are
+left untouched (no auto-delete). Per-student standard thresholds are edited
+on the website (single-student modal), not in Excel.
+
 | Method | Path | Description |
 |---|---|---|
-| GET | `/api/classrooms/:id/students` | Students in a classroom |
-| POST | `/api/students` | Create one student |
+| GET | `/api/classrooms/:id/students` | List students in a classroom |
+| POST | `/api/classrooms/:id/students` | Create one student in the classroom |
 | PUT | `/api/students/:id` | Update (incl. transfer via `classroom_id`) |
 | DELETE | `/api/students/:id` | Cascade-delete grades, standards, point_records |
-| POST | `/api/students/import` | Excel batch import |
+| POST | `/api/classrooms/:id/students/import` | Excel batch import (preview + commit) |
+| GET | `/api/classrooms/:id/students/template.xlsx` | Download blank template |
 
-#### `POST /api/students/import`
+#### Student payload (POST / PUT body)
 
-Multipart form:
-- `file`: `.xlsx` file
-- `auto_create_classrooms`: `"true"` / `"false"` (default `false`)
-
-Excel columns expected (header row required):
-- 班級 / `class`
-- 座號 / `seat_number`
-- 姓名 / `name`
-- (optional) `<category_name>_標準` columns, e.g., `段考_標準`, `小考_標準`
-
-Response:
 ```json
 {
-  "created": 12,
-  "updated": 8,
-  "missing_classrooms": ["六年丙班", "六年丁班"],
-  "errors": [{ "row": 5, "message_key": "import.bad_score", "details": {...} }]
+  "seat_number": 1,
+  "name": "小明",
+  "email": "ming@example.com",
+  "standards": { "major_exam": 80, "quiz": 70 }
 }
 ```
 
-If `missing_classrooms` is non-empty and `auto_create_classrooms=false`, returns `409 CONFLICT`. Frontend shows confirm dialog, re-submits with `auto_create_classrooms=true`.
+- `seat_number` required, 1–99
+- `name`, `email` optional (null allowed)
+- `standards` is an optional map of `{ category.system_key: threshold }`.
+  Unknown keys are ignored; keys not in the payload are left untouched.
+- PUT-only: include `classroom_id` to transfer the student to a different
+  classroom (also owned by the current user).
+
+#### `POST /api/classrooms/:id/students/import`
+
+Two-phase: preview first, then confirm.
+
+Multipart form:
+- `file`: `.xlsx`
+
+Query param:
+- `dry_run`: `true` (default) returns preview only — nothing is written;
+  `false` parses + commits in one transaction.
+
+Excel layout (header in row 1, data from row 2):
+
+| Header | Required | Notes |
+|---|---|---|
+| 座號 | ✓ | integer 1–99 |
+| 姓名（選填）| | optional |
+| email（選填）| | optional |
+
+The parser also accepts the bare `姓名` / `Email` forms (without `（選填）`).
+
+Response:
+
+```json
+{
+  "dry_run": true,
+  "summary": { "total_rows": 28, "to_create": 22, "to_update": 5, "errors": 1 },
+  "rows": [
+    {
+      "row_number": 2,
+      "action": "create",
+      "seat_number": 1,
+      "name": "小明",
+      "email": null,
+      "existing_id": null,
+      "errors": []
+    }
+  ]
+}
+```
+
+A `dry_run=false` request returns `400 BAD_REQUEST` (`errors.import.has_errors`)
+if any row has `action: "error"` — fix the file and re-upload.
 
 ### Subjects
 
@@ -223,6 +269,95 @@ When PUT sets `is_current=true`, the backend automatically sets all other rows f
 | POST | `/api/grades/bulk` | Submit many grade entries at once |
 | PUT | `/api/grades/:id` | Update single grade |
 | DELETE | `/api/grades/:id` | Delete grade (and any point_record) |
+| GET | `/api/semesters` | List the current user's semesters |
+| GET | `/api/classrooms/:id/grades?semester_id=` | One classroom's grade bundle for one semester (defaults to current). Frontend computes weighted totals from `category_weights`. |
+| GET | `/api/classrooms/:id/grades/template.xlsx` | Download grade batch-import template |
+| POST | `/api/classrooms/:id/grades/import` | Excel batch import (preview + commit) |
+
+#### `GET /api/classrooms/:id/grades`
+
+Returns the full data needed to render the grade page — bounded by classroom
+size × items in this semester, so it ships as a single response. Frontend
+applies the weighting (`lib/gradeMath.ts`).
+
+```json
+{
+  "semester": { "id": "...", "academic_year": 2026, "term": 1, "is_current": true },
+  "category_weights": [ { "system_key": "major_exam", "weight": 50 }, ... ],
+  "students":  [ { "id": "...", "seat_number": 1, "name": "小明", "email": null } ],
+  "items":     [ { "id": "...", "name": "期中考", "subject_system_key": "chinese", "category_system_key": "major_exam", "exam_date": null } ],
+  "grades":    [ { "item_id": "...", "student_id": "...", "score": 87.5 } ]
+}
+```
+
+If no `semester_id` is given and no current semester is set, returns `400` with
+`errors.import.no_current_semester` (re-used).
+
+#### `POST /api/classrooms/:id/grades/import`
+
+Two-phase. The Excel file carries category / date / exam-name per column but
+**no subject** — the teacher picks the subject for each column in the preview
+UI and posts the choices back on commit.
+
+Multipart form:
+- `file`: `.xlsx`
+- `subjects` (commit only): JSON string `{ "<column_index>": "<subject_system_key>" }`
+
+Query param:
+- `dry_run`: `true` (default) parses + previews only; `false` commits.
+
+Excel layout (column A is the roster key; column B onward is one exam each):
+
+| Cell | Content |
+|---|---|
+| A1 | `座號` (literal) |
+| A4+ | seat number (integer 1–99) |
+| B1, C1, ... | category — `段考` / `小考` / `作業` (dropdown in the template) |
+| B2, C2, ... | date (optional; falls back to today if blank) |
+| B3, C3, ... | exam name (optional; falls back to `<類別>-<日期>`) |
+| B4+, C4+, ... | score in `[0, 100]`; blank cells skipped |
+
+Behavior:
+- Requires a current semester (`Semester.is_current = true`) for the user; otherwise `400` with `errors.import.no_current_semester`.
+- Seats with no matching student in the roster → row-level error. Import students first.
+- On commit, each column resolves to an `Item` keyed on
+  `(user_id, subject_id, category_id, current_semester_id, exam_name)` —
+  existing items are reused and grades upserted on `(item_id, student_id)`.
+  Picking a *different* subject for the same column on a later upload creates a
+  *new* item (subject is part of the key).
+- The classroom is linked to each item via `item_classroom`.
+- 出席率 / 額外加分 are excluded from this flow (separate UIs).
+
+Preview response:
+
+```json
+{
+  "dry_run": true,
+  "summary": { "column_total": 1, "row_total": 4, "score_total": 4, "errors": 0 },
+  "columns": [
+    {
+      "column_index": 1,
+      "category_input": "段考", "category_system_key": "major_exam",
+      "exam_date": "2026-05-13",
+      "exam_name": "期中考",
+      "errors": []
+    }
+  ],
+  "students": [
+    {
+      "row_number": 4,
+      "seat_number": 1,
+      "student_id": "uuid",
+      "scores": { "1": 80 },
+      "errors": []
+    }
+  ]
+}
+```
+
+A `dry_run=false` request returns `400` with `errors.import.has_errors` if any
+column or student row has errors, or with `errors.import.subject_required_for_commit`
+if the `subjects` map doesn't cover every non-error column.
 
 `GET /api/items/:id/grades` response:
 ```json
