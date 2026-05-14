@@ -4,11 +4,13 @@ import { NavLink, Outlet } from 'react-router-dom'
 
 import { useAuth } from '../auth/AuthProvider'
 import { supabase } from '../lib/supabase'
+import { SemesterSwitcher } from '../components/SemesterSwitcher'
 
 const NAV: { to: string; key: string; icon: 'home' | 'classes' | 'categories' }[] = [
   { to: '/', key: 'nav.home', icon: 'home' },
   { to: '/classes', key: 'nav.classes', icon: 'classes' },
   { to: '/admin/subjects', key: 'nav.admin_subjects', icon: 'categories' },
+  { to: '/admin/semesters', key: 'nav.admin_semesters', icon: 'categories' },
 ]
 
 export function AppShell() {
@@ -101,9 +103,12 @@ export function AppShell() {
               <line x1="4" y1="18" x2="20" y2="18" />
             </svg>
           </button>
-          <span className="font-semibold text-slate-900 tracking-tight">{t('app.title')}</span>
-          <span className="w-9" />
+          <SemesterSwitcher />
         </header>
+
+        <div className="hidden md:flex h-12 border-b border-slate-200 bg-white items-center justify-end px-6 sticky top-0 z-10">
+          <SemesterSwitcher />
+        </div>
 
         <main className="flex-1 px-4 sm:px-8 lg:px-12 py-8 lg:py-10">
           <Outlet />

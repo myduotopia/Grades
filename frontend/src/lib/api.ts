@@ -23,6 +23,11 @@ export interface MeResponse {
     has_subjects: boolean
     has_current_semester: boolean
   }
+  terms_per_year: 2 | 3 | 4
+}
+
+export interface MeSettingsUpdate {
+  terms_per_year: 2 | 3 | 4
 }
 
 export interface SeedResult {
@@ -199,12 +204,13 @@ export interface GradeImportStudentRow {
 export interface Semester {
   id: string
   academic_year: number
-  term: 1 | 2
+  term: 1 | 2 | 3 | 4
   is_current: boolean
 }
 
 export interface SemesterList {
   data: Semester[]
+  meta: { total: number }
 }
 
 export interface CategoryWeight {
@@ -336,6 +342,11 @@ export const api = {
   me: {
     get: () => request<MeResponse>('/api/me'),
     seed: () => request<SeedResult>('/api/me/seed', { method: 'POST' }),
+    updateSettings: (body: MeSettingsUpdate) =>
+      request<{ terms_per_year: number }>('/api/me/settings', {
+        method: 'PATCH',
+        body: JSON.stringify(body),
+      }),
   },
   classrooms: {
     list: () => request<ClassroomList>('/api/classrooms'),
@@ -392,6 +403,10 @@ export const api = {
   },
   semesters: {
     list: () => request<SemesterList>('/api/semesters'),
+    create: () =>
+      request<Semester>('/api/semesters', { method: 'POST' }),
+    setCurrent: (id: string) =>
+      request<Semester>(`/api/semesters/${id}/set-current`, { method: 'PUT' }),
   },
   subjects: {
     list: () => request<SubjectList>('/api/subjects'),

@@ -7,16 +7,23 @@ import truststore  # noqa: E402
 truststore.inject_into_ssl()  # noqa: E402
 
 from typing import Annotated, Any
+from uuid import UUID
 
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.orm import Session
 
-from auth import get_current_user
+from auth import get_current_user, require_user_id
 from config import settings
+from database import get_db
+from models.classroom import Classroom
+from models.curriculum import Semester, Subject
+from models.settings import UserSettings
 from routers import categories as categories_router
 from routers import classroom as classroom_router
 from routers import grades as grades_router
 from routers import me as me_router
+from routers import semester as semester_router
 from routers import student as student_router
 from routers import subjects as subjects_router
 
@@ -57,25 +64,43 @@ app.include_router(
 app.include_router(student_router.router, tags=["students"])
 app.include_router(grades_router.router, tags=["grades"])
 app.include_router(subjects_router.router, tags=["subjects"])
+app.include_router(
+    semester_router.router, prefix="/api/semesters", tags=["semesters"]
+)
 
 
 @app.get("/api/me")
 def me(
     user: Annotated[dict[str, Any], Depends(get_current_user)],
+    user_id: Annotated[UUID, Depends(require_user_id)],
+    db: Annotated[Session, Depends(get_db)],
 ) -> dict[str, Any]:
-    """Returns the current user's identity (from JWT) and a setup status flag.
-
-    Setup fields are placeholders for now — once classroom/subject/semester
-    CRUD exists they'll run real queries to drive frontend onboarding state.
-    """
+    """Returns the current user's identity, setup status, and preferences."""
+    has_classes = (
+        db.query(Classroom.id).filter(Classroom.user_id == user_id).first()
+        is not None
+    )
+    has_subjects = (
+        db.query(Subject.id).filter(Subject.user_id == user_id).first()
+        is not None
+    )
+    has_current_semester = (
+        db.query(Semester.id)
+        .filter(Semester.user_id == user_id, Semester.is_current.is_(True))
+        .first()
+        is not None
+    )
+    settings_row = db.get(UserSettings, user_id)
+    terms_per_year = settings_row.terms_per_year if settings_row else 2
     return {
         "user": {
             "id": user["sub"],
             "email": user.get("email"),
         },
         "setup": {
-            "has_classes": False,
-            "has_subjects": False,
-            "has_current_semester": False,
+            "has_classes": has_classes,
+            "has_subjects": has_subjects,
+            "has_current_semester": has_current_semester,
         },
+        "terms_per_year": terms_per_year,
     }

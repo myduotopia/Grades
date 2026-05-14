@@ -191,7 +191,7 @@ class Semester(Base, UserScopedMixin, TimestampMixin):
         server_default=text("gen_random_uuid()"),
     )
     academic_year: Mapped[int] = mapped_column(nullable=False)
-    # term: 1 = 上學期 / Term 1, 2 = 下學期 / Term 2
+    # term: 1..N where N = user's terms_per_year (2/3/4).
     term: Mapped[int] = mapped_column(nullable=False)
     is_current: Mapped[bool] = mapped_column(
         nullable=False, server_default=text("false")
@@ -202,7 +202,7 @@ class Semester(Base, UserScopedMixin, TimestampMixin):
             "user_id", "academic_year", "term",
             name="uq_semester_year_term",
         ),
-        CheckConstraint("term IN (1, 2)", name="ck_semester_term"),
+        CheckConstraint("term BETWEEN 1 AND 4", name="ck_semester_term"),
         # at most one is_current=true per user
         Index(
             "ix_semester_one_current_per_user",
