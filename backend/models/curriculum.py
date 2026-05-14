@@ -50,6 +50,39 @@ SYSTEM_SUBJECT_KEYS = (
     "integrated",
 )
 
+# Per-subject category-weight defaults. Used when seeding subject_category_weight
+# rows for a new user and when creating a custom subject. Each profile sums to
+# 100 across non-extra categories.
+_ACADEMIC_PROFILE: dict[str, int] = {
+    "major_exam": 50,
+    "quiz": 20,
+    "homework": 20,
+    "attendance": 10,
+    "extra": 0,
+}
+_ARTS_PE_PROFILE: dict[str, int] = {
+    "major_exam": 0,
+    "quiz": 0,
+    "homework": 60,
+    "attendance": 40,
+    "extra": 0,
+}
+
+SUBJECT_WEIGHT_PROFILES: dict[str, dict[str, int]] = {
+    "chinese": _ACADEMIC_PROFILE,
+    "math": _ACADEMIC_PROFILE,
+    "english": _ACADEMIC_PROFILE,
+    "science": _ACADEMIC_PROFILE,
+    "social_studies": _ACADEMIC_PROFILE,
+    "integrated": _ACADEMIC_PROFILE,
+    "music": _ARTS_PE_PROFILE,
+    "art": _ARTS_PE_PROFILE,
+    "pe": _ARTS_PE_PROFILE,
+}
+
+# Custom subjects (teacher-added) inherit the academic profile by default.
+CUSTOM_SUBJECT_DEFAULT_PROFILE: dict[str, int] = _ACADEMIC_PROFILE
+
 
 class Subject(Base, TimestampMixin):
     """Subject = either a global built-in (user_id NULL, system_key set)
@@ -109,6 +142,43 @@ class Category(Base, UserScopedMixin, TimestampMixin):
             "user_id", "system_key", name="uq_category_user_system_key"
         ),
         CheckConstraint("weight BETWEEN 0 AND 100", name="ck_category_weight_range"),
+    )
+
+
+class SubjectCategoryWeight(Base, UserScopedMixin, TimestampMixin):
+    """Per-subject weight for each category, per teacher.
+
+    Replaces the single per-category Category.weight as the source of truth for
+    weighted-total computation. Category.weight is now only used as a default
+    template when seeding new subject_category_weight rows.
+    """
+    __tablename__ = "subject_category_weight"
+
+    id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        primary_key=True,
+        server_default=text("gen_random_uuid()"),
+    )
+    subject_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("subject.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    category_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("category.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    weight: Mapped[int] = mapped_column(nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id", "subject_id", "category_id",
+            name="uq_scw_user_subject_category",
+        ),
+        CheckConstraint("weight BETWEEN 0 AND 100", name="ck_scw_weight_range"),
     )
 
 

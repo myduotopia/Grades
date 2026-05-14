@@ -26,16 +26,28 @@
   "nav": {
     "home": "首頁",
     "classes": "班級管理",
-    "admin_categories": "類別權重",
+    "admin_subjects": "科目權重設定",
     "open_menu": "開啟選單"
   },
-  "admin_categories": {
-    "title": "類別權重",
-    "subtitle": "設定每個評量類別在總分中的占比，非「額外加分」項目加總須為 100%。",
-    "sum_label": "目前加總（不含額外加分）",
-    "sum_invalid_hint": "加總必須等於 100",
-    "extra_hint": "額外加分不計入 100%，直接加在學生最後總分（封頂 100）",
-    "saved": "已儲存"
+  "admin_subjects": {
+    "title": "科目權重設定",
+    "subtitle": "每個科目可以有自己的類別權重組合。新增自訂科目，並調整每科目的段考 / 小考 / 作業 / 出席率 / 額外加分占比；非「額外加分」加總須為 100%。",
+    "saved": "已儲存",
+    "add_subject": "新增科目",
+    "custom_badge": "自訂",
+    "sum_invalid_hint": "每一列（不含額外加分）必須等於 100",
+    "formula_hint": "額外加分不計入 100%，會直接加在加權後的分數上（封頂 100）。",
+    "confirm_delete": "確定刪除「{{name}}」這個科目？此動作會一併刪除這個科目下的所有考試與成績。",
+    "col": {
+      "subject": "科目",
+      "sum": "加總",
+      "actions": "動作"
+    },
+    "modal": {
+      "add_title": "新增自訂科目",
+      "name_label": "科目名稱",
+      "name_placeholder": "例如：閩南語、班會"
+    }
   },
   "home": {
     "welcome": "歡迎回來",
@@ -104,13 +116,140 @@
       "name_label": "班別",
       "name_placeholder": "例如：甲、忠、1、A"
     },
+    "view": {
+      "list": "列表",
+      "card": "卡片"
+    },
+    "col": {
+      "name": "班級",
+      "source": "來源",
+      "actions": "動作"
+    },
+    "open_grades_aria": "點開 {{name}} 的成績總覽",
     "actions": {
       "edit": "編輯",
       "delete": "刪除",
+      "view_students": "查看學生",
+      "bulk_add_students": "批次新增學生",
+      "import_grades": "匯入成績",
       "confirm_delete": "確定刪除「{{name}}」？此動作會一併刪除學生與成績。"
     },
     "errors": {
       "duplicate_name": "已經有同名的班級了"
+    }
+  },
+  "students": {
+    "title": "學生名單",
+    "subtitle": "管理這個班級的學生資料、座號與各類別標準分。",
+    "back_to_classes": "返回班級列表",
+    "no_name": "（未填姓名）",
+    "standards_heading": "各類別達標分數（選填）",
+    "confirm_delete": "確定刪除座號 {{seat}} 的學生？此動作不可復原。",
+    "view": {
+      "list": "列表",
+      "card": "卡片"
+    },
+    "col": {
+      "seat": "座號",
+      "name": "姓名",
+      "email": "Email",
+      "actions": "動作"
+    },
+    "actions": {
+      "add": "新增學生",
+      "edit": "編輯",
+      "delete": "刪除",
+      "import": "批次匯入 Excel"
+    },
+    "empty": {
+      "heading": "這個班級還沒有學生",
+      "subheading": "用 Excel 批次匯入，或一筆一筆手動新增。"
+    },
+    "modal": {
+      "add_title": "新增學生",
+      "edit_title": "編輯學生"
+    },
+    "import": {
+      "title": "批次匯入學生",
+      "intro": "上傳 .xlsx 檔案，系統會先解析給你預覽，確認後才會寫入資料。檔案三欄：座號（必填）、姓名（選填）、email（選填）。成績匯入是另外一份檔案，之後另行提供。",
+      "download_template": "下載空白範本",
+      "file_label": "選擇 Excel 檔",
+      "preview": "解析預覽",
+      "confirm": "確認匯入",
+      "choose_another": "重新選檔",
+      "action": "動作",
+      "errors": "錯誤訊息",
+      "action_label": {
+        "create": "新增",
+        "update": "更新",
+        "error": "錯誤"
+      },
+      "summary": {
+        "total": "共 {{n}} 筆",
+        "create": "{{n}} 筆新增",
+        "update": "{{n}} 筆更新",
+        "errors": "{{n}} 筆錯誤"
+      }
+    },
+    "errors": {
+      "duplicate_seat": "這個班級已經有相同座號的學生了"
+    }
+  },
+  "grades": {
+    "title": "成績總覽",
+    "title_with_class": "{{name}} 成績",
+    "subtitle": "依類別權重自動計算每位學生在每個科目的加權總分。",
+    "semester_label": "學期：",
+    "semester_format": "{{year}} 學年第 {{term}} 學期",
+    "current": "目前",
+    "overall_avg": "總平均",
+    "pick_subject": "選擇科目：",
+    "formula_hint": "加權公式：各類別在有成績的範圍內依權重重新比例化計算；額外加分直接加在加權總分上（封頂 100）。",
+    "empty": "這個學期還沒有成績資料。先到班級頁的「匯入成績」上傳檔案。",
+    "view": {
+      "by_student": "依學生",
+      "by_subject": "依科目"
+    },
+    "import": {
+      "title": "批次匯入成績",
+      "intro": "上傳 .xlsx 檔案。檔案 A 欄是座號，B 欄起每一欄是一次考試（類別、日期、考試名稱）。預覽時為每一欄選擇科目，學生必須已經在這個班的名單裡。",
+      "download_template": "下載空白範本",
+      "file_label": "選擇 Excel 檔",
+      "preview": "解析預覽",
+      "confirm": "確認匯入",
+      "choose_another": "重新選檔",
+      "errors": "錯誤訊息",
+      "columns_heading": "考試項目",
+      "students_heading": "學生與分數",
+      "subject_picker": "請選擇…",
+      "subject_missing_hint": "請先為每一欄選擇科目",
+      "col": {
+        "column": "欄",
+        "category": "類別",
+        "date": "日期",
+        "name": "考試名稱",
+        "subject": "科目"
+      },
+      "summary": {
+        "columns": "考試 {{n}} 欄",
+        "rows": "學生 {{n}} 筆",
+        "scores": "分數 {{n}} 筆",
+        "errors": "{{n}} 筆錯誤"
+      }
+    }
+  },
+  "errors": {
+    "import": {
+      "bad_file_type": "檔案必須是 .xlsx 格式",
+      "unreadable": "Excel 檔案無法解析",
+      "empty": "Excel 內容是空的",
+      "bad_header": "Excel 表頭欄位不正確（A1 必須是「座號」）",
+      "has_errors": "預覽中有錯誤，請先修正後再匯入",
+      "no_current_semester": "尚未設定目前學期，請先到「學期設定」設定後再匯入成績",
+      "subject_required_for_commit": "請為每一欄選擇科目後再匯入",
+      "bad_subjects_payload": "科目選擇資料格式錯誤",
+      "subject_invalid": "未知的科目",
+      "category_not_seeded": "這個類別還沒在你的帳號裡建立，請先到「類別權重」初始化"
     }
   }
 }

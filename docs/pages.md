@@ -17,8 +17,7 @@ The frontend is a SPA built with React Router. All routes require login except `
 | `/grades/:itemId/:classId` | Edit grades | required | Same UI, prefilled |
 | `/students/:id` | Student detail | required | All grades, accumulated points, personal standards |
 | `/admin` | Admin landing | required | Sub-nav to admin pages |
-| `/admin/subjects` | Subjects | required | CRUD |
-| `/admin/categories` | Categories | required | CRUD; system defaults shown but not deletable |
+| `/admin/subjects` | Subject weights | required | Per-subject category-weight matrix + custom subject add/delete. Replaces the old `/admin/categories` page; the 5 categories themselves are system-locked. |
 | `/admin/semesters` | Semesters | required | CRUD; toggle "is_current" |
 | `/admin/items` | Items | required | CRUD; pick subject/category/semester/classes |
 | `/admin/point-rules` | Point rules | required | Set N points per category |
@@ -65,25 +64,85 @@ The active semester selector lives in the top nav so users can switch context gl
 2. 「從 Duotopia 匯入」 / "Import from Duotopia"
 3. 「手動新增班級」 / "Add class manually"
 
-**Populated state:** grid of class cards. Each card: class name + student count. Top-right action: 「新增班級」.
+**Populated state:** a list/card view toggle (persisted to `localStorage['classes.view']`) renders either a row table or a grid of cards. Clicking the body of a card / row navigates to `/classes/:id/grades` (action buttons stop event propagation so they don't also trigger this). Both views show class display name + source badge, plus the same **five row actions**:
+
+1. 查看學生 → `/classes/:id/students`
+2. 批次新增學生 → opens the student-import dialog in-page (reused from `<StudentImportModal>`)
+3. 匯入成績 → opens the grade-import dialog in-page (`<GradeImportModal>`), see below
+4. 編輯 → opens the existing add/edit modal
+5. 刪除 → `window.confirm` + DELETE
+
+Top-right action: 「新增班級」.
+
+**Grade-import dialog** (opened from any class row):
+1. Pick `.xlsx` → "解析預覽" → `POST /api/classrooms/:id/grades/import?dry_run=true`
+2. Preview shows three summary chips (考試欄數 / 學生筆數 / 分數筆數), a columns table (one row per score column with category / date / name + a **subject `<select>`**), and a students × scores matrix.
+3. "確認匯入" stays disabled until every non-error column has a subject picked and no row has errors.
+4. Confirm → `POST /api/classrooms/:id/grades/import?dry_run=false` with `subjects` form field carrying the chosen `{ column_index: system_key }`.
+
+Subject is **never in the Excel** — it's a per-column dropdown in the preview UI. Reusing a previously-imported column metadata + the same subject reuses the existing `Item` (and overwrites grades); picking a different subject creates a new item.
 
 **Quick stats on cards** (TBD — mentioned by user as a possible nice-to-have, defer until v0.1).
 
-### `/classes/:id`
+### `/classes/:classroomId/grades`
 
-**Header:** class name + student count + edit/delete buttons.
+**Header:** class display name + 「返回班級列表」.
 
-**Tabs:**
-- **學生** — table or card list of (seat number, name). Actions: 「批次匯入 Excel」, 「新增學生」 (single-row form).
-- **成績總覽** — items applied to this class, grouped by semester. Each row: item name + scores summary (graded count / total).
-- **點數** — per-student running totals for the current semester.
+Top bar:
+- Semester `<select>` — lists the user's semesters; defaults to the current one.
+- View toggle: 依學生 / 依科目 (persisted in `localStorage['grades.view']`).
+
+**依學生** (default) — one row per student, one column per subject present in
+the data. Each cell shows that student's **weighted total** for that subject
+(per-category averages × category weight, re-normalised over categories that
+have grades; 額外加分 is summed on top, capped at 100). A trailing column
+shows the unweighted average across the present subjects.
+
+**依科目** — pick a subject from a dropdown; table shows each student's raw
+per-item score in that subject, with the item's category as a small eyebrow
+above the item name.
+
+The weighting math lives in `frontend/src/lib/gradeMath.ts`; the backend ships
+the raw bundle and the category weights, and the frontend re-derives totals
+client-side so different breakdowns don't require new endpoints.
+
+### `/classes/:id` (planned)
+
+Tabbed detail page (學生 / 成績總覽 / 點數). Until other tabs exist, the student
+roster lives at `/classes/:id/students` (see below).
+
+### `/classes/:classroomId/students`
+
+**Header:** class display name (`六年甲班` / `Grade 6 · 甲`), with "返回班級列表"
++ "批次匯入 Excel" + "新增學生" actions.
+
+**View toggle:** above the list, a "列表 / 卡片" toggle. Choice persists in
+`localStorage` under `students.view`.
+
+- **List view** — table: 座號 / 姓名 / Email / 動作（編輯）.
+- **Card view** — grid of cards: seat badge + name + email + 編輯 link.
+
+Empty state: centered card with both actions (匯入 + 新增).
+
+**Single-row form (新增 / 編輯 modal):**
+- 座號 (required) / 姓名 / email
+- 各類別達標分數（選填）: 段考、小考、作業、出席率、額外加分 — 0–100
+- Edit modal also has a 刪除 button (with confirm dialog)
 
 **Batch import flow:**
-1. Click 「批次匯入 Excel」 → file picker
-2. Backend parses → returns preview (parsed rows + any unknown class names)
-3. If unknown classes → confirm dialog: 「這些班級不存在，要一併建嗎？」
-4. Confirm → backend upserts on `(classroom_id, seat_number)`
-5. Toast: "新增 N 筆，更新 M 筆"
+1. Click 「批次匯入 Excel」 → modal opens with template-download link + file picker
+2. Pick `.xlsx` → "解析預覽" → backend parses with `dry_run=true`
+3. Modal shows a preview table: each row marked 新增 / 更新 / 錯誤 with a summary
+   line at the top
+4. If any row has errors, "確認匯入" is disabled — teacher must fix the file and
+   re-pick
+5. "確認匯入" → backend re-uploads with `dry_run=false` → roster refreshes
+
+One file = one classroom (classroom is in the URL, not in the Excel). The file
+is roster-only (座號 / 姓名 / email); re-import is pure upsert: matching 座號
+overwrites; new 座號 appends; existing students not in the file are left alone.
+Per-student standard thresholds are edited in the single-student modal, not in
+Excel. Grade import will be a separate page/flow handled in a future issue.
 
 ### `/grades/new`
 
@@ -113,9 +172,7 @@ Same layout as `/grades/new`, but score fields are prefilled from existing grade
 
 All follow the same CRUD shape: list with add/edit/delete buttons + a side panel or modal for the form.
 
-**`/admin/subjects`** — name only.
-
-**`/admin/categories`** — name + (read-only) "system default" badge for the 7 seeded ones. Delete button hidden for system defaults.
+**`/admin/subjects`** — implemented. Matrix where rows = subjects (built-in + custom), columns = the 5 system-locked categories (段考 / 小考 / 作業 / 出席率 / 額外加分), cells = per-subject weight inputs. Each row's non-extra columns must sum to 100 (per-row indicator). Top-right 「新增科目」 opens a modal for a custom subject; new customs seed with the academic profile. Built-in subjects cannot be deleted; custom subjects have a delete action that cascade-removes their items and grades. Save is a single bulk PUT against `/api/subject-weights`.
 
 **`/admin/semesters`** — list of (academic_year, term, is_current). Toggle `is_current` via radio. Adding a new semester picks year + term from selectors.
 
