@@ -10,63 +10,68 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue>({ session: null, loading: true })
 
-// Initial-load timeout: if Supabase's getSession() doesn't resolve within
-// this window (typically because the auto-refresh worker is stuck on a
-// dead refresh_token request), we treat it as no session and unblock the
-// spinner. ProtectedRoute then redirects to /login.
-const INITIAL_AUTH_TIMEOUT_MS = 6000
+/**
+ * Synchronously peek at localStorage for an existing Supabase session and
+ * decide whether it's already dead. Supabase v2 stores the session at a key
+ * like `sb-<project-ref>-auth-token`; the value is a JSON blob containing
+ * `expires_at` (UNIX seconds). If that's in the past we can short-circuit
+ * the whole `getSession()` flow — calling getSession() in that state would
+ * trigger an auto-refresh, and if the refresh request hangs the app sits on
+ * the loading screen indefinitely.
+ *
+ * Returning `{ kind: 'dead' }` means: don't even ask Supabase, just sign out
+ * locally and route to /login.
+ * Returning `{ kind: 'unknown' }` means: behave normally — let getSession()
+ * + onAuthStateChange handle it.
+ */
+function peekStoredSession(): { kind: 'dead' } | { kind: 'unknown' } {
+  try {
+    const nowSec = Math.floor(Date.now() / 1000)
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i)
+      if (!key || !key.startsWith('sb-') || !key.endsWith('-auth-token')) continue
+      const raw = localStorage.getItem(key)
+      if (!raw) continue
+      const parsed = JSON.parse(raw)
+      const sess = parsed?.currentSession ?? parsed
+      const expiresAt: number | undefined = sess?.expires_at
+      if (typeof expiresAt !== 'number') continue
+      if (expiresAt < nowSec) return { kind: 'dead' }
+    }
+  } catch {
+    // Storage unreadable / JSON malformed — fall through to "unknown".
+  }
+  return { kind: 'unknown' }
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    let settled = false
-
-    function resolve(s: Session | null) {
-      if (settled) return
-      settled = true
-      setSession(s)
+    // Fast-path: storage says we're already dead → don't ask Supabase at all.
+    if (peekStoredSession().kind === 'dead') {
+      void supabase.auth.signOut({ scope: 'local' }).catch(() => {})
+      setSession(null)
       setLoading(false)
+    } else {
+      // Normal path: just read storage. getSession() does NOT hit the network;
+      // any refresh runs in the background via the SDK's worker and surfaces
+      // through onAuthStateChange (`TOKEN_REFRESHED` / `SIGNED_OUT`).
+      supabase.auth.getSession().then(({ data }) => {
+        setSession(data.session)
+        setLoading(false)
+      })
     }
 
-    // Race getSession() against a hard timeout. The timeout path also clears
-    // local storage so the broken refresh worker can't keep retrying.
-    const timer = window.setTimeout(() => {
-      if (settled) return
-      void supabase.auth.signOut({ scope: 'local' }).catch(() => {})
-      resolve(null)
-    }, INITIAL_AUTH_TIMEOUT_MS)
-
-    supabase.auth.getSession().then(({ data }) => {
-      window.clearTimeout(timer)
-      const s = data.session
-      // Belt-and-braces: if the stored access token is already expired and
-      // the refresh hasn't kicked in yet, drop the session. The AuthProvider
-      // listener below will re-set a fresh one if refresh later succeeds.
-      const nowSec = Math.floor(Date.now() / 1000)
-      if (s && s.expires_at && s.expires_at < nowSec) {
-        void supabase.auth.signOut({ scope: 'local' }).catch(() => {})
-        resolve(null)
-        return
-      }
-      resolve(s)
-    })
-
     const { data: subscription } = supabase.auth.onAuthStateChange((_event, newSession) => {
-      // Once mounted we trust Supabase's events: TOKEN_REFRESHED gives us a
-      // fresh session; SIGNED_OUT (also emitted on refresh failure) gives null
-      // and ProtectedRoute will redirect.
+      // TOKEN_REFRESHED → fresh session; SIGNED_OUT (emitted on refresh
+      // failure or manual logout) → null. ProtectedRoute handles the redirect.
       setSession(newSession)
-      if (!settled) {
-        settled = true
-        setLoading(false)
-        window.clearTimeout(timer)
-      }
+      setLoading(false)
     })
 
     return () => {
-      window.clearTimeout(timer)
       subscription.subscription.unsubscribe()
     }
   }, [])
