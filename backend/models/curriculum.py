@@ -2,9 +2,12 @@
 from typing import TYPE_CHECKING
 from uuid import UUID
 
+from datetime import date
+
 from sqlalchemy import (
     CheckConstraint,
     Column,
+    Date,
     ForeignKey,
     Index,
     String,
@@ -82,6 +85,47 @@ SUBJECT_WEIGHT_PROFILES: dict[str, dict[str, int]] = {
 
 # Custom subjects (teacher-added) inherit the academic profile by default.
 CUSTOM_SUBJECT_DEFAULT_PROFILE: dict[str, int] = _ACADEMIC_PROFILE
+
+
+def default_semester_dates(
+    academic_year_minguo: int, term: int, terms_per_year: int
+) -> tuple[date, date]:
+    """Return (start_date, end_date) for a Taiwan academic year split evenly.
+
+    The academic year for Minguo year N starts on Aug 1 of (N + 1911) and
+    ends on Jul 31 of (N + 1912). Terms divide that 12-month window evenly
+    (2 → 6 months each, 3 → 4 months, 4 → 3 months).
+
+    Term boundaries always fall on the first/last day of a month.
+    """
+    from datetime import timedelta as _td
+
+    if terms_per_year not in (2, 3, 4):
+        raise ValueError(f"terms_per_year must be 2/3/4, got {terms_per_year}")
+    if not 1 <= term <= terms_per_year:
+        raise ValueError(f"term {term} out of range for {terms_per_year}-term year")
+
+    gregorian_start = academic_year_minguo + 1911
+    months_per_term = 12 // terms_per_year
+    start_idx = (term - 1) * months_per_term         # 0..11 offset from Aug
+    end_idx = start_idx + months_per_term - 1
+
+    def _resolve(idx: int) -> tuple[int, int]:
+        # idx 0 → Aug, idx 11 → Jul of next gregorian year.
+        month = ((idx + 7) % 12) + 1
+        year = gregorian_start + (1 if idx >= 5 else 0)
+        return year, month
+
+    start_y, start_m = _resolve(start_idx)
+    end_y, end_m = _resolve(end_idx)
+    start = date(start_y, start_m, 1)
+    # Last day of end month = (first day of next month) - 1 day.
+    if end_m == 12:
+        next_month_first = date(end_y + 1, 1, 1)
+    else:
+        next_month_first = date(end_y, end_m + 1, 1)
+    end = next_month_first - _td(days=1)
+    return start, end
 
 
 class Subject(Base, TimestampMixin):
@@ -191,18 +235,27 @@ class Semester(Base, UserScopedMixin, TimestampMixin):
         server_default=text("gen_random_uuid()"),
     )
     academic_year: Mapped[int] = mapped_column(nullable=False)
-    # term: 1 = 上學期 / Term 1, 2 = 下學期 / Term 2
+    # term: 1..N where N = user's terms_per_year (2/3/4).
     term: Mapped[int] = mapped_column(nullable=False)
     is_current: Mapped[bool] = mapped_column(
         nullable=False, server_default=text("false")
     )
+    # Inclusive date range. POST seeds defaults from a Taiwan-academic-year
+    # calendar (Aug 1 → Jul 31, divided evenly by the user's terms_per_year).
+    # Users can override via PUT. Required because every downstream page that
+    # filters grades by date assumes a non-null range.
+    start_date: Mapped[date] = mapped_column(Date, nullable=False)
+    end_date: Mapped[date] = mapped_column(Date, nullable=False)
 
     __table_args__ = (
         UniqueConstraint(
             "user_id", "academic_year", "term",
             name="uq_semester_year_term",
         ),
-        CheckConstraint("term IN (1, 2)", name="ck_semester_term"),
+        CheckConstraint("term BETWEEN 1 AND 4", name="ck_semester_term"),
+        CheckConstraint(
+            "start_date <= end_date", name="ck_semester_date_order"
+        ),
         # at most one is_current=true per user
         Index(
             "ix_semester_one_current_per_user",

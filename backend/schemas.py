@@ -34,6 +34,53 @@ class SeedResult(BaseModel):
     semesters_created: int
 
 
+class MeUser(BaseModel):
+    id: str
+    email: str | None = None
+
+
+class MeSetup(BaseModel):
+    has_classes: bool
+    has_subjects: bool
+    has_current_semester: bool
+
+
+class MeOut(BaseModel):
+    user: MeUser
+    setup: MeSetup
+    terms_per_year: int
+
+
+class MeSettingsUpdate(BaseModel):
+    terms_per_year: Literal[2, 3, 4]
+
+
+# ---------- /api/semesters ----------
+
+
+class SemesterOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    academic_year: int
+    term: int
+    is_current: bool
+    start_date: date
+    end_date: date
+
+
+class SemesterList(BaseModel):
+    data: list[SemesterOut]
+    meta: ListMeta
+
+
+class SemesterUpdate(BaseModel):
+    academic_year: int = Field(ge=1, le=999)
+    term: Literal[1, 2, 3, 4]
+    start_date: date
+    end_date: date
+
+
 # ---------- /api/categories ----------
 
 

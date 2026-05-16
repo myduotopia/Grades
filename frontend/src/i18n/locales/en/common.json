@@ -19,6 +19,7 @@
     "saved": "Saved",
     "reset": "Reset",
     "cancel": "Cancel",
+    "delete": "Delete",
     "loading": "Loading…",
     "retry": "Retry",
     "error_generic": "Something went wrong, please try again"
@@ -27,7 +28,36 @@
     "home": "Home",
     "classes": "Classes",
     "admin_subjects": "Subject weights",
+    "admin_semesters": "Semesters",
     "open_menu": "Open menu"
+  },
+  "semester": {
+    "label": "Current semester",
+    "switcher_empty": "No semester yet"
+  },
+  "admin_semesters": {
+    "title": "Semesters",
+    "subtitle": "Configure how many terms make up an academic year, and add / switch the current semester. Other pages (grade entry, dashboards) default to filtering by the current semester.",
+    "terms_per_year_label": "Terms per academic year",
+    "terms_per_year_hint": "Taiwan default is 2 (上 / 下). 3 = 4 months each; 4 = 3 months each.",
+    "terms_per_year": {
+      "2": "2 terms / year",
+      "3": "3 terms / year",
+      "4": "4 terms / year"
+    },
+    "list_title": "Semesters",
+    "add": "+ Add semester",
+    "edit": "Edit",
+    "empty": "No semesters yet. Click \"Add semester\" to start.",
+    "current_badge": "Current",
+    "confirm_delete": "Delete \"{{label}}\"?",
+    "edit_title": "Edit semester",
+    "year_label": "Academic year (Minguo)",
+    "term_label": "Term",
+    "term_option": "Term {{n}}",
+    "start_date_label": "Start date",
+    "end_date_label": "End date",
+    "bad_date_range": "Start date cannot be after end date"
   },
   "admin_subjects": {
     "title": "Subject weights",
@@ -250,6 +280,13 @@
       "bad_subjects_payload": "Subject choices payload is malformed",
       "subject_invalid": "Unknown subject",
       "category_not_seeded": "This category isn't seeded for your account yet — visit 「Category weights」 to initialize"
+    },
+    "semester": {
+      "duplicate": "This semester slot already exists",
+      "delete_current": "Cannot delete the current semester. Set another as current first.",
+      "delete_has_items": "This semester has tests/grades and cannot be deleted. Move them to another semester first.",
+      "not_found": "Semester not found",
+      "bad_date_range": "Start date cannot be after end date"
     }
   }
 }
