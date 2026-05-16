@@ -19,6 +19,7 @@
     "saved": "已儲存",
     "reset": "重設",
     "cancel": "取消",
+    "delete": "刪除",
     "loading": "載入中…",
     "retry": "重試",
     "error_generic": "發生錯誤，請稍後再試"
@@ -27,7 +28,36 @@
     "home": "首頁",
     "classes": "班級管理",
     "admin_subjects": "科目權重設定",
+    "admin_semesters": "學期管理",
     "open_menu": "開啟選單"
+  },
+  "semester": {
+    "label": "目前學期",
+    "switcher_empty": "尚未建立學期"
+  },
+  "admin_semesters": {
+    "title": "學期管理",
+    "subtitle": "設定一學年的學期數，並新增 / 切換目前學期。其他頁面 (成績輸入、儀表板) 會預設使用目前學期過濾資料。",
+    "terms_per_year_label": "一學年學期數",
+    "terms_per_year_hint": "台灣標準為 2 學期制 (上 / 下)。3 = 每 4 個月一學期；4 = 每 3 個月一學期。",
+    "terms_per_year": {
+      "2": "二學期制",
+      "3": "三學期制",
+      "4": "四學期制"
+    },
+    "list_title": "學期列表",
+    "add": "+ 新增學期",
+    "edit": "編輯",
+    "empty": "尚未建立任何學期。按「新增學期」開始。",
+    "current_badge": "目前學期",
+    "confirm_delete": "確定刪除「{{label}}」?",
+    "edit_title": "編輯學期",
+    "year_label": "學年 (民國)",
+    "term_label": "學期",
+    "term_option": "第 {{n}} 學期",
+    "start_date_label": "開始日期",
+    "end_date_label": "結束日期",
+    "bad_date_range": "開始日期不能晚於結束日期"
   },
   "admin_subjects": {
     "title": "科目權重設定",
@@ -250,6 +280,13 @@
       "bad_subjects_payload": "科目選擇資料格式錯誤",
       "subject_invalid": "未知的科目",
       "category_not_seeded": "這個類別還沒在你的帳號裡建立，請先到「類別權重」初始化"
+    },
+    "semester": {
+      "duplicate": "這個學期已經存在",
+      "delete_current": "不能刪除目前學期。請先把另一個學期設為目前學期。",
+      "delete_has_items": "這個學期下還有考試 / 成績，不能刪除。請先把考試移到其他學期。",
+      "not_found": "找不到這個學期",
+      "bad_date_range": "開始日期不能晚於結束日期"
     }
   }
 }

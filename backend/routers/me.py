@@ -15,8 +15,10 @@ from models.curriculum import (
     Semester,
     Subject,
     SubjectCategoryWeight,
+    default_semester_dates,
 )
-from schemas import SeedResult
+from models.settings import UserSettings
+from schemas import MeSettingsUpdate, SeedResult
 
 router = APIRouter()
 
@@ -64,15 +66,22 @@ def seed(
     )
     if not has_semester:
         academic_year, term = _default_semester_for(date.today())
+        start_date, end_date = default_semester_dates(academic_year, term, 2)
         db.add(
             Semester(
                 user_id=user_id,
                 academic_year=academic_year,
                 term=term,
                 is_current=True,
+                start_date=start_date,
+                end_date=end_date,
             )
         )
         semesters_created = 1
+
+    # User settings: ensure a row exists with the default terms_per_year=2.
+    if db.get(UserSettings, user_id) is None:
+        db.add(UserSettings(user_id=user_id))
 
     # Subject × category weights: fill any missing combinations using the
     # per-subject profile. Must run after Category rows above are flushed so
@@ -125,3 +134,20 @@ def _seed_subject_weights(db: Session, user_id: UUID) -> None:
                     weight=weight,
                 )
             )
+
+
+@router.patch("/settings")
+def update_settings(
+    body: MeSettingsUpdate,
+    user_id: Annotated[UUID, Depends(require_user_id)],
+    db: Annotated[Session, Depends(get_db)],
+) -> dict[str, int]:
+    """Upsert the user's preferences. Currently only `terms_per_year`."""
+    settings = db.get(UserSettings, user_id)
+    if settings is None:
+        settings = UserSettings(user_id=user_id, terms_per_year=body.terms_per_year)
+        db.add(settings)
+    else:
+        settings.terms_per_year = body.terms_per_year
+    db.commit()
+    return {"terms_per_year": settings.terms_per_year}

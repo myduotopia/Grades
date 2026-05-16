@@ -16,6 +16,7 @@ from models.curriculum import (
     item_classroom,
 )
 from models.grading import Grade, PointRecord, PointRule, StudentStandard
+from models.settings import UserSettings
 
 __all__ = [
     "AccountLink",
@@ -36,5 +37,6 @@ __all__ = [
     "SubjectCategoryWeight",
     "SUBJECT_WEIGHT_PROFILES",
     "CUSTOM_SUBJECT_DEFAULT_PROFILE",
+    "UserSettings",
     "item_classroom",
 ]
