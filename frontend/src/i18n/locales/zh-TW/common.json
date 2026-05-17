@@ -36,6 +36,12 @@
     "label": "目前學期",
     "switcher_empty": "尚未建立學期"
   },
+  "item_name_combobox": {
+    "no_existing": "尚無項目，輸入名稱即會新增",
+    "no_match": "沒有匹配的既有項目",
+    "existing_header": "既有項目（{{count}}）",
+    "will_create": "查無此名稱，將新增「{{name}}」"
+  },
   "admin_items": {
     "title": "考試項目",
     "subtitle": "每個項目（段考 / 小考 / 作業…）屬於一個班級。同名同類別的項目可以在不同班獨立存在。",
@@ -68,8 +74,8 @@
       "semester": "學期",
       "classroom": "班級",
       "name": "名稱",
-      "name_placeholder": "例如：第三課小考、Lesson 5 作業",
-      "name_suggestions_hint": "下拉提示：另外有 {{count}} 個班用過同主題的名稱，可從清單選擇重複使用"
+      "name_placeholder": "搜尋既有項目或輸入新名稱…",
+      "name_hint": "為了之後分析比較，請優先選擇已在其他班使用過的項目；查無時才以你打的字新增。"
     },
     "delete": {
       "title": "刪除項目",
