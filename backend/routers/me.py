@@ -19,7 +19,7 @@ from models.curriculum import (
 )
 from models.grading import SubjectPointRule
 from models.settings import UserSettings
-from schemas import MeSettingsUpdate, SeedResult
+from schemas import MeSettingsUpdate, SeedResult, SubjectOrderUpdate
 
 DEFAULT_POINTS_AWARDED = 100
 
@@ -185,3 +185,37 @@ def update_settings(
         settings.terms_per_year = body.terms_per_year
     db.commit()
     return {"terms_per_year": settings.terms_per_year}
+
+
+@router.put("/subject-order")
+def update_subject_order(
+    body: SubjectOrderUpdate,
+    user_id: Annotated[UUID, Depends(require_user_id)],
+    db: Annotated[Session, Depends(get_db)],
+) -> dict[str, list[str]]:
+    """Persist the teacher's chosen ordering for non-academic subjects.
+
+    `subject_ids` is filtered to subjects the user can see (built-ins or
+    their own custom rows); anything else is dropped silently. Stored as
+    strings since JSONB can't natively hold UUID objects.
+    """
+    visible = {
+        s.id
+        for s in db.query(Subject)
+        .filter((Subject.user_id.is_(None)) | (Subject.user_id == user_id))
+        .all()
+    }
+    cleaned: list[str] = []
+    seen: set[UUID] = set()
+    for sid in body.subject_ids:
+        if sid in visible and sid not in seen:
+            cleaned.append(str(sid))
+            seen.add(sid)
+    settings = db.get(UserSettings, user_id)
+    if settings is None:
+        settings = UserSettings(user_id=user_id, subject_order=cleaned)
+        db.add(settings)
+    else:
+        settings.subject_order = cleaned
+    db.commit()
+    return {"subject_order": cleaned}

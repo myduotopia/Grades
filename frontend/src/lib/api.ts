@@ -24,6 +24,7 @@ export interface MeResponse {
     has_current_semester: boolean
   }
   terms_per_year: 2 | 3 | 4
+  subject_order: string[]
 }
 
 export interface MeSettingsUpdate {
@@ -446,6 +447,11 @@ export const api = {
       request<{ terms_per_year: number }>('/api/me/settings', {
         method: 'PATCH',
         body: JSON.stringify(body),
+      }),
+    updateSubjectOrder: (subjectIds: string[]) =>
+      request<{ subject_order: string[] }>('/api/me/subject-order', {
+        method: 'PUT',
+        body: JSON.stringify({ subject_ids: subjectIds }),
       }),
   },
   classrooms: {

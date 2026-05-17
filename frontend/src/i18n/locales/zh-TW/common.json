@@ -28,7 +28,7 @@
     "home": "首頁",
     "classes": "班級管理",
     "admin_subjects": "科目權重設定",
-    "admin_items": "考試項目",
+    "admin_items": "成績項目管理",
     "admin_semesters": "學期管理",
     "open_menu": "開啟選單"
   },
@@ -68,7 +68,8 @@
       "semester": "學期",
       "classroom": "班級",
       "name": "名稱",
-      "name_placeholder": "例如：第三課小考、Lesson 5 作業"
+      "name_placeholder": "例如：第三課小考、Lesson 5 作業",
+      "name_suggestions_hint": "下拉提示：另外有 {{count}} 個班用過同主題的名稱，可從清單選擇重複使用"
     },
     "delete": {
       "title": "刪除項目",
@@ -119,6 +120,7 @@
     "saved": "已儲存",
     "add_subject": "新增科目",
     "custom_badge": "自訂",
+    "drag_to_reorder": "拖曳調整順序",
     "sum_invalid_hint": "每一列（不含額外加分）必須等於 100",
     "formula_hint": "額外加分不計入 100%，會直接加在加權後的分數上（封頂 100）。達標獎勵 = 學生段考或小考分數 ≥ 該科目標準時自動加的點數。",
     "points_unit": "點",
@@ -160,7 +162,7 @@
     "extra": "額外加分"
   },
   "subject": {
-    "chinese": "國語",
+    "chinese": "國文",
     "math": "數學",
     "english": "英文",
     "science": "自然",
