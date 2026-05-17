@@ -6,7 +6,7 @@ Lives in `public` schema. The user identity itself is owned by Supabase
 from uuid import UUID
 
 from sqlalchemy import CheckConstraint, text
-from sqlalchemy.dialects.postgresql import UUID as PG_UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from models.base import Base, TimestampMixin
@@ -22,6 +22,13 @@ class UserSettings(Base, TimestampMixin):
     # How many terms make up one academic year (2 = 上/下, 3, or 4).
     terms_per_year: Mapped[int] = mapped_column(
         nullable=False, server_default=text("2")
+    )
+    # Teacher-chosen display order for subjects on /admin/subjects. List of
+    # subject UUIDs (as strings). The 5 academic built-ins are always pinned
+    # to the top in fixed order by the frontend; this list only governs the
+    # order of every OTHER subject (non-academic built-ins + custom).
+    subject_order: Mapped[list] = mapped_column(
+        JSONB, nullable=False, server_default=text("'[]'::jsonb")
     )
 
     __table_args__ = (

@@ -55,6 +55,10 @@ class MeSettingsUpdate(BaseModel):
     terms_per_year: Literal[2, 3, 4]
 
 
+class SubjectOrderUpdate(BaseModel):
+    subject_ids: list[UUID]
+
+
 # ---------- /api/semesters ----------
 
 

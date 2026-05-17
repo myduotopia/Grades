@@ -28,7 +28,7 @@
     "home": "Home",
     "classes": "Classes",
     "admin_subjects": "Subject weights",
-    "admin_items": "Exam items",
+    "admin_items": "Grade items",
     "admin_semesters": "Semesters",
     "open_menu": "Open menu"
   },
@@ -68,7 +68,8 @@
       "semester": "Semester",
       "classroom": "Classroom",
       "name": "Name",
-      "name_placeholder": "e.g., Quiz 3, Lesson 5 homework"
+      "name_placeholder": "e.g., Quiz 3, Lesson 5 homework",
+      "name_suggestions_hint": "Suggestions: {{count}} other classroom(s) already used names for this subject + category — pick from the dropdown to reuse"
     },
     "delete": {
       "title": "Delete item",
@@ -119,6 +120,7 @@
     "saved": "Saved",
     "add_subject": "Add subject",
     "custom_badge": "Custom",
+    "drag_to_reorder": "Drag to reorder",
     "sum_invalid_hint": "Each row (excluding bonus) must equal 100",
     "formula_hint": "Bonus is added on top of the weighted total (capped at 100). Reward points = how many points to award when a student meets the standard on a major exam or quiz.",
     "points_unit": "pts",

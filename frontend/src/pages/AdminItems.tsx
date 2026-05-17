@@ -242,12 +242,6 @@ export function AdminItems() {
                         {it.grade_count}
                       </td>
                       <td className="px-4 py-2.5 text-right space-x-3">
-                        <a
-                          href={`/classes/${it.classroom_id}/grades/entry?items=${it.id}`}
-                          className="text-slate-700 hover:text-slate-900 font-medium text-sm"
-                        >
-                          {t('admin_items.enter_scores')}
-                        </a>
                         <button
                           onClick={() => setEditing(it)}
                           className="text-amber-700 hover:text-amber-800 font-medium text-sm"
@@ -367,6 +361,31 @@ function ItemModal({
   )
   const [name, setName] = useState(existing?.name ?? '')
   const [errKey, setErrKey] = useState<string | null>(null)
+
+  // Fetch every item the teacher owns so we can suggest existing names for
+  // the same subject + category combination (e.g. "Quiz 3" already created
+  // for 6A — when adding to 6B, the teacher should be able to pick it from
+  // the suggestions instead of retyping).
+  const allItemsQ = useQuery({
+    queryKey: ['items', { _all: true }],
+    queryFn: () => api.items.list({}),
+    enabled: mode === 'create',
+  })
+  const nameSuggestions = useMemo(() => {
+    if (mode !== 'create') return []
+    const all = allItemsQ.data?.data ?? []
+    const seen = new Set<string>()
+    const out: string[] = []
+    for (const it of all) {
+      if (it.subject_id !== subjectId) continue
+      if (it.category_id !== categoryId) continue
+      if (!it.name || it.name.trim() === '') continue
+      if (seen.has(it.name)) continue
+      seen.add(it.name)
+      out.push(it.name)
+    }
+    return out.sort((a, b) => a.localeCompare(b))
+  }, [allItemsQ.data, subjectId, categoryId, mode])
 
   const selectedCategoryKey =
     categories.find((c) => c.id === categoryId)?.system_key ?? ''
@@ -522,13 +541,28 @@ function ItemModal({
                 ))}
               </select>
             ) : (
-              <input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                maxLength={200}
-                placeholder={t('admin_items.modal.name_placeholder')}
-                className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
-              />
+              <>
+                <input
+                  list="admin-items-name-suggestions"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  maxLength={200}
+                  placeholder={t('admin_items.modal.name_placeholder')}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                />
+                <datalist id="admin-items-name-suggestions">
+                  {nameSuggestions.map((n) => (
+                    <option key={n} value={n} />
+                  ))}
+                </datalist>
+                {nameSuggestions.length > 0 && (
+                  <p className="text-xs text-slate-500 mt-1">
+                    {t('admin_items.modal.name_suggestions_hint', {
+                      count: nameSuggestions.length,
+                    })}
+                  </p>
+                )}
+              </>
             )}
           </Row>
         </div>

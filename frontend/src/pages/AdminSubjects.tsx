@@ -2,9 +2,21 @@ import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
+import { useMe } from '../hooks/useMe'
 import { PageContainer } from '../layout/PageContainer'
 import { PageHeader } from '../layout/PageHeader'
 import { api, ApiError, type Subject } from '../lib/api'
+
+// Academic subjects shown in this fixed order at the top of the list. The
+// teacher cannot reorder these — the row's drag handle only appears for
+// every OTHER subject (other built-ins + custom).
+const PINNED_ACADEMIC_KEYS = [
+  'chinese',
+  'english',
+  'math',
+  'science',
+  'social_studies',
+] as const
 
 const PRIMARY_BTN =
   'inline-flex items-center px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white text-sm font-medium shadow-sm transition-colors disabled:bg-slate-300 disabled:shadow-none disabled:cursor-not-allowed'
@@ -42,6 +54,63 @@ export function AdminSubjects() {
   const subjects = subjectsQ.data?.data ?? []
   const weights = weightsQ.data?.data ?? []
   const pointRules = pointRulesQ.data?.data ?? []
+
+  // Read the teacher's stored order for non-academic subjects.
+  const meQ = useMe()
+  const storedOrder: string[] = meQ.data?.subject_order ?? []
+
+  // Final display order: 5 academic in fixed order first, then everything
+  // else in the teacher's stored order, with any not-yet-stored subjects
+  // (e.g. a newly-created custom one) appended at the end.
+  const orderedSubjects = useMemo(() => {
+    const byId = new Map(subjects.map((s) => [s.id, s] as const))
+    const academic: Subject[] = []
+    for (const key of PINNED_ACADEMIC_KEYS) {
+      const s = subjects.find((x) => x.system_key === key)
+      if (s) academic.push(s)
+    }
+    const pinnedIds = new Set(academic.map((s) => s.id))
+    const others: Subject[] = []
+    for (const sid of storedOrder) {
+      if (pinnedIds.has(sid)) continue
+      const s = byId.get(sid)
+      if (s) others.push(s)
+    }
+    const seen = new Set([...pinnedIds, ...others.map((s) => s.id)])
+    // Anything not yet in storedOrder — custom subjects just created, or
+    // legacy users without a stored order — falls in here, sorted by
+    // built-in vs custom then display_name for stability.
+    const remaining = subjects
+      .filter((s) => !seen.has(s.id))
+      .sort((a, b) => {
+        const aLabel = a.system_key ?? a.display_name ?? ''
+        const bLabel = b.system_key ?? b.display_name ?? ''
+        return aLabel.localeCompare(bLabel)
+      })
+    return [...academic, ...others, ...remaining]
+  }, [subjects, storedOrder])
+
+  // DnD state
+  const [dragFrom, setDragFrom] = useState<number | null>(null)
+  const orderMut = useMutation({
+    mutationFn: (ids: string[]) => api.me.updateSubjectOrder(ids),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['me'] }),
+  })
+
+  function reorderNonAcademic(fromIdx: number, toIdx: number) {
+    // fromIdx / toIdx are indexes into orderedSubjects; both must be in the
+    // non-academic tail.
+    const pinnedCount = PINNED_ACADEMIC_KEYS.length
+    if (fromIdx < pinnedCount || toIdx < pinnedCount) return
+    if (fromIdx === toIdx) return
+    const next = [...orderedSubjects]
+    const [moved] = next.splice(fromIdx, 1)
+    next.splice(toIdx, 0, moved)
+    // Persist the new non-academic order (academic 5 are always re-pinned by
+    // the render logic, so we only need to send the tail; sending all is
+    // harmless and lets the backend store a complete snapshot).
+    orderMut.mutate(next.map((s) => s.id))
+  }
 
   // draft[subject_id][category_system_key] = weight
   const [draft, setDraft] = useState<Record<string, Record<string, number>>>({})
@@ -226,24 +295,40 @@ export function AdminSubjects() {
                 </tr>
               </thead>
               <tbody>
-                {subjects.map((s) => (
-                  <WeightRow
-                    key={s.id}
-                    subject={s}
-                    draft={draft[s.id] ?? {}}
-                    sum={sumsBySubject[s.id]}
-                    points={pointDraft[s.id] ?? 0}
-                    onChange={(k, w) =>
-                      setDraft((d) => ({
-                        ...d,
-                        [s.id]: { ...(d[s.id] ?? {}), [k]: w },
-                      }))
-                    }
-                    onPointsChange={(v) =>
-                      setPointDraft((p) => ({ ...p, [s.id]: v }))
-                    }
-                  />
-                ))}
+                {orderedSubjects.map((s, idx) => {
+                  const isPinned = idx < PINNED_ACADEMIC_KEYS.length
+                  return (
+                    <WeightRow
+                      key={s.id}
+                      subject={s}
+                      draft={draft[s.id] ?? {}}
+                      sum={sumsBySubject[s.id]}
+                      points={pointDraft[s.id] ?? 0}
+                      draggable={!isPinned}
+                      dragging={dragFrom === idx}
+                      onDragStart={() => setDragFrom(idx)}
+                      onDragOver={(e) => {
+                        if (dragFrom !== null && !isPinned) e.preventDefault()
+                      }}
+                      onDrop={() => {
+                        if (dragFrom !== null && !isPinned) {
+                          reorderNonAcademic(dragFrom, idx)
+                        }
+                        setDragFrom(null)
+                      }}
+                      onDragEnd={() => setDragFrom(null)}
+                      onChange={(k, w) =>
+                        setDraft((d) => ({
+                          ...d,
+                          [s.id]: { ...(d[s.id] ?? {}), [k]: w },
+                        }))
+                      }
+                      onPointsChange={(v) =>
+                        setPointDraft((p) => ({ ...p, [s.id]: v }))
+                      }
+                    />
+                  )
+                })}
               </tbody>
             </table>
           </div>
@@ -298,6 +383,12 @@ function WeightRow({
   draft,
   sum,
   points,
+  draggable,
+  dragging,
+  onDragStart,
+  onDragOver,
+  onDrop,
+  onDragEnd,
   onChange,
   onPointsChange,
 }: {
@@ -305,6 +396,12 @@ function WeightRow({
   draft: Record<string, number>
   sum: number | undefined
   points: number
+  draggable: boolean
+  dragging: boolean
+  onDragStart: () => void
+  onDragOver: (e: React.DragEvent) => void
+  onDrop: () => void
+  onDragEnd: () => void
   onChange: (cat: string, w: number) => void
   onPointsChange: (v: number) => void
 }) {
@@ -333,8 +430,26 @@ function WeightRow({
   }
 
   return (
-    <tr className="border-b border-slate-100 last:border-b-0">
+    <tr
+      draggable={draggable}
+      onDragStart={draggable ? onDragStart : undefined}
+      onDragOver={draggable ? onDragOver : undefined}
+      onDrop={draggable ? onDrop : undefined}
+      onDragEnd={draggable ? onDragEnd : undefined}
+      className={`border-b border-slate-100 last:border-b-0 ${
+        dragging ? 'opacity-50' : ''
+      } ${draggable ? 'cursor-grab' : ''}`}
+    >
       <td className="px-4 py-2.5 text-slate-900 font-medium">
+        {draggable && (
+          <span
+            className="mr-2 text-slate-300 select-none"
+            aria-hidden
+            title={t('admin_subjects.drag_to_reorder')}
+          >
+            ⋮⋮
+          </span>
+        )}
         {label}
         {subject.is_custom && (
           <span className="ml-2 text-[10px] uppercase tracking-wider text-amber-700 bg-amber-50 rounded-full px-2 py-0.5">
