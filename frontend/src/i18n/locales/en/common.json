@@ -36,6 +36,12 @@
     "label": "Current semester",
     "switcher_empty": "No semester yet"
   },
+  "item_name_combobox": {
+    "no_existing": "No existing items yet — typing a name will create a new one",
+    "no_match": "No matching existing item",
+    "existing_header": "Existing ({{count}})",
+    "will_create": "No match — will create \"{{name}}\""
+  },
   "admin_items": {
     "title": "Exam items",
     "subtitle": "Each item (exam / quiz / assignment) belongs to one classroom. Items with the same name and category can live independently in different classrooms.",
@@ -68,8 +74,8 @@
       "semester": "Semester",
       "classroom": "Classroom",
       "name": "Name",
-      "name_placeholder": "e.g., Quiz 3, Lesson 5 homework",
-      "name_suggestions_hint": "Suggestions: {{count}} other classroom(s) already used names for this subject + category — pick from the dropdown to reuse"
+      "name_placeholder": "Search existing items or type a new name…",
+      "name_hint": "Prefer reusing names already used in other classes so the same exam can be compared later; only create new if nothing matches."
     },
     "delete": {
       "title": "Delete item",

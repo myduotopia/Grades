@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
+import { ItemNameCombobox } from '../components/ItemNameCombobox'
 import { useClassrooms } from '../hooks/useClassrooms'
 import { useSemesters } from '../hooks/useSemesters'
 import { PageContainer } from '../layout/PageContainer'
@@ -542,26 +543,15 @@ function ItemModal({
               </select>
             ) : (
               <>
-                <input
-                  list="admin-items-name-suggestions"
+                <ItemNameCombobox
                   value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  maxLength={200}
+                  onChange={setName}
+                  suggestions={nameSuggestions}
                   placeholder={t('admin_items.modal.name_placeholder')}
-                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
                 />
-                <datalist id="admin-items-name-suggestions">
-                  {nameSuggestions.map((n) => (
-                    <option key={n} value={n} />
-                  ))}
-                </datalist>
-                {nameSuggestions.length > 0 && (
-                  <p className="text-xs text-slate-500 mt-1">
-                    {t('admin_items.modal.name_suggestions_hint', {
-                      count: nameSuggestions.length,
-                    })}
-                  </p>
-                )}
+                <p className="text-xs text-slate-500 mt-1">
+                  {t('admin_items.modal.name_hint')}
+                </p>
               </>
             )}
           </Row>

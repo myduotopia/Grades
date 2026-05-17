@@ -8,9 +8,11 @@ import {
 import {
   useMutation,
   useQueries,
+  useQuery,
   useQueryClient,
 } from '@tanstack/react-query'
 
+import { ItemNameCombobox } from '../components/ItemNameCombobox'
 import { useClassrooms } from '../hooks/useClassrooms'
 import { useSemesters } from '../hooks/useSemesters'
 import { PageContainer } from '../layout/PageContainer'
@@ -503,6 +505,10 @@ function AddItemModal({
   const semestersQ = useSemesters()
   const subjectsQ = useQueriesSubjects()
   const categoriesQ = useQueriesCategories()
+  const allItemsQ = useQuery({
+    queryKey: ['items', { _all: true }],
+    queryFn: () => api.items.list({}),
+  })
 
   const semesters = semestersQ.data?.data ?? []
   const subjects = subjectsQ.data?.data ?? []
@@ -520,6 +526,24 @@ function AddItemModal({
   const semesterId = currentSemester?.id ?? ''
   const [name, setName] = useState('')
   const [errKey, setErrKey] = useState<string | null>(null)
+
+  // Existing item names for the selected subject + category (any classroom)
+  // so the teacher can reuse the SAME exam name across classes — keeps
+  // future analysis able to compare results for the same assessment.
+  const nameSuggestions = useMemo(() => {
+    const all = allItemsQ.data?.data ?? []
+    const seen = new Set<string>()
+    const out: string[] = []
+    for (const it of all) {
+      if (it.subject_id !== subjectId) continue
+      if (it.category_id !== categoryId) continue
+      if (!it.name || it.name.trim() === '') continue
+      if (seen.has(it.name)) continue
+      seen.add(it.name)
+      out.push(it.name)
+    }
+    return out.sort((a, b) => a.localeCompare(b))
+  }, [allItemsQ.data, subjectId, categoryId])
 
   // On first data arrival, prefer the teacher's last pick from localStorage
   // (shared with /admin/items modal) and fall back to a sensible default.
@@ -669,13 +693,17 @@ function AddItemModal({
                 ))}
               </select>
             ) : (
-              <input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                maxLength={200}
-                placeholder={t('admin_items.modal.name_placeholder')}
-                className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
-              />
+              <>
+                <ItemNameCombobox
+                  value={name}
+                  onChange={setName}
+                  suggestions={nameSuggestions}
+                  placeholder={t('admin_items.modal.name_placeholder')}
+                />
+                <p className="text-xs text-slate-500 mt-1">
+                  {t('admin_items.modal.name_hint')}
+                </p>
+              </>
             )}
           </div>
         </div>
