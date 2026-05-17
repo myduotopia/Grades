@@ -25,6 +25,11 @@ import {
 
 const MAX_ITEMS = 5
 const MAJOR_EXAM_NAMES = ['期中考', '期末考', '第一次', '第二次', '第三次']
+
+// localStorage keys shared with /admin/items modal so the teacher's last
+// subject + category choice persists across both entry points.
+const LS_LAST_SUBJECT = 'admin_items.modal.last_subject_id'
+const LS_LAST_CATEGORY = 'admin_items.modal.last_category_id'
 const CATEGORY_KEYS = [
   'major_exam',
   'quiz',
@@ -514,11 +519,29 @@ function AddItemModal({
   const [name, setName] = useState('')
   const [errKey, setErrKey] = useState<string | null>(null)
 
+  // On first data arrival, prefer the teacher's last pick from localStorage
+  // (shared with /admin/items modal) and fall back to a sensible default.
   useEffect(() => {
-    if (!subjectId && subjects[0]) setSubjectId(subjects[0].id)
+    if (subjectId || subjects.length === 0) return
+    const last =
+      typeof window !== 'undefined'
+        ? localStorage.getItem(LS_LAST_SUBJECT)
+        : null
+    if (last && subjects.some((s) => s.id === last)) {
+      setSubjectId(last)
+    } else {
+      setSubjectId(subjects[0].id)
+    }
   }, [subjects, subjectId])
   useEffect(() => {
-    if (!categoryId) {
+    if (categoryId || categories.length === 0) return
+    const last =
+      typeof window !== 'undefined'
+        ? localStorage.getItem(LS_LAST_CATEGORY)
+        : null
+    if (last && categories.some((c) => c.id === last)) {
+      setCategoryId(last)
+    } else {
       const quiz = categories.find((c) => c.system_key === 'quiz')
       setCategoryId(quiz?.id ?? categories[0]?.id ?? '')
     }
@@ -541,7 +564,15 @@ function AddItemModal({
 
   const create = useMutation({
     mutationFn: (body: ItemCreatePayload) => api.items.create(body),
-    onSuccess: (item) => onCreated(item.id),
+    onSuccess: (item) => {
+      try {
+        localStorage.setItem(LS_LAST_SUBJECT, subjectId)
+        localStorage.setItem(LS_LAST_CATEGORY, categoryId)
+      } catch {
+        // Ignore quota / privacy-mode errors.
+      }
+      onCreated(item.id)
+    },
     onError: (err) => {
       if (err instanceof ApiError && err.body?.message_key) {
         setErrKey(err.body.message_key)
