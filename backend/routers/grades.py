@@ -766,27 +766,18 @@ def get_classroom_grades(
     )
     student_ids = {s.id for s in students}
 
-    # Items are cross-classroom now. Show only items where at least one
-    # student in this classroom has a grade — keeps the view focused on
-    # assessments this class actually took.
-    items_q = (
+    # Items are cross-classroom — show every item in the current semester
+    # so the by-subject view can serve as a single place to view existing
+    # grades AND enter scores for items the class hasn't taken yet. Empty
+    # cells mean "no grade yet"; the teacher can click the pencil to enter.
+    items = (
         db.query(Item)
         .filter(
             Item.user_id == user_id,
             Item.semester_id == semester.id,
         )
+        .all()
     )
-    if student_ids:
-        items_q = items_q.filter(
-            Item.id.in_(
-                db.query(Grade.item_id)
-                .filter(Grade.student_id.in_(student_ids))
-                .distinct()
-            )
-        )
-    else:
-        items_q = items_q.filter(False)  # empty roster → no items
-    items = items_q.all()
 
     item_outs = [
         ItemOut(

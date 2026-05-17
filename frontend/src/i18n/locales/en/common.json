@@ -308,7 +308,7 @@
     },
     "modal": {
       "add_title": "New exam item",
-      "add_subtitle": "Editing {{count}} item(s) (max {{max}})."
+      "pick_subtitle": "Pick the item you want to enter scores for; Save takes you to this class's grades page with that column ready to edit."
     }
   },
   "grades": {
