@@ -52,6 +52,7 @@
       "actions": "動作"
     },
     "filter": {
+      "current_semester_hint": "目前學期：{{label}}（右上角切換）",
       "all_semesters": "全部學期",
       "all_classrooms": "全部班級",
       "all_subjects": "全部科目",

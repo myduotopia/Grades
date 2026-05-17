@@ -32,27 +32,23 @@ export function Grades() {
   const [view, setView] = useState<View>(
     (localStorage.getItem(VIEW_KEY) as View) || 'by-student',
   )
-  const [semesterId, setSemesterId] = useState<string | undefined>(undefined)
-
   const classroomQ = useQuery({
     queryKey: ['classroom', classroomId],
     queryFn: () => api.classrooms.get(classroomId as string),
     enabled: !!classroomId,
   })
-  const semestersQ = useQuery({
-    queryKey: ['semesters'],
-    queryFn: () => api.semesters.list(),
-  })
+  // The semester to display is governed by the global SemesterSwitcher in the
+  // top bar (writes is_current). Omitting semester_id makes the backend resolve
+  // to whichever Semester has is_current=true, so the page just follows that.
   const gradesQ = useQuery({
-    queryKey: ['grades', classroomId, semesterId],
-    queryFn: () => api.grades.view(classroomId as string, semesterId),
+    queryKey: ['grades', classroomId],
+    queryFn: () => api.grades.view(classroomId as string),
     enabled: !!classroomId,
   })
 
   if (!classroomId) return null
 
   const classroom = classroomQ.data
-  const semesters = semestersQ.data?.data ?? []
   const view_data = gradesQ.data
   const matrix = useMemo(
     () => (view_data ? buildMatrix(view_data) : {}),
@@ -99,25 +95,6 @@ export function Grades() {
       />
 
       <div className="flex flex-wrap items-center gap-3 mb-4">
-        <label className="text-sm text-slate-600">
-          {t('grades.semester_label')}
-          <select
-            value={view_data?.semester.id ?? semesterId ?? ''}
-            onChange={(e) => setSemesterId(e.target.value || undefined)}
-            className="ml-2 border border-slate-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 bg-white"
-          >
-            {semesters.map((s) => (
-              <option key={s.id} value={s.id}>
-                {t('grades.semester_format', {
-                  year: s.academic_year,
-                  term: s.term,
-                })}
-                {s.is_current ? ` (${t('grades.current')})` : ''}
-              </option>
-            ))}
-          </select>
-        </label>
-
         <div className="ml-auto flex items-center gap-1">
           <button
             onClick={() => changeView('by-student')}
