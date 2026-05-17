@@ -501,6 +501,7 @@ def _commit_grades(
                 Item.category_id == cat.id,
                 Item.semester_id == semester.id,
                 Item.name == col.exam_name,
+                Item.classroom_id == classroom.id,
             )
             .one_or_none()
         )
@@ -513,12 +514,10 @@ def _commit_grades(
                 category_id=cat.id,
                 semester_id=semester.id,
                 name=col.exam_name,
+                classroom_id=classroom.id,
             )
             db.add(item)
             db.flush()
-        # Link to this classroom if not already linked
-        if classroom not in item.classrooms:
-            item.classrooms.append(classroom)
         col_to_item[col.column_index] = item
     db.flush()
 
@@ -769,13 +768,13 @@ def get_classroom_grades(
     )
     student_ids = {s.id for s in students}
 
-    # Items linked to this classroom in this semester
+    # Items belonging to this classroom in this semester
     items = (
         db.query(Item)
         .filter(
             Item.user_id == user_id,
             Item.semester_id == semester.id,
-            Item.classrooms.any(Classroom.id == classroom_id),
+            Item.classroom_id == classroom_id,
         )
         .all()
     )

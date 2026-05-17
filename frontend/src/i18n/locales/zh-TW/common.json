@@ -28,12 +28,54 @@
     "home": "首頁",
     "classes": "班級管理",
     "admin_subjects": "科目權重設定",
+    "admin_items": "考試項目",
     "admin_semesters": "學期管理",
     "open_menu": "開啟選單"
   },
   "semester": {
     "label": "目前學期",
     "switcher_empty": "尚未建立學期"
+  },
+  "admin_items": {
+    "title": "考試項目",
+    "subtitle": "每個項目（段考 / 小考 / 作業…）屬於一個班級。同名同類別的項目可以在不同班獨立存在。",
+    "add": "新增項目",
+    "edit": "編輯",
+    "empty": "目前沒有項目，請按「新增項目」開始。",
+    "col": {
+      "semester": "學期",
+      "classroom": "班級",
+      "subject": "科目",
+      "category": "類別",
+      "name": "名稱",
+      "grades": "成績數",
+      "actions": "動作"
+    },
+    "filter": {
+      "all_semesters": "全部學期",
+      "all_classrooms": "全部班級",
+      "all_subjects": "全部科目",
+      "all_categories": "全部類別",
+      "clear": "清除篩選"
+    },
+    "modal": {
+      "add_title": "新增考試項目",
+      "edit_title": "編輯項目名稱",
+      "subject": "科目",
+      "category": "類別",
+      "semester": "學期",
+      "classroom": "班級",
+      "name": "名稱",
+      "name_placeholder": "例如：第三課小考、Lesson 5 作業"
+    },
+    "delete": {
+      "title": "刪除項目",
+      "confirm": "確定刪除「{{name}}」？",
+      "warning": "將同時刪除 {{grades}} 筆成績與 {{points}} 點點數紀錄。此動作不可復原。"
+    },
+    "error": {
+      "missing_fields": "請填妥所有欄位"
+    }
   },
   "admin_semesters": {
     "title": "學期管理",

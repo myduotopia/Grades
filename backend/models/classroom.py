@@ -46,8 +46,8 @@ class Classroom(Base, UserScopedMixin, TimestampMixin):
         cascade="all, delete-orphan",
     )
     items: Mapped[list["Item"]] = relationship(
-        secondary="item_classroom",
-        back_populates="classrooms",
+        back_populates="classroom",
+        cascade="all, delete-orphan",
     )
 
     __table_args__ = (

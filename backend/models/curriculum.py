@@ -1,4 +1,4 @@
-"""Subject, Category, Semester, Item, item_classroom (M2M)."""
+"""Subject, Category, Semester, Item."""
 from typing import TYPE_CHECKING
 from uuid import UUID
 
@@ -6,12 +6,10 @@ from datetime import date
 
 from sqlalchemy import (
     CheckConstraint,
-    Column,
     Date,
     ForeignKey,
     Index,
     String,
-    Table,
     UniqueConstraint,
     text,
 )
@@ -266,26 +264,10 @@ class Semester(Base, UserScopedMixin, TimestampMixin):
     )
 
 
-# Many-to-many: one item can apply to multiple classrooms
-item_classroom = Table(
-    "item_classroom",
-    Base.metadata,
-    Column(
-        "item_id",
-        PG_UUID(as_uuid=True),
-        ForeignKey("item.id", ondelete="CASCADE"),
-        primary_key=True,
-    ),
-    Column(
-        "classroom_id",
-        PG_UUID(as_uuid=True),
-        ForeignKey("classroom.id", ondelete="CASCADE"),
-        primary_key=True,
-    ),
-)
-
-
 class Item(Base, UserScopedMixin, TimestampMixin):
+    """An exam / quiz / assignment "column". Each item belongs to exactly one
+    classroom — different classrooms get independent items even if they share
+    a name. The M2M `item_classroom` table from v0 was dropped (issue #8)."""
     __tablename__ = "item"
 
     id: Mapped[UUID] = mapped_column(
@@ -311,12 +293,16 @@ class Item(Base, UserScopedMixin, TimestampMixin):
         nullable=False,
         index=True,
     )
+    classroom_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("classroom.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
     # name = "" for 段考-type categories; required for 小考/作業/custom
     name: Mapped[str] = mapped_column(String(200), nullable=False, server_default="")
 
-    classrooms: Mapped[list["Classroom"]] = relationship(
-        secondary=item_classroom, back_populates="items"
-    )
+    classroom: Mapped["Classroom"] = relationship(back_populates="items")
     grades: Mapped[list["Grade"]] = relationship(
         back_populates="item", cascade="all, delete-orphan"
     )
@@ -324,6 +310,7 @@ class Item(Base, UserScopedMixin, TimestampMixin):
     __table_args__ = (
         UniqueConstraint(
             "user_id", "subject_id", "category_id", "semester_id", "name",
-            name="uq_item_subject_category_semester_name",
+            "classroom_id",
+            name="uq_item_subject_category_semester_name_classroom",
         ),
     )

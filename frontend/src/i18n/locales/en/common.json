@@ -28,12 +28,54 @@
     "home": "Home",
     "classes": "Classes",
     "admin_subjects": "Subject weights",
+    "admin_items": "Exam items",
     "admin_semesters": "Semesters",
     "open_menu": "Open menu"
   },
   "semester": {
     "label": "Current semester",
     "switcher_empty": "No semester yet"
+  },
+  "admin_items": {
+    "title": "Exam items",
+    "subtitle": "Each item (exam / quiz / assignment) belongs to one classroom. Items with the same name and category can live independently in different classrooms.",
+    "add": "New item",
+    "edit": "Edit",
+    "empty": "No items yet. Click \"New item\" to start.",
+    "col": {
+      "semester": "Semester",
+      "classroom": "Classroom",
+      "subject": "Subject",
+      "category": "Category",
+      "name": "Name",
+      "grades": "Grades",
+      "actions": "Actions"
+    },
+    "filter": {
+      "all_semesters": "All semesters",
+      "all_classrooms": "All classrooms",
+      "all_subjects": "All subjects",
+      "all_categories": "All categories",
+      "clear": "Clear filters"
+    },
+    "modal": {
+      "add_title": "New exam item",
+      "edit_title": "Edit item name",
+      "subject": "Subject",
+      "category": "Category",
+      "semester": "Semester",
+      "classroom": "Classroom",
+      "name": "Name",
+      "name_placeholder": "e.g., Quiz 3, Lesson 5 homework"
+    },
+    "delete": {
+      "title": "Delete item",
+      "confirm": "Delete \"{{name}}\"?",
+      "warning": "This will also delete {{grades}} grade(s) and {{points}} point record(s). This cannot be undone."
+    },
+    "error": {
+      "missing_fields": "Please fill in all fields"
+    }
   },
   "admin_semesters": {
     "title": "Semesters",
