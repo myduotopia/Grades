@@ -48,6 +48,7 @@
     "add": "新增項目",
     "edit": "編輯",
     "enter_scores": "輸入成績",
+    "drag_to_reorder": "拖曳調整順序",
     "empty": "目前沒有項目，請按「新增項目」開始。",
     "col": {
       "semester": "學期",

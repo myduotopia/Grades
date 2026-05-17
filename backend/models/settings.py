@@ -30,6 +30,12 @@ class UserSettings(Base, TimestampMixin):
     subject_order: Mapped[list] = mapped_column(
         JSONB, nullable=False, server_default=text("'[]'::jsonb")
     )
+    # Teacher-chosen display order for items on /admin/items. List of item
+    # UUIDs (as strings). Items not in the list fall back to created_at desc
+    # on the frontend.
+    item_order: Mapped[list] = mapped_column(
+        JSONB, nullable=False, server_default=text("'[]'::jsonb")
+    )
 
     __table_args__ = (
         CheckConstraint(

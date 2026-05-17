@@ -25,6 +25,7 @@ export interface MeResponse {
   }
   terms_per_year: 2 | 3 | 4
   subject_order: string[]
+  item_order: string[]
 }
 
 export interface MeSettingsUpdate {
@@ -241,6 +242,7 @@ export interface ItemDetail {
   semester_id: string
   grade_count: number
   point_record_count: number
+  created_at: string
 }
 
 export interface ItemDetailList {
@@ -447,6 +449,11 @@ export const api = {
       request<{ subject_order: string[] }>('/api/me/subject-order', {
         method: 'PUT',
         body: JSON.stringify({ subject_ids: subjectIds }),
+      }),
+    updateItemOrder: (itemIds: string[]) =>
+      request<{ item_order: string[] }>('/api/me/item-order', {
+        method: 'PUT',
+        body: JSON.stringify({ item_ids: itemIds }),
       }),
   },
   classrooms: {

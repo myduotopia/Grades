@@ -12,6 +12,7 @@ from models.curriculum import (
     SUBJECT_WEIGHT_PROFILES,
     SYSTEM_CATEGORY_DEFAULTS,
     Category,
+    Item,
     Semester,
     Subject,
     SubjectCategoryWeight,
@@ -19,7 +20,12 @@ from models.curriculum import (
 )
 from models.grading import SubjectPointRule
 from models.settings import UserSettings
-from schemas import MeSettingsUpdate, SeedResult, SubjectOrderUpdate
+from schemas import (
+    ItemOrderUpdate,
+    MeSettingsUpdate,
+    SeedResult,
+    SubjectOrderUpdate,
+)
 
 DEFAULT_POINTS_AWARDED = 100
 
@@ -219,3 +225,34 @@ def update_subject_order(
         settings.subject_order = cleaned
     db.commit()
     return {"subject_order": cleaned}
+
+
+@router.put("/item-order")
+def update_item_order(
+    body: ItemOrderUpdate,
+    user_id: Annotated[UUID, Depends(require_user_id)],
+    db: Annotated[Session, Depends(get_db)],
+) -> dict[str, list[str]]:
+    """Persist the teacher's chosen ordering for /admin/items rows.
+
+    `item_ids` is filtered to items owned by this user; anything else is
+    dropped silently. Stored as strings since JSONB can't natively hold UUID.
+    """
+    visible = {
+        i.id
+        for i in db.query(Item).filter(Item.user_id == user_id).all()
+    }
+    cleaned: list[str] = []
+    seen: set[UUID] = set()
+    for iid in body.item_ids:
+        if iid in visible and iid not in seen:
+            cleaned.append(str(iid))
+            seen.add(iid)
+    settings = db.get(UserSettings, user_id)
+    if settings is None:
+        settings = UserSettings(user_id=user_id, item_order=cleaned)
+        db.add(settings)
+    else:
+        settings.item_order = cleaned
+    db.commit()
+    return {"item_order": cleaned}

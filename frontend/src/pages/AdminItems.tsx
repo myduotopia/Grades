@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { ItemNameCombobox } from '../components/ItemNameCombobox'
+import { useMe } from '../hooks/useMe'
 import { useSemesters } from '../hooks/useSemesters'
 import { PageContainer } from '../layout/PageContainer'
 import { PageHeader } from '../layout/PageHeader'
@@ -78,7 +79,42 @@ export function AdminItems() {
     queryFn: () => api.items.list(effectiveFilters),
     enabled: !!currentSemester,
   })
-  const items = itemsQ.data?.data ?? []
+  const rawItems = itemsQ.data?.data ?? []
+
+  // Sort: teacher's stored order first, then anything new by created_at desc
+  // so the most recent item lands at the top. Drag-reorder writes a fresh
+  // full list back to user_settings.item_order.
+  const meQ = useMe()
+  const storedOrder: string[] = meQ.data?.item_order ?? []
+  const items = useMemo(() => {
+    const byId = new Map(rawItems.map((it) => [it.id, it] as const))
+    const ordered: ItemDetail[] = []
+    const seen = new Set<string>()
+    for (const id of storedOrder) {
+      const it = byId.get(id)
+      if (it) {
+        ordered.push(it)
+        seen.add(id)
+      }
+    }
+    const remaining = rawItems
+      .filter((it) => !seen.has(it.id))
+      .sort((a, b) => b.created_at.localeCompare(a.created_at))
+    return [...ordered, ...remaining]
+  }, [rawItems, storedOrder])
+
+  const [dragFrom, setDragFrom] = useState<number | null>(null)
+  const orderMut = useMutation({
+    mutationFn: (ids: string[]) => api.me.updateItemOrder(ids),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['me'] }),
+  })
+  function reorder(fromIdx: number, toIdx: number) {
+    if (fromIdx === toIdx) return
+    const next = [...items]
+    const [moved] = next.splice(fromIdx, 1)
+    next.splice(toIdx, 0, moved)
+    orderMut.mutate(next.map((it) => it.id))
+  }
 
   const [editing, setEditing] = useState<ItemDetail | null>(null)
   const [creating, setCreating] = useState(false)
@@ -174,6 +210,7 @@ export function AdminItems() {
             <table className="min-w-full text-sm">
               <thead className="bg-slate-50 border-b border-slate-200 text-slate-600">
                 <tr>
+                  <th className="w-8 px-2 py-3" aria-hidden></th>
                   <th className="px-4 py-3 text-left font-medium">
                     {t('admin_items.col.subject')}
                   </th>
@@ -192,9 +229,32 @@ export function AdminItems() {
                 </tr>
               </thead>
               <tbody>
-                {items.map((it) => {
+                {items.map((it, idx) => {
+                  const dragging = dragFrom === idx
                   return (
-                    <tr key={it.id} className="border-b border-slate-100 last:border-b-0">
+                    <tr
+                      key={it.id}
+                      draggable
+                      onDragStart={() => setDragFrom(idx)}
+                      onDragOver={(e) => {
+                        if (dragFrom !== null) e.preventDefault()
+                      }}
+                      onDrop={() => {
+                        if (dragFrom !== null) reorder(dragFrom, idx)
+                        setDragFrom(null)
+                      }}
+                      onDragEnd={() => setDragFrom(null)}
+                      className={`border-b border-slate-100 last:border-b-0 cursor-grab ${
+                        dragging ? 'opacity-50' : ''
+                      }`}
+                    >
+                      <td
+                        className="px-2 py-2.5 text-slate-300 text-center select-none"
+                        aria-hidden
+                        title={t('admin_items.drag_to_reorder')}
+                      >
+                        ⋮⋮
+                      </td>
                       <td className="px-4 py-2.5 text-slate-900">
                         {it.subject_system_key
                           ? t(`subject.${it.subject_system_key}`)
