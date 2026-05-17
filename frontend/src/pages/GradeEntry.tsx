@@ -515,7 +515,9 @@ function AddItemModal({
 
   const [subjectId, setSubjectId] = useState('')
   const [categoryId, setCategoryId] = useState('')
-  const [semesterId, setSemesterId] = useState('')
+  // Semester is governed by the global top-bar SemesterSwitcher; the modal
+  // always creates the item under the current semester.
+  const semesterId = currentSemester?.id ?? ''
   const [name, setName] = useState('')
   const [errKey, setErrKey] = useState<string | null>(null)
 
@@ -546,10 +548,6 @@ function AddItemModal({
       setCategoryId(quiz?.id ?? categories[0]?.id ?? '')
     }
   }, [categories, categoryId])
-  useEffect(() => {
-    if (!semesterId && currentSemester) setSemesterId(currentSemester.id)
-  }, [currentSemester, semesterId])
-
   const selectedCategoryKey =
     categories.find((c) => c.id === categoryId)?.system_key ?? ''
   const isMajorExam = selectedCategoryKey === 'major_exam'
@@ -652,23 +650,6 @@ function AddItemModal({
                   </option>
                 ) : null
               })}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">
-              {t('admin_items.modal.semester')}
-            </label>
-            <select
-              value={semesterId}
-              onChange={(e) => setSemesterId(e.target.value)}
-              className={SELECT_CLS + ' w-full'}
-            >
-              {semesters.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {`${s.academic_year}-${s.term}`}
-                  {s.is_current ? ` (${t('admin_semesters.current_badge')})` : ''}
-                </option>
-              ))}
             </select>
           </div>
           <div>
