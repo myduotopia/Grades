@@ -609,11 +609,32 @@ function AddItemModal({
       setErrKey('admin_items.error.missing_fields')
       return
     }
+    const finalName = name.trim()
+    // Items are cross-classroom: if one already exists with the exact same
+    // (subject, category, semester, name), the teacher's intent is to enter
+    // scores for THAT item. Don't try to create a duplicate (would 409).
+    const existing = allItemsQ.data?.data.find(
+      (it) =>
+        it.subject_id === subjectId &&
+        it.category_id === categoryId &&
+        it.semester_id === semesterId &&
+        it.name === finalName,
+    )
+    if (existing) {
+      try {
+        localStorage.setItem(LS_LAST_SUBJECT, subjectId)
+        localStorage.setItem(LS_LAST_CATEGORY, categoryId)
+      } catch {
+        // Ignore quota / privacy-mode errors.
+      }
+      onCreated(existing.id)
+      return
+    }
     create.mutate({
       subject_id: subjectId,
       category_id: categoryId,
       semester_id: semesterId,
-      name: name.trim(),
+      name: finalName,
     })
   }
 
