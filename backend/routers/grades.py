@@ -36,7 +36,7 @@ from auth import require_user_id
 from database import get_db
 from models.classroom import Classroom, Student
 from models.curriculum import Category, Item, Semester, Subject, SubjectCategoryWeight
-from models.grading import Grade
+from models.grading import Grade, PointRecord, StudentStandard, SubjectPointRule
 from schemas import (
     ClassroomGradesView,
     GradeEntryOut,
@@ -59,6 +59,12 @@ router = APIRouter()
 # Grade import is for the 3 exam-shaped categories only. 出席率 (attendance)
 # and 額外加分 (extra) have dedicated UIs because they don't fit the
 # "one exam = one score per student" shape.
+# Categories that trigger auto-award when score >= the student's standard for
+# the item's subject. Other categories (homework / attendance / extra) never
+# award points automatically.
+AUTO_AWARD_CATEGORY_KEYS: frozenset[str] = frozenset({"major_exam", "quiz"})
+
+
 _CATEGORY_NAME_TO_KEY: dict[str, str] = {
     "段考": "major_exam",
     "小考": "quiz",
@@ -517,6 +523,7 @@ def _commit_grades(
     db.flush()
 
     # Upsert grades.
+    written_grades: list[Grade] = []
     for r in student_rows:
         if r.errors or r.student_id is None:
             continue
@@ -531,16 +538,128 @@ def _commit_grades(
             )
             if existing_g is not None:
                 existing_g.score = Decimal(str(score))
+                written_grades.append(existing_g)
             else:
+                g = Grade(
+                    user_id=user_id,
+                    item_id=item.id,
+                    student_id=r.student_id,
+                    score=Decimal(str(score)),
+                    source="manual",
+                )
+                db.add(g)
+                written_grades.append(g)
+    db.flush()
+    apply_auto_award(db, user_id, written_grades)
+
+
+def apply_auto_award(
+    db: Session, user_id: UUID, grades: list[Grade]
+) -> None:
+    """Award / revoke point_records for the given grades in-place.
+
+    For each grade:
+      1. If item.category.system_key NOT IN AUTO_AWARD_CATEGORY_KEYS → no-op.
+      2. Look up StudentStandard(student_id, item.category_id).threshold;
+         if absent → no-op.
+      3. Look up SubjectPointRule(user_id, item.subject_id).points_awarded.
+      4. If score >= threshold: upsert PointRecord(source_grade_id=grade.id).
+      5. If score < threshold: delete any existing PointRecord with that
+         source_grade_id (revoke an earlier award).
+    """
+    if not grades:
+        return
+
+    item_ids = {g.item_id for g in grades}
+    items_by_id = {
+        i.id: i
+        for i in db.query(Item).filter(Item.id.in_(item_ids)).all()
+    }
+    cat_ids = {it.category_id for it in items_by_id.values()}
+    cat_keys: dict[UUID, str] = {
+        c.id: c.system_key
+        for c in db.query(Category).filter(Category.id.in_(cat_ids)).all()
+    }
+    subj_ids = {it.subject_id for it in items_by_id.values()}
+    subj_labels: dict[UUID, str] = {
+        s.id: (s.system_key or s.display_name or "")
+        for s in db.query(Subject).filter(Subject.id.in_(subj_ids)).all()
+    }
+    point_rule_rows = (
+        db.query(SubjectPointRule)
+        .filter(
+            SubjectPointRule.user_id == user_id,
+            SubjectPointRule.subject_id.in_(subj_ids),
+        )
+        .all()
+    )
+    points_by_subject: dict[UUID, int] = {
+        r.subject_id: r.points_awarded for r in point_rule_rows
+    }
+
+    student_ids = {g.student_id for g in grades}
+    standards = (
+        db.query(StudentStandard)
+        .filter(
+            StudentStandard.user_id == user_id,
+            StudentStandard.student_id.in_(student_ids),
+            StudentStandard.category_id.in_(cat_ids),
+        )
+        .all()
+    )
+    standard_by_pair: dict[tuple[UUID, UUID], Decimal] = {
+        (s.student_id, s.category_id): s.threshold for s in standards
+    }
+
+    grade_ids = [g.id for g in grades]
+    existing_records = (
+        db.query(PointRecord)
+        .filter(PointRecord.source_grade_id.in_(grade_ids))
+        .all()
+    )
+    record_by_grade: dict[UUID, PointRecord] = {
+        r.source_grade_id: r for r in existing_records if r.source_grade_id
+    }
+
+    for g in grades:
+        item = items_by_id.get(g.item_id)
+        if item is None:
+            continue
+        cat_key = cat_keys.get(item.category_id, "")
+        if cat_key not in AUTO_AWARD_CATEGORY_KEYS:
+            continue
+        threshold = standard_by_pair.get((g.student_id, item.category_id))
+        if threshold is None:
+            continue
+        pts = points_by_subject.get(item.subject_id)
+        if pts is None or pts <= 0:
+            # No rule or zero points configured — revoke any earlier award.
+            rec = record_by_grade.get(g.id)
+            if rec is not None:
+                db.delete(rec)
+            continue
+
+        meets = g.score >= threshold
+        rec = record_by_grade.get(g.id)
+        if meets:
+            subj_label = subj_labels.get(item.subject_id, "")
+            reason = f"auto-award: {subj_label} {item.name or cat_key}".strip()
+            if rec is None:
                 db.add(
-                    Grade(
+                    PointRecord(
                         user_id=user_id,
-                        item_id=item.id,
-                        student_id=r.student_id,
-                        score=Decimal(str(score)),
-                        source="manual",
+                        student_id=g.student_id,
+                        points=pts,
+                        reason=reason,
+                        source_grade_id=g.id,
                     )
                 )
+            else:
+                rec.points = pts
+                rec.reason = reason
+        else:
+            if rec is not None:
+                db.delete(rec)
 
 
 # ---------- view: list semesters ----------

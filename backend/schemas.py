@@ -140,6 +140,20 @@ class SubjectWeightsUpdate(BaseModel):
     weight: int = Field(ge=0, le=100)
 
 
+class SubjectPointRuleOut(BaseModel):
+    subject_id: UUID
+    points_awarded: int
+
+
+class SubjectPointRulesList(BaseModel):
+    data: list[SubjectPointRuleOut]
+
+
+class SubjectPointRuleUpdate(BaseModel):
+    subject_id: UUID
+    points_awarded: int = Field(ge=0, le=500)
+
+
 # ---------- /api/classrooms ----------
 
 ClassroomSource = Literal["manual", "duotopia", "google_classroom"]

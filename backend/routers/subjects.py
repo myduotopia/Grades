@@ -22,14 +22,22 @@ from models.curriculum import (
     Subject,
     SubjectCategoryWeight,
 )
+from models.grading import SubjectPointRule
 from schemas import (
     SubjectCreate,
     SubjectList,
     SubjectOut,
+    SubjectPointRuleOut,
+    SubjectPointRulesList,
+    SubjectPointRuleUpdate,
     SubjectWeightOut,
     SubjectWeightsList,
     SubjectWeightsUpdate,
 )
+
+# Default points-awarded for a newly-seeded (user × subject) row. Matches the
+# legacy per-category point_rule default of 100.
+DEFAULT_POINTS_AWARDED = 100
 
 router = APIRouter()
 
@@ -139,6 +147,14 @@ def create_subject(
                 weight=weight,
             )
         )
+    # Seed the per-subject point rule with the default amount.
+    db.add(
+        SubjectPointRule(
+            user_id=user_id,
+            subject_id=subject.id,
+            points_awarded=DEFAULT_POINTS_AWARDED,
+        )
+    )
     db.commit()
     db.refresh(subject)
     return SubjectOut(
@@ -218,6 +234,84 @@ def list_weights(
         ]
     )
 
+
+# ---------- Per-subject points-awarded ----------
+
+@router.get("/api/subject-point-rules", response_model=SubjectPointRulesList)
+def list_point_rules(
+    user_id: Annotated[UUID, Depends(require_user_id)],
+    db: Annotated[Session, Depends(get_db)],
+) -> SubjectPointRulesList:
+    rows = (
+        db.query(SubjectPointRule)
+        .filter(SubjectPointRule.user_id == user_id)
+        .all()
+    )
+    return SubjectPointRulesList(
+        data=[
+            SubjectPointRuleOut(
+                subject_id=r.subject_id,
+                points_awarded=r.points_awarded,
+            )
+            for r in rows
+        ]
+    )
+
+
+@router.put("/api/subject-point-rules", response_model=SubjectPointRulesList)
+def update_point_rules(
+    payload: list[SubjectPointRuleUpdate],
+    user_id: Annotated[UUID, Depends(require_user_id)],
+    db: Annotated[Session, Depends(get_db)],
+) -> SubjectPointRulesList:
+    """Bulk upsert per-subject points-awarded. Unknown subject_ids (no existing
+    row) are inserted; existing rows are updated. Subjects not in the payload
+    are left untouched."""
+    wanted = {e.subject_id: e.points_awarded for e in payload}
+    if not wanted:
+        return list_point_rules(user_id, db)
+
+    existing_rows = (
+        db.query(SubjectPointRule)
+        .filter(
+            SubjectPointRule.user_id == user_id,
+            SubjectPointRule.subject_id.in_(wanted.keys()),
+        )
+        .all()
+    )
+    existing_by_subject = {r.subject_id: r for r in existing_rows}
+
+    # Only insert for subjects owned by / visible to this user. Built-ins
+    # (user_id NULL) are visible to everyone; custom subjects belong to one user.
+    valid_subjects = {
+        s.id
+        for s in db.query(Subject)
+        .filter(
+            Subject.id.in_(wanted.keys()),
+            (Subject.user_id.is_(None)) | (Subject.user_id == user_id),
+        )
+        .all()
+    }
+
+    for sid, pts in wanted.items():
+        if sid not in valid_subjects:
+            continue
+        row = existing_by_subject.get(sid)
+        if row is None:
+            db.add(
+                SubjectPointRule(
+                    user_id=user_id,
+                    subject_id=sid,
+                    points_awarded=pts,
+                )
+            )
+        elif row.points_awarded != pts:
+            row.points_awarded = pts
+    db.commit()
+    return list_point_rules(user_id, db)
+
+
+# ---------- Weights matrix (PUT) ----------
 
 @router.put("/api/subject-weights", response_model=SubjectWeightsList)
 def update_weights(

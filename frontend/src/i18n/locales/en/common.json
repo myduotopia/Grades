@@ -61,16 +61,18 @@
   },
   "admin_subjects": {
     "title": "Subject weights",
-    "subtitle": "Each subject can have its own category-weight mix. Add custom subjects and adjust how 段考 / 小考 / 作業 / 出席率 / 額外加分 contribute per subject. Non-bonus weights per row must sum to 100%.",
+    "subtitle": "Each subject can have its own category-weight mix and per-subject reward-points amount awarded when a student meets the standard on a major exam or quiz.",
     "saved": "Saved",
     "add_subject": "Add subject",
     "custom_badge": "Custom",
     "sum_invalid_hint": "Each row (excluding bonus) must equal 100",
-    "formula_hint": "Bonus is added on top of the weighted total (capped at 100), not part of the 100% split.",
+    "formula_hint": "Bonus is added on top of the weighted total (capped at 100). Reward points = how many points to award when a student meets the standard on a major exam or quiz.",
+    "points_unit": "pts",
     "confirm_delete": "Delete subject \"{{name}}\"? This will also remove all exams and grades under it.",
     "col": {
       "subject": "Subject",
       "sum": "Sum",
+      "points_awarded": "Reward",
       "actions": "Actions"
     },
     "modal": {
