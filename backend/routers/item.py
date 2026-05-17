@@ -167,6 +167,7 @@ def list_items(
                 semester_id=i.semester_id,
                 grade_count=int(grade_counts.get(i.id, 0)),
                 point_record_count=int(point_counts.get(i.id, 0)),
+                created_at=i.created_at,
             )
             for i in items
         ]
@@ -274,4 +275,5 @@ def _detail_for(db: Session, item: Item) -> ItemDetailOut:
         semester_id=item.semester_id,
         grade_count=int(grade_count),
         point_record_count=int(point_count),
+        created_at=item.created_at,
     )

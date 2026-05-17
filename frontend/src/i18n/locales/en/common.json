@@ -48,6 +48,7 @@
     "add": "New item",
     "edit": "Edit",
     "enter_scores": "Enter scores",
+    "drag_to_reorder": "Drag to reorder",
     "empty": "No items yet. Click \"New item\" to start.",
     "col": {
       "semester": "Semester",

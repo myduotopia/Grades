@@ -59,6 +59,10 @@ class SubjectOrderUpdate(BaseModel):
     subject_ids: list[UUID]
 
 
+class ItemOrderUpdate(BaseModel):
+    item_ids: list[UUID]
+
+
 # ---------- /api/semesters ----------
 
 
@@ -362,6 +366,7 @@ class ItemDetailOut(BaseModel):
     # who has a grade on it.
     grade_count: int
     point_record_count: int
+    created_at: datetime
 
 
 class ItemDetailList(BaseModel):

@@ -97,6 +97,7 @@ def me(
     settings_row = db.get(UserSettings, user_id)
     terms_per_year = settings_row.terms_per_year if settings_row else 2
     subject_order = settings_row.subject_order if settings_row else []
+    item_order = settings_row.item_order if settings_row else []
     return {
         "user": {
             "id": user["sub"],
@@ -109,4 +110,5 @@ def me(
         },
         "terms_per_year": terms_per_year,
         "subject_order": subject_order,
+        "item_order": item_order,
     }
