@@ -255,6 +255,12 @@ export function AdminItems() {
                         {it.grade_count}
                       </td>
                       <td className="px-4 py-2.5 text-right space-x-3">
+                        <a
+                          href={`/classes/${it.classroom_id}/grades/entry?items=${it.id}`}
+                          className="text-slate-700 hover:text-slate-900 font-medium text-sm"
+                        >
+                          {t('admin_items.enter_scores')}
+                        </a>
                         <button
                           onClick={() => setEditing(it)}
                           className="text-amber-700 hover:text-amber-800 font-medium text-sm"

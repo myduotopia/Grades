@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 
 import { PageContainer } from '../layout/PageContainer'
@@ -158,7 +158,11 @@ export function Grades() {
         />
       )}
       {view_data && view === 'by-subject' && (
-        <BySubjectView view={view_data} subjects={subjectsPresent} />
+        <BySubjectView
+          view={view_data}
+          subjects={subjectsPresent}
+          classroomId={classroomId}
+        />
       )}
     </PageContainer>
   )
@@ -263,9 +267,11 @@ function ByStudentTable({
 function BySubjectView({
   view,
   subjects,
+  classroomId,
 }: {
   view: import('../lib/api').ClassroomGradesView
   subjects: SubjectRef[]
+  classroomId: string
 }) {
   const { t } = useTranslation()
   const [pickedId, setPickedId] = useState<string>(subjects[0]?.id ?? '')
@@ -314,10 +320,22 @@ function BySubjectView({
                     className="px-3 py-3 text-left font-medium"
                     title={`${t(`category.${i.category_system_key}`)} · ${i.name}`}
                   >
-                    <div className="text-[10px] text-slate-500 uppercase tracking-wide">
-                      {t(`category.${i.category_system_key}`)}
+                    <div className="flex items-start gap-1">
+                      <div>
+                        <div className="text-[10px] text-slate-500 uppercase tracking-wide">
+                          {t(`category.${i.category_system_key}`)}
+                        </div>
+                        <div className="text-slate-700">{i.name}</div>
+                      </div>
+                      <Link
+                        to={`/classes/${classroomId}/grades/entry?items=${i.id}`}
+                        title={t('grades.edit_scores')}
+                        aria-label={t('grades.edit_scores')}
+                        className="ml-1 text-slate-400 hover:text-amber-700"
+                      >
+                        ✎
+                      </Link>
                     </div>
-                    <div className="text-slate-700">{i.name}</div>
                   </th>
                 ))}
               </tr>

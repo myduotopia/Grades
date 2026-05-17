@@ -377,6 +377,63 @@ class ItemUpdate(BaseModel):
     name: str = Field(default="", max_length=200)
 
 
+# ---------- Grade write endpoints (issue #9) ----------
+
+class GradeCreate(BaseModel):
+    item_id: UUID
+    student_id: UUID
+    score: float = Field(ge=0, le=100)
+
+
+class GradeUpdate(BaseModel):
+    score: float = Field(ge=0, le=100)
+
+
+class GradeWriteOut(BaseModel):
+    id: UUID
+    item_id: UUID
+    student_id: UUID
+    score: float
+    awarded_points: int  # points just awarded by this write (0 if no auto-award)
+
+
+class GradeBulkEntry(BaseModel):
+    student_id: UUID
+    score: float | None = Field(default=None, ge=0, le=100)
+
+
+class GradeBulkUpsert(BaseModel):
+    item_id: UUID
+    entries: list[GradeBulkEntry]
+
+
+class GradeBulkResult(BaseModel):
+    written: int      # POST/PUT count
+    deleted: int      # score=null entries that removed an existing grade
+    awarded: int      # students who newly received points
+    revoked: int      # students whose existing auto-award was revoked
+
+
+class ItemGradesStudentRow(BaseModel):
+    student_id: UUID
+    seat_number: int
+    name: str | None
+    grade_id: UUID | None
+    score: float | None
+
+
+class ItemGradesView(BaseModel):
+    item_id: UUID
+    item_name: str
+    subject_id: UUID
+    subject_system_key: str | None
+    subject_display_name: str | None
+    category_system_key: str
+    semester_id: UUID
+    classroom_id: UUID
+    students: list[ItemGradesStudentRow]
+
+
 class GradeEntryOut(BaseModel):
     item_id: UUID
     student_id: UUID

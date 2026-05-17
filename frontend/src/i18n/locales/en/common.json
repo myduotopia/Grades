@@ -279,9 +279,30 @@
       "duplicate_seat": "Seat number already exists in this class"
     }
   },
+  "grade_entry": {
+    "title": "Enter scores",
+    "title_with_class": "{{name}} — score entry",
+    "subtitle": "Scores save automatically when you leave a cell (Tab / Enter). Students who meet their standard get points awarded; lowering the score back below the threshold revokes them.",
+    "back_to_grades": "Back to grades view",
+    "add_item": "New item",
+    "flush_all": "Save all",
+    "remove_column": "Hide column (does not delete the item)",
+    "max_items_hint": "At most {{max}} items at once",
+    "empty_no_item": "No items selected. Click \"New item\" to start.",
+    "empty_no_students": "This class has no students. Add students first.",
+    "col": {
+      "seat": "Seat",
+      "name": "Name"
+    },
+    "modal": {
+      "add_title": "New exam item",
+      "add_subtitle": "Editing {{count}} item(s) (max {{max}})."
+    }
+  },
   "grades": {
     "title": "Grades overview",
     "title_with_class": "{{name}} — Grades",
+    "edit_scores": "Enter scores for this item",
     "subtitle": "Per-subject weighted totals by category weight, computed live.",
     "semester_label": "Semester:",
     "semester_format": "Year {{year}}, Term {{term}}",

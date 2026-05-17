@@ -184,6 +184,51 @@ export const SYSTEM_SUBJECT_KEYS = [
 
 export type SystemSubjectKey = (typeof SYSTEM_SUBJECT_KEYS)[number]
 
+export interface ItemGradesStudentRow {
+  student_id: string
+  seat_number: number
+  name: string | null
+  grade_id: string | null
+  score: number | null
+}
+
+export interface ItemGradesView {
+  item_id: string
+  item_name: string
+  subject_id: string
+  subject_system_key: string | null
+  subject_display_name: string | null
+  category_system_key: string
+  semester_id: string
+  classroom_id: string
+  students: ItemGradesStudentRow[]
+}
+
+export interface GradeWriteOut {
+  id: string
+  item_id: string
+  student_id: string
+  score: number
+  awarded_points: number
+}
+
+export interface GradeBulkEntry {
+  student_id: string
+  score: number | null
+}
+
+export interface GradeBulkUpsertBody {
+  item_id: string
+  entries: GradeBulkEntry[]
+}
+
+export interface GradeBulkResult {
+  written: number
+  deleted: number
+  awarded: number
+  revoked: number
+}
+
 export interface ItemDetail {
   id: string
   name: string
@@ -526,6 +571,27 @@ export const api = {
       }),
     remove: (id: string) =>
       request<void>(`/api/items/${id}`, { method: 'DELETE' }),
+  },
+  gradeEntry: {
+    forItem: (itemId: string) =>
+      request<ItemGradesView>(`/api/items/${itemId}/grades`),
+    create: (body: { item_id: string; student_id: string; score: number }) =>
+      request<GradeWriteOut>('/api/grades', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+    update: (gradeId: string, score: number) =>
+      request<GradeWriteOut>(`/api/grades/${gradeId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ score }),
+      }),
+    remove: (gradeId: string) =>
+      request<void>(`/api/grades/${gradeId}`, { method: 'DELETE' }),
+    bulk: (body: GradeBulkUpsertBody) =>
+      request<GradeBulkResult>('/api/grades/bulk', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
   },
   grades: {
     view: (classroomId: string, semesterId?: string) => {
