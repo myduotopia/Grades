@@ -265,9 +265,10 @@ class Semester(Base, UserScopedMixin, TimestampMixin):
 
 
 class Item(Base, UserScopedMixin, TimestampMixin):
-    """An exam / quiz / assignment "column". Each item belongs to exactly one
-    classroom — different classrooms get independent items even if they share
-    a name. The M2M `item_classroom` table from v0 was dropped (issue #8)."""
+    """An exam / quiz / assignment "column". Items are cross-classroom: the
+    same "Quiz 3" given to multiple classes is ONE item, so grades for the
+    same assessment can be analysed across classes. Which class's roster a
+    teacher edits is determined at score-entry time, not at item creation."""
     __tablename__ = "item"
 
     id: Mapped[UUID] = mapped_column(
@@ -293,16 +294,9 @@ class Item(Base, UserScopedMixin, TimestampMixin):
         nullable=False,
         index=True,
     )
-    classroom_id: Mapped[UUID] = mapped_column(
-        PG_UUID(as_uuid=True),
-        ForeignKey("classroom.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
     # name = "" for 段考-type categories; required for 小考/作業/custom
     name: Mapped[str] = mapped_column(String(200), nullable=False, server_default="")
 
-    classroom: Mapped["Classroom"] = relationship(back_populates="items")
     grades: Mapped[list["Grade"]] = relationship(
         back_populates="item", cascade="all, delete-orphan"
     )
@@ -310,7 +304,6 @@ class Item(Base, UserScopedMixin, TimestampMixin):
     __table_args__ = (
         UniqueConstraint(
             "user_id", "subject_id", "category_id", "semester_id", "name",
-            "classroom_id",
-            name="uq_item_subject_category_semester_name_classroom",
+            name="uq_item_subject_category_semester_name",
         ),
     )

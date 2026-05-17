@@ -89,7 +89,7 @@
   "errors": {
     "item": {
       "not_found": "Item not found",
-      "duplicate_name": "An item with this name already exists in this classroom",
+      "duplicate_name": "An item with this name already exists for this subject + category + semester",
       "subject_invalid": "Please select a valid subject",
       "category_invalid": "Please select a valid category",
       "semester_invalid": "Please select a valid semester",

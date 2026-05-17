@@ -3,7 +3,6 @@ import { useTranslation } from 'react-i18next'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { ItemNameCombobox } from '../components/ItemNameCombobox'
-import { useClassrooms } from '../hooks/useClassrooms'
 import { useSemesters } from '../hooks/useSemesters'
 import { PageContainer } from '../layout/PageContainer'
 import { PageHeader } from '../layout/PageHeader'
@@ -43,16 +42,11 @@ function semesterLabel(s: { academic_year: number; term: number }): string {
   return `${s.academic_year}-${s.term}`
 }
 
-function classroomLabel(c: { grade: number; name: string }): string {
-  return `${c.grade}年${c.name}`
-}
-
 export function AdminItems() {
   const { t } = useTranslation()
   const qc = useQueryClient()
 
   const semestersQ = useSemesters()
-  const classroomsQ = useClassrooms()
   const subjectsQ = useQuery({
     queryKey: ['subjects'],
     queryFn: () => api.subjects.list(),
@@ -63,7 +57,6 @@ export function AdminItems() {
   })
 
   const semesters = semestersQ.data?.data ?? []
-  const classrooms = classroomsQ.data?.data ?? []
   const subjects = subjectsQ.data?.data ?? []
   const categories = categoriesQ.data?.data ?? []
 
@@ -106,7 +99,6 @@ export function AdminItems() {
             className={PRIMARY_BTN}
             disabled={
               semesters.length === 0 ||
-              classrooms.length === 0 ||
               subjects.length === 0
             }
           >
@@ -124,20 +116,6 @@ export function AdminItems() {
               })}
             </span>
           )}
-          <select
-            value={filters.classroom_id ?? ''}
-            onChange={(e) =>
-              setFilters((f) => ({ ...f, classroom_id: e.target.value || undefined }))
-            }
-            className={SELECT_CLS}
-          >
-            <option value="">{t('admin_items.filter.all_classrooms')}</option>
-            {classrooms.map((c) => (
-              <option key={c.id} value={c.id}>
-                {classroomLabel(c)}
-              </option>
-            ))}
-          </select>
           <select
             value={filters.subject_id ?? ''}
             onChange={(e) =>
@@ -166,9 +144,7 @@ export function AdminItems() {
               </option>
             ))}
           </select>
-          {(filters.classroom_id ||
-            filters.subject_id ||
-            filters.category_id) && (
+          {(filters.subject_id || filters.category_id) && (
             <button
               onClick={() => setFilters({})}
               className={SECONDARY_BTN}
@@ -199,9 +175,6 @@ export function AdminItems() {
               <thead className="bg-slate-50 border-b border-slate-200 text-slate-600">
                 <tr>
                   <th className="px-4 py-3 text-left font-medium">
-                    {t('admin_items.col.classroom')}
-                  </th>
-                  <th className="px-4 py-3 text-left font-medium">
                     {t('admin_items.col.subject')}
                   </th>
                   <th className="px-4 py-3 text-left font-medium">
@@ -222,12 +195,6 @@ export function AdminItems() {
                 {items.map((it) => {
                   return (
                     <tr key={it.id} className="border-b border-slate-100 last:border-b-0">
-                      <td className="px-4 py-2.5 text-slate-700">
-                        {classroomLabel({
-                          grade: it.classroom_grade,
-                          name: it.classroom_name,
-                        })}
-                      </td>
                       <td className="px-4 py-2.5 text-slate-900">
                         {it.subject_system_key
                           ? t(`subject.${it.subject_system_key}`)
@@ -276,10 +243,8 @@ export function AdminItems() {
           defaultSemesterId={
             filters.semester_id ?? currentSemester?.id ?? semesters[0]?.id ?? ''
           }
-          defaultClassroomId={filters.classroom_id ?? ''}
           subjects={subjects}
           categories={categories}
-          classrooms={classrooms}
           onClose={() => {
             setCreating(false)
             setEditing(null)
@@ -311,20 +276,16 @@ function ItemModal({
   mode,
   existing,
   defaultSemesterId,
-  defaultClassroomId,
   subjects,
   categories,
-  classrooms,
   onClose,
   onSaved,
 }: {
   mode: 'create' | 'edit'
   existing: ItemDetail | null
   defaultSemesterId: string
-  defaultClassroomId: string
   subjects: { id: string; system_key: string | null; display_name: string | null }[]
   categories: { id: string; system_key: string }[]
-  classrooms: { id: string; grade: number; name: string }[]
   onClose: () => void
   onSaved: () => void
 }) {
@@ -357,9 +318,6 @@ function ItemModal({
   // Semester is governed by the global top-bar switcher — no per-modal UI.
   // Parent passes the current semester id via defaultSemesterId.
   const semesterId = existing?.semester_id ?? defaultSemesterId
-  const [classroomId, setClassroomId] = useState(
-    existing?.classroom_id ?? defaultClassroomId ?? classrooms[0]?.id ?? '',
-  )
   const [name, setName] = useState(existing?.name ?? '')
   const [errKey, setErrKey] = useState<string | null>(null)
 
@@ -438,7 +396,7 @@ function ItemModal({
       updateMut.mutate({ id: existing.id, name: name.trim() })
       return
     }
-    if (!subjectId || !categoryId || !semesterId || !classroomId) {
+    if (!subjectId || !categoryId || !semesterId) {
       setErrKey('admin_items.error.missing_fields')
       return
     }
@@ -446,7 +404,6 @@ function ItemModal({
       subject_id: subjectId,
       category_id: categoryId,
       semester_id: semesterId,
-      classroom_id: classroomId,
       name: name.trim(),
     })
   }
@@ -512,20 +469,6 @@ function ItemModal({
                   </option>
                 ) : null
               })}
-            </select>
-          </Row>
-          <Row label={t('admin_items.modal.classroom')}>
-            <select
-              value={classroomId}
-              onChange={(e) => setClassroomId(e.target.value)}
-              disabled={mode === 'edit'}
-              className={SELECT_CLS + ' w-full disabled:bg-slate-100'}
-            >
-              {classrooms.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {classroomLabel(c)}
-                </option>
-              ))}
             </select>
           </Row>
           <Row label={t('admin_items.modal.name')}>

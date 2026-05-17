@@ -501,7 +501,6 @@ def _commit_grades(
                 Item.category_id == cat.id,
                 Item.semester_id == semester.id,
                 Item.name == col.exam_name,
-                Item.classroom_id == classroom.id,
             )
             .one_or_none()
         )
@@ -514,7 +513,6 @@ def _commit_grades(
                 category_id=cat.id,
                 semester_id=semester.id,
                 name=col.exam_name,
-                classroom_id=classroom.id,
             )
             db.add(item)
             db.flush()
@@ -768,16 +766,27 @@ def get_classroom_grades(
     )
     student_ids = {s.id for s in students}
 
-    # Items belonging to this classroom in this semester
-    items = (
+    # Items are cross-classroom now. Show only items where at least one
+    # student in this classroom has a grade — keeps the view focused on
+    # assessments this class actually took.
+    items_q = (
         db.query(Item)
         .filter(
             Item.user_id == user_id,
             Item.semester_id == semester.id,
-            Item.classroom_id == classroom_id,
         )
-        .all()
     )
+    if student_ids:
+        items_q = items_q.filter(
+            Item.id.in_(
+                db.query(Grade.item_id)
+                .filter(Grade.student_id.in_(student_ids))
+                .distinct()
+            )
+        )
+    else:
+        items_q = items_q.filter(False)  # empty roster → no items
+    items = items_q.all()
 
     item_outs = [
         ItemOut(

@@ -1,4 +1,5 @@
-"""Item CRUD — one item per classroom (no M2M, see issue #8)."""
+"""Item CRUD — items are cross-classroom (one row per
+(user, subject, category, semester, name); see migration b5c6d7e8f9a0)."""
 from __future__ import annotations
 
 from typing import Annotated
@@ -11,7 +12,6 @@ from sqlalchemy.orm import Session
 
 from auth import require_user_id
 from database import get_db
-from models.classroom import Classroom
 from models.curriculum import Category, Item, Semester, Subject
 from models.grading import Grade, PointRecord
 from schemas import (
@@ -69,7 +69,6 @@ def _validate_refs(
     subject_id: UUID,
     category_id: UUID,
     semester_id: UUID,
-    classroom_id: UUID,
 ) -> None:
     """Verify every FK the caller passed resolves to a row this user owns."""
     if (
@@ -96,13 +95,6 @@ def _validate_refs(
         is None
     ):
         raise _bad_request("errors.item.semester_invalid", "Unknown semester.")
-    if (
-        db.query(Classroom.id)
-        .filter(Classroom.id == classroom_id, Classroom.user_id == user_id)
-        .first()
-        is None
-    ):
-        raise _bad_request("errors.item.classroom_invalid", "Unknown classroom.")
 
 
 @router.get("/api/items", response_model=ItemDetailList)
@@ -112,7 +104,6 @@ def list_items(
     semester_id: Annotated[UUID | None, Query()] = None,
     subject_id: Annotated[UUID | None, Query()] = None,
     category_id: Annotated[UUID | None, Query()] = None,
-    classroom_id: Annotated[UUID | None, Query()] = None,
 ) -> ItemDetailList:
     q = db.query(Item).filter(Item.user_id == user_id)
     if semester_id is not None:
@@ -121,8 +112,6 @@ def list_items(
         q = q.filter(Item.subject_id == subject_id)
     if category_id is not None:
         q = q.filter(Item.category_id == category_id)
-    if classroom_id is not None:
-        q = q.filter(Item.classroom_id == classroom_id)
     items = q.all()
 
     if not items:
@@ -130,15 +119,11 @@ def list_items(
 
     subj_ids = {i.subject_id for i in items}
     cat_ids = {i.category_id for i in items}
-    cls_ids = {i.classroom_id for i in items}
     subj_by_id = {
         s.id: s for s in db.query(Subject).filter(Subject.id.in_(subj_ids)).all()
     }
     cat_by_id = {
         c.id: c for c in db.query(Category).filter(Category.id.in_(cat_ids)).all()
-    }
-    cls_by_id = {
-        c.id: c for c in db.query(Classroom).filter(Classroom.id.in_(cls_ids)).all()
     }
 
     item_ids = [i.id for i in items]
@@ -148,7 +133,6 @@ def list_items(
         .group_by(Grade.item_id)
         .all()
     )
-    # PointRecords reach back to item via grade.item_id.
     point_counts_rows = (
         db.query(Grade.item_id, func.count(PointRecord.id))
         .join(PointRecord, PointRecord.source_grade_id == Grade.id)
@@ -181,17 +165,6 @@ def list_items(
                     else ""
                 ),
                 semester_id=i.semester_id,
-                classroom_id=i.classroom_id,
-                classroom_grade=(
-                    cls_by_id[i.classroom_id].grade
-                    if i.classroom_id in cls_by_id
-                    else 0
-                ),
-                classroom_name=(
-                    cls_by_id[i.classroom_id].name
-                    if i.classroom_id in cls_by_id
-                    else ""
-                ),
                 grade_count=int(grade_counts.get(i.id, 0)),
                 point_record_count=int(point_counts.get(i.id, 0)),
             )
@@ -211,19 +184,13 @@ def create_item(
     db: Annotated[Session, Depends(get_db)],
 ) -> ItemDetailOut:
     _validate_refs(
-        db,
-        user_id,
-        body.subject_id,
-        body.category_id,
-        body.semester_id,
-        body.classroom_id,
+        db, user_id, body.subject_id, body.category_id, body.semester_id,
     )
     item = Item(
         user_id=user_id,
         subject_id=body.subject_id,
         category_id=body.category_id,
         semester_id=body.semester_id,
-        classroom_id=body.classroom_id,
         name=body.name.strip(),
     )
     db.add(item)
@@ -233,10 +200,10 @@ def create_item(
         db.rollback()
         raise _conflict(
             "errors.item.duplicate_name",
-            "An item with this name already exists in this classroom.",
+            "An item with this name already exists for this subject + category + semester.",
         )
     db.refresh(item)
-    return _detail_for(db, user_id, item)
+    return _detail_for(db, item)
 
 
 @router.put("/api/items/{item_id}", response_model=ItemDetailOut)
@@ -260,10 +227,10 @@ def update_item(
         db.rollback()
         raise _conflict(
             "errors.item.duplicate_name",
-            "An item with this name already exists in this classroom.",
+            "An item with this name already exists for this subject + category + semester.",
         )
     db.refresh(item)
-    return _detail_for(db, user_id, item)
+    return _detail_for(db, item)
 
 
 @router.delete("/api/items/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -283,11 +250,10 @@ def delete_item(
     db.commit()
 
 
-def _detail_for(db: Session, user_id: UUID, item: Item) -> ItemDetailOut:
+def _detail_for(db: Session, item: Item) -> ItemDetailOut:
     """Build one ItemDetailOut, used by POST/PUT to echo back."""
     subj = db.get(Subject, item.subject_id)
     cat = db.get(Category, item.category_id)
-    cls = db.get(Classroom, item.classroom_id)
     grade_count = (
         db.query(func.count(Grade.id)).filter(Grade.item_id == item.id).scalar()
     ) or 0
@@ -306,9 +272,6 @@ def _detail_for(db: Session, user_id: UUID, item: Item) -> ItemDetailOut:
         category_id=item.category_id,
         category_system_key=cat.system_key if cat else "",
         semester_id=item.semester_id,
-        classroom_id=item.classroom_id,
-        classroom_grade=cls.grade if cls else 0,
-        classroom_name=cls.name if cls else "",
         grade_count=int(grade_count),
         point_record_count=int(point_count),
     )
