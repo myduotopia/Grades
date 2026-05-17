@@ -250,6 +250,13 @@ function RowActions({
       >
         {t('classes.actions.import_grades')}
       </button>
+      <Link
+        to={`/classes/${classroom.id}/grades/entry`}
+        onClick={stop}
+        className="text-slate-700 hover:text-slate-900 font-medium"
+      >
+        {t('classes.actions.grade_entry')}
+      </Link>
       <button
         onClick={(e) => {
           stop(e)

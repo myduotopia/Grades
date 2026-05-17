@@ -216,6 +216,7 @@
       "view_students": "查看學生",
       "bulk_add_students": "批次新增學生",
       "import_grades": "匯入成績",
+      "grade_entry": "線上輸入成績",
       "confirm_delete": "確定刪除「{{name}}」？此動作會一併刪除學生與成績。"
     },
     "errors": {
@@ -279,9 +280,30 @@
       "duplicate_seat": "這個班級已經有相同座號的學生了"
     }
   },
+  "grade_entry": {
+    "title": "線上輸入成績",
+    "title_with_class": "{{name}} 成績輸入",
+    "subtitle": "輸入分數後離開格子（Tab / Enter）會自動儲存。達標的學生會自動加上點數，把分數降到門檻以下會自動撤回。",
+    "back_to_grades": "返回成績檢視",
+    "add_item": "新增項目",
+    "flush_all": "全部儲存",
+    "remove_column": "從畫面移除（不刪除項目）",
+    "max_items_hint": "最多同時編輯 {{max}} 個項目",
+    "empty_no_item": "目前沒有選任何項目。請按「新增項目」開始。",
+    "empty_no_students": "這個班級沒有學生，請先去班級頁新增學生。",
+    "col": {
+      "seat": "座號",
+      "name": "姓名"
+    },
+    "modal": {
+      "add_title": "新增考試項目",
+      "add_subtitle": "正在編輯 {{count}} 個項目（上限 {{max}}）。"
+    }
+  },
   "grades": {
     "title": "成績總覽",
     "title_with_class": "{{name}} 成績",
+    "edit_scores": "線上輸入這個項目的成績",
     "subtitle": "依類別權重自動計算每位學生在每個科目的加權總分。",
     "semester_label": "學期：",
     "semester_format": "{{year}} 學年第 {{term}} 學期",

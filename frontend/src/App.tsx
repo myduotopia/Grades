@@ -8,6 +8,7 @@ import { AdminSemesters } from './pages/AdminSemesters'
 import { AdminSubjects } from './pages/AdminSubjects'
 import { AuthCallback } from './pages/AuthCallback'
 import { Classes } from './pages/Classes'
+import { GradeEntry } from './pages/GradeEntry'
 import { Grades } from './pages/Grades'
 import { Home } from './pages/Home'
 import { Login } from './pages/Login'
@@ -31,6 +32,10 @@ function App() {
               <Route
                 path="/classes/:classroomId/grades"
                 element={<Grades />}
+              />
+              <Route
+                path="/classes/:classroomId/grades/entry"
+                element={<GradeEntry />}
               />
               <Route path="/admin/subjects" element={<AdminSubjects />} />
               <Route path="/admin/semesters" element={<AdminSemesters />} />
