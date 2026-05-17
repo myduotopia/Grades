@@ -480,9 +480,30 @@ export function GradeEntry() {
               navigate(-1)
             }
           }}
-          onCreated={(id) => {
-            addItemId(id)
-            setAddItemOpen(false)
+          onCreated={async (id) => {
+            // Before opening the entry matrix, check whether THIS class has
+            // already entered grades for this item. If yes, the teacher's
+            // intent is "edit existing scores" — redirect to /grades
+            // (依科目 view) with ?edit=<id> so that column opens straight
+            // in inline-edit mode.
+            try {
+              const view = await api.gradeEntry.forItem(id, classroomId)
+              const hasGrades = view.students.some(
+                (s) => s.score !== null,
+              )
+              setAddItemOpen(false)
+              if (hasGrades) {
+                navigate(
+                  `/classes/${classroomId}/grades?edit=${id}`,
+                )
+              } else {
+                addItemId(id)
+              }
+            } catch {
+              // Fall back to the normal entry flow if the lookup fails.
+              setAddItemOpen(false)
+              addItemId(id)
+            }
           }}
         />
       )}

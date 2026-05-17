@@ -1,6 +1,6 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { PageContainer } from '../layout/PageContainer'
@@ -29,8 +29,17 @@ export function Grades() {
   const navigate = useNavigate()
   const { classroomId } = useParams<{ classroomId: string }>()
 
+  // `?edit=<item_id>` lets another page deep-link straight into inline-edit
+  // for one column (e.g. /grades/entry redirects here when the picked item
+  // already has grades for this class). Force the by-subject view in that
+  // case; BySubjectView consumes the param and clears it after applying.
+  const [params] = useSearchParams()
+  const editParam = params.get('edit')
+
   const [view, setView] = useState<View>(
-    (localStorage.getItem(VIEW_KEY) as View) || 'by-student',
+    editParam
+      ? 'by-subject'
+      : ((localStorage.getItem(VIEW_KEY) as View) || 'by-student'),
   )
   const classroomQ = useQuery({
     queryKey: ['classroom', classroomId],
@@ -140,7 +149,11 @@ export function Grades() {
         />
       )}
       {view_data && view === 'by-subject' && (
-        <BySubjectView view={view_data} subjects={subjectsPresent} />
+        <BySubjectView
+          view={view_data}
+          subjects={subjectsPresent}
+          editTarget={editParam}
+        />
       )}
     </PageContainer>
   )
@@ -245,12 +258,15 @@ function ByStudentTable({
 function BySubjectView({
   view,
   subjects,
+  editTarget,
 }: {
   view: import('../lib/api').ClassroomGradesView
   subjects: SubjectRef[]
+  editTarget: string | null
 }) {
   const { t } = useTranslation()
   const qc = useQueryClient()
+  const [, setParams] = useSearchParams()
   const [pickedId, setPickedId] = useState<string>(subjects[0]?.id ?? '')
   // One item at a time can be in edit mode.
   const [editingItemId, setEditingItemId] = useState<string | null>(null)
@@ -259,6 +275,37 @@ function BySubjectView({
   const [saveErr, setSaveErr] = useState<string | null>(null)
   // student_id → input ref, populated while a column is in edit mode.
   const inputRefs = useRef<Map<string, HTMLInputElement>>(new Map())
+
+  // If the page was deep-linked with ?edit=<item_id>, switch the subject
+  // picker to that item's subject and open inline-edit for it. Done in an
+  // effect so we wait for view.items to be populated. The query param is
+  // cleared after applying so a refresh doesn't re-open the same edit.
+  const editAppliedRef = useRef(false)
+  useEffect(() => {
+    if (!editTarget || editAppliedRef.current) return
+    const target = view.items.find((i) => i.id === editTarget)
+    if (!target) return
+    setPickedId(target.subject_id)
+    const next: Record<string, number | null> = {}
+    for (const s of view.students) {
+      const cur = view.grades.find(
+        (g) => g.student_id === s.id && g.item_id === editTarget,
+      )?.score
+      next[s.id] = cur === undefined ? null : cur
+    }
+    setDrafts(next)
+    setEditingItemId(editTarget)
+    setSaveErr(null)
+    editAppliedRef.current = true
+    setParams(
+      (p) => {
+        const c = new URLSearchParams(p)
+        c.delete('edit')
+        return c
+      },
+      { replace: true },
+    )
+  }, [editTarget, view, setParams])
 
   function focusStudent(studentId: string) {
     const el = inputRefs.current.get(studentId)
