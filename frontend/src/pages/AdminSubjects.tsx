@@ -315,6 +315,7 @@ function WeightRow({
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['subjects'] })
       qc.invalidateQueries({ queryKey: ['subject-weights'] })
+      qc.invalidateQueries({ queryKey: ['subject-point-rules'] })
     },
   })
   const label = subject.system_key
@@ -423,6 +424,7 @@ function AddSubjectModal({ onClose }: { onClose: () => void }) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['subjects'] })
       qc.invalidateQueries({ queryKey: ['subject-weights'] })
+      qc.invalidateQueries({ queryKey: ['subject-point-rules'] })
       onClose()
     },
     onError: (err) => {

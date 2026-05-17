@@ -296,8 +296,6 @@ def update_point_rules(
     for sid, pts in wanted.items():
         if sid not in valid_subjects:
             continue
-        if not 0 <= pts <= 500:
-            continue
         row = existing_by_subject.get(sid)
         if row is None:
             db.add(

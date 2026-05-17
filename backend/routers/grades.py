@@ -581,6 +581,10 @@ def apply_auto_award(
         for c in db.query(Category).filter(Category.id.in_(cat_ids)).all()
     }
     subj_ids = {it.subject_id for it in items_by_id.values()}
+    subj_labels: dict[UUID, str] = {
+        s.id: (s.system_key or s.display_name or "")
+        for s in db.query(Subject).filter(Subject.id.in_(subj_ids)).all()
+    }
     point_rule_rows = (
         db.query(SubjectPointRule)
         .filter(
@@ -638,7 +642,8 @@ def apply_auto_award(
         meets = g.score >= threshold
         rec = record_by_grade.get(g.id)
         if meets:
-            reason = f"auto-award: {item.subject_id} {item.name or cat_key}"
+            subj_label = subj_labels.get(item.subject_id, "")
+            reason = f"auto-award: {subj_label} {item.name or cat_key}".strip()
             if rec is None:
                 db.add(
                     PointRecord(
@@ -651,7 +656,7 @@ def apply_auto_award(
                 )
             else:
                 rec.points = pts
-                rec.student_id = g.student_id
+                rec.reason = reason
         else:
             if rec is not None:
                 db.delete(rec)
