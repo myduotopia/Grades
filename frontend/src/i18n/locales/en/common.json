@@ -52,6 +52,7 @@
       "actions": "Actions"
     },
     "filter": {
+      "current_semester_hint": "Current semester: {{label}} (switch via top-right)",
       "all_semesters": "All semesters",
       "all_classrooms": "All classrooms",
       "all_subjects": "All subjects",

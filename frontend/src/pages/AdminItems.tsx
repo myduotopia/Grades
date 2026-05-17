@@ -67,19 +67,18 @@ export function AdminItems() {
     [semesters],
   )
 
+  // Semester is governed by the global SemesterSwitcher (top bar). The page
+  // always shows items belonging to the current semester; classroom / subject
+  // / category remain as in-page filters.
   const [filters, setFilters] = useState<ItemFilters>({})
-  // Default semester filter to current once it loads (run once).
-  const [didDefault, setDidDefault] = useState(false)
-  if (!didDefault && currentSemester && !filters.semester_id) {
-    // setState during render is OK if it's gated by a flag (React docs allow
-    // this for "store derived state from props" cases). Triggers exactly one
-    // re-render the first time currentSemester resolves.
-    setFilters({ semester_id: currentSemester.id })
-    setDidDefault(true)
-  }
+  const effectiveFilters = useMemo<ItemFilters>(
+    () => ({ ...filters, semester_id: currentSemester?.id }),
+    [filters, currentSemester],
+  )
   const itemsQ = useQuery({
-    queryKey: ['items', filters],
-    queryFn: () => api.items.list(filters),
+    queryKey: ['items', effectiveFilters],
+    queryFn: () => api.items.list(effectiveFilters),
+    enabled: !!currentSemester,
   })
   const items = itemsQ.data?.data ?? []
 
@@ -112,22 +111,14 @@ export function AdminItems() {
       />
 
       <section className="bg-white border border-slate-200 rounded-xl shadow-sm p-4 mb-4">
-        <div className="flex flex-wrap gap-3">
-          <select
-            value={filters.semester_id ?? ''}
-            onChange={(e) =>
-              setFilters((f) => ({ ...f, semester_id: e.target.value || undefined }))
-            }
-            className={SELECT_CLS}
-          >
-            <option value="">{t('admin_items.filter.all_semesters')}</option>
-            {semesters.map((s) => (
-              <option key={s.id} value={s.id}>
-                {semesterLabel(s)}
-                {s.is_current ? ` (${t('admin_semesters.current_badge')})` : ''}
-              </option>
-            ))}
-          </select>
+        <div className="flex flex-wrap gap-3 items-center">
+          {currentSemester && (
+            <span className="text-xs text-slate-500">
+              {t('admin_items.filter.current_semester_hint', {
+                label: semesterLabel(currentSemester),
+              })}
+            </span>
+          )}
           <select
             value={filters.classroom_id ?? ''}
             onChange={(e) =>
@@ -170,8 +161,7 @@ export function AdminItems() {
               </option>
             ))}
           </select>
-          {(filters.semester_id ||
-            filters.classroom_id ||
+          {(filters.classroom_id ||
             filters.subject_id ||
             filters.category_id) && (
             <button
@@ -204,9 +194,6 @@ export function AdminItems() {
               <thead className="bg-slate-50 border-b border-slate-200 text-slate-600">
                 <tr>
                   <th className="px-4 py-3 text-left font-medium">
-                    {t('admin_items.col.semester')}
-                  </th>
-                  <th className="px-4 py-3 text-left font-medium">
                     {t('admin_items.col.classroom')}
                   </th>
                   <th className="px-4 py-3 text-left font-medium">
@@ -228,12 +215,8 @@ export function AdminItems() {
               </thead>
               <tbody>
                 {items.map((it) => {
-                  const sem = semesters.find((s) => s.id === it.semester_id)
                   return (
                     <tr key={it.id} className="border-b border-slate-100 last:border-b-0">
-                      <td className="px-4 py-2.5 text-slate-700">
-                        {sem ? semesterLabel(sem) : '—'}
-                      </td>
                       <td className="px-4 py-2.5 text-slate-700">
                         {classroomLabel({
                           grade: it.classroom_grade,
