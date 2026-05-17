@@ -1,8 +1,24 @@
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  closestCenter,
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core'
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable'
 
 import { ItemNameCombobox } from '../components/ItemNameCombobox'
+import { SortableTableRow } from '../components/SortableTableRow'
 import { useMe } from '../hooks/useMe'
 import { useSemesters } from '../hooks/useSemesters'
 import { PageContainer } from '../layout/PageContainer'
@@ -103,16 +119,23 @@ export function AdminItems() {
     return [...ordered, ...remaining]
   }, [rawItems, storedOrder])
 
-  const [dragFrom, setDragFrom] = useState<number | null>(null)
   const orderMut = useMutation({
     mutationFn: (ids: string[]) => api.me.updateItemOrder(ids),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['me'] }),
   })
-  function reorder(fromIdx: number, toIdx: number) {
-    if (fromIdx === toIdx) return
-    const next = [...items]
-    const [moved] = next.splice(fromIdx, 1)
-    next.splice(toIdx, 0, moved)
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
+  )
+  function onDragEnd(e: DragEndEvent) {
+    const { active, over } = e
+    if (!over || active.id === over.id) return
+    const from = items.findIndex((it) => it.id === active.id)
+    const to = items.findIndex((it) => it.id === over.id)
+    if (from === -1 || to === -1) return
+    const next = arrayMove(items, from, to)
     orderMut.mutate(next.map((it) => it.id))
   }
 
@@ -228,65 +251,55 @@ export function AdminItems() {
                   </th>
                 </tr>
               </thead>
-              <tbody>
-                {items.map((it, idx) => {
-                  const dragging = dragFrom === idx
-                  return (
-                    <tr
-                      key={it.id}
-                      draggable
-                      onDragStart={() => setDragFrom(idx)}
-                      onDragOver={(e) => {
-                        if (dragFrom !== null) e.preventDefault()
-                      }}
-                      onDrop={() => {
-                        if (dragFrom !== null) reorder(dragFrom, idx)
-                        setDragFrom(null)
-                      }}
-                      onDragEnd={() => setDragFrom(null)}
-                      className={`border-b border-slate-100 last:border-b-0 cursor-grab ${
-                        dragging ? 'opacity-50' : ''
-                      }`}
-                    >
-                      <td
-                        className="px-2 py-2.5 text-slate-300 text-center select-none"
-                        aria-hidden
-                        title={t('admin_items.drag_to_reorder')}
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragEnd={onDragEnd}
+              >
+                <SortableContext
+                  items={items.map((it) => it.id)}
+                  strategy={verticalListSortingStrategy}
+                >
+                  <tbody>
+                    {items.map((it) => (
+                      <SortableTableRow
+                        key={it.id}
+                        id={it.id}
+                        handleTitle={t('admin_items.drag_to_reorder')}
                       >
-                        ⋮⋮
-                      </td>
-                      <td className="px-4 py-2.5 text-slate-900">
-                        {it.subject_system_key
-                          ? t(`subject.${it.subject_system_key}`)
-                          : (it.subject_display_name ?? '—')}
-                      </td>
-                      <td className="px-4 py-2.5 text-slate-700">
-                        {t(`category.${it.category_system_key}`)}
-                      </td>
-                      <td className="px-4 py-2.5 text-slate-900 font-medium">
-                        {it.name || <span className="text-slate-400">—</span>}
-                      </td>
-                      <td className="px-4 py-2.5 text-slate-500 font-mono tabular-nums text-xs">
-                        {it.grade_count}
-                      </td>
-                      <td className="px-4 py-2.5 text-right space-x-3">
-                        <button
-                          onClick={() => setEditing(it)}
-                          className="text-amber-700 hover:text-amber-800 font-medium text-sm"
-                        >
-                          {t('admin_items.edit')}
-                        </button>
-                        <button
-                          onClick={() => setDeleting(it)}
-                          className="text-rose-600 hover:text-rose-800 font-medium text-sm"
-                        >
-                          {t('classes.actions.delete')}
-                        </button>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
+                        <td className="px-4 py-2.5 text-slate-900">
+                          {it.subject_system_key
+                            ? t(`subject.${it.subject_system_key}`)
+                            : (it.subject_display_name ?? '—')}
+                        </td>
+                        <td className="px-4 py-2.5 text-slate-700">
+                          {t(`category.${it.category_system_key}`)}
+                        </td>
+                        <td className="px-4 py-2.5 text-slate-900 font-medium">
+                          {it.name || <span className="text-slate-400">—</span>}
+                        </td>
+                        <td className="px-4 py-2.5 text-slate-500 font-mono tabular-nums text-xs">
+                          {it.grade_count}
+                        </td>
+                        <td className="px-4 py-2.5 text-right space-x-3">
+                          <button
+                            onClick={() => setEditing(it)}
+                            className="text-amber-700 hover:text-amber-800 font-medium text-sm"
+                          >
+                            {t('admin_items.edit')}
+                          </button>
+                          <button
+                            onClick={() => setDeleting(it)}
+                            className="text-rose-600 hover:text-rose-800 font-medium text-sm"
+                          >
+                            {t('classes.actions.delete')}
+                          </button>
+                        </td>
+                      </SortableTableRow>
+                    ))}
+                  </tbody>
+                </SortableContext>
+              </DndContext>
             </table>
           </div>
         </section>

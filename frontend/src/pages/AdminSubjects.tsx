@@ -1,7 +1,23 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  closestCenter,
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core'
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable'
 
+import { SortableTableRow } from '../components/SortableTableRow'
 import { useMe } from '../hooks/useMe'
 import { PageContainer } from '../layout/PageContainer'
 import { PageHeader } from '../layout/PageHeader'
@@ -90,25 +106,31 @@ export function AdminSubjects() {
     return [...academic, ...others, ...remaining]
   }, [subjects, storedOrder])
 
-  // DnD state
-  const [dragFrom, setDragFrom] = useState<number | null>(null)
+  // DnD state — only the non-academic tail is sortable.
   const orderMut = useMutation({
     mutationFn: (ids: string[]) => api.me.updateSubjectOrder(ids),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['me'] }),
   })
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
+  )
+  const pinnedCount = PINNED_ACADEMIC_KEYS.length
+  const sortableSubjects = orderedSubjects.slice(pinnedCount)
+  const sortableIds = sortableSubjects.map((s) => s.id)
 
-  function reorderNonAcademic(fromIdx: number, toIdx: number) {
-    // fromIdx / toIdx are indexes into orderedSubjects; both must be in the
-    // non-academic tail.
-    const pinnedCount = PINNED_ACADEMIC_KEYS.length
-    if (fromIdx < pinnedCount || toIdx < pinnedCount) return
-    if (fromIdx === toIdx) return
-    const next = [...orderedSubjects]
-    const [moved] = next.splice(fromIdx, 1)
-    next.splice(toIdx, 0, moved)
-    // Persist the new non-academic order (academic 5 are always re-pinned by
-    // the render logic, so we only need to send the tail; sending all is
-    // harmless and lets the backend store a complete snapshot).
+  function onDragEnd(e: DragEndEvent) {
+    const { active, over } = e
+    if (!over || active.id === over.id) return
+    const from = sortableSubjects.findIndex((s) => s.id === active.id)
+    const to = sortableSubjects.findIndex((s) => s.id === over.id)
+    if (from === -1 || to === -1) return
+    const reordered = arrayMove(sortableSubjects, from, to)
+    // Re-pin the academic 5 at the front so the persisted snapshot is the
+    // full intended order.
+    const next = [...orderedSubjects.slice(0, pinnedCount), ...reordered]
     orderMut.mutate(next.map((s) => s.id))
   }
 
@@ -272,6 +294,7 @@ export function AdminSubjects() {
             <table className="min-w-full text-sm">
               <thead className="bg-slate-50 border-b border-slate-200 text-slate-600">
                 <tr>
+                  <th className="w-8 px-2 py-3" aria-hidden></th>
                   <th className="px-4 py-3 text-left font-medium">
                     {t('admin_subjects.col.subject')}
                   </th>
@@ -294,42 +317,46 @@ export function AdminSubjects() {
                   </th>
                 </tr>
               </thead>
-              <tbody>
-                {orderedSubjects.map((s, idx) => {
-                  const isPinned = idx < PINNED_ACADEMIC_KEYS.length
-                  return (
-                    <WeightRow
-                      key={s.id}
-                      subject={s}
-                      draft={draft[s.id] ?? {}}
-                      sum={sumsBySubject[s.id]}
-                      points={pointDraft[s.id] ?? 0}
-                      draggable={!isPinned}
-                      dragging={dragFrom === idx}
-                      onDragStart={() => setDragFrom(idx)}
-                      onDragOver={(e) => {
-                        if (dragFrom !== null && !isPinned) e.preventDefault()
-                      }}
-                      onDrop={() => {
-                        if (dragFrom !== null && !isPinned) {
-                          reorderNonAcademic(dragFrom, idx)
-                        }
-                        setDragFrom(null)
-                      }}
-                      onDragEnd={() => setDragFrom(null)}
-                      onChange={(k, w) =>
-                        setDraft((d) => ({
-                          ...d,
-                          [s.id]: { ...(d[s.id] ?? {}), [k]: w },
-                        }))
-                      }
-                      onPointsChange={(v) =>
-                        setPointDraft((p) => ({ ...p, [s.id]: v }))
-                      }
-                    />
-                  )
-                })}
-              </tbody>
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragEnd={onDragEnd}
+              >
+                <SortableContext
+                  items={sortableIds}
+                  strategy={verticalListSortingStrategy}
+                >
+                  <tbody>
+                    {orderedSubjects.map((s, idx) => {
+                      const isPinned = idx < pinnedCount
+                      return (
+                        <SortableTableRow
+                          key={s.id}
+                          id={s.id}
+                          disabled={isPinned}
+                          handleTitle={t('admin_subjects.drag_to_reorder')}
+                        >
+                          <WeightRowCells
+                            subject={s}
+                            draft={draft[s.id] ?? {}}
+                            sum={sumsBySubject[s.id]}
+                            points={pointDraft[s.id] ?? 0}
+                            onChange={(k, w) =>
+                              setDraft((d) => ({
+                                ...d,
+                                [s.id]: { ...(d[s.id] ?? {}), [k]: w },
+                              }))
+                            }
+                            onPointsChange={(v) =>
+                              setPointDraft((p) => ({ ...p, [s.id]: v }))
+                            }
+                          />
+                        </SortableTableRow>
+                      )
+                    })}
+                  </tbody>
+                </SortableContext>
+              </DndContext>
             </table>
           </div>
 
@@ -378,17 +405,11 @@ export function AdminSubjects() {
   )
 }
 
-function WeightRow({
+function WeightRowCells({
   subject,
   draft,
   sum,
   points,
-  draggable,
-  dragging,
-  onDragStart,
-  onDragOver,
-  onDrop,
-  onDragEnd,
   onChange,
   onPointsChange,
 }: {
@@ -396,12 +417,6 @@ function WeightRow({
   draft: Record<string, number>
   sum: number | undefined
   points: number
-  draggable: boolean
-  dragging: boolean
-  onDragStart: () => void
-  onDragOver: (e: React.DragEvent) => void
-  onDrop: () => void
-  onDragEnd: () => void
   onChange: (cat: string, w: number) => void
   onPointsChange: (v: number) => void
 }) {
@@ -430,26 +445,8 @@ function WeightRow({
   }
 
   return (
-    <tr
-      draggable={draggable}
-      onDragStart={draggable ? onDragStart : undefined}
-      onDragOver={draggable ? onDragOver : undefined}
-      onDrop={draggable ? onDrop : undefined}
-      onDragEnd={draggable ? onDragEnd : undefined}
-      className={`border-b border-slate-100 last:border-b-0 ${
-        dragging ? 'opacity-50' : ''
-      } ${draggable ? 'cursor-grab' : ''}`}
-    >
+    <>
       <td className="px-4 py-2.5 text-slate-900 font-medium">
-        {draggable && (
-          <span
-            className="mr-2 text-slate-300 select-none"
-            aria-hidden
-            title={t('admin_subjects.drag_to_reorder')}
-          >
-            ⋮⋮
-          </span>
-        )}
         {label}
         {subject.is_custom && (
           <span className="ml-2 text-[10px] uppercase tracking-wider text-amber-700 bg-amber-50 rounded-full px-2 py-0.5">
@@ -524,7 +521,7 @@ function WeightRow({
           </button>
         )}
       </td>
-    </tr>
+    </>
   )
 }
 
