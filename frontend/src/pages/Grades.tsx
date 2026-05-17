@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -280,6 +280,41 @@ function BySubjectView({
   // drafts[student_id] = score | null (null = blank → delete)
   const [drafts, setDrafts] = useState<Record<string, number | null>>({})
   const [saveErr, setSaveErr] = useState<string | null>(null)
+  // student_id → input ref, populated while a column is in edit mode.
+  const inputRefs = useRef<Map<string, HTMLInputElement>>(new Map())
+
+  function focusStudent(studentId: string) {
+    const el = inputRefs.current.get(studentId)
+    if (el) {
+      el.focus()
+      el.select()
+    }
+  }
+
+  function onCellKeyDown(
+    e: React.KeyboardEvent<HTMLInputElement>,
+    studentIdx: number,
+  ) {
+    const students = view.students
+    const max = students.length - 1
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      if (studentIdx < max) focusStudent(students[studentIdx + 1].id)
+      return
+    }
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      if (studentIdx < max) focusStudent(students[studentIdx + 1].id)
+      return
+    }
+    if (e.key === 'ArrowUp' || (e.key === 'Enter' && e.shiftKey)) {
+      e.preventDefault()
+      if (studentIdx > 0) focusStudent(students[studentIdx - 1].id)
+      return
+    }
+    // Tab / Shift+Tab / ← / → keep native browser behaviour: only one
+    // editable column exists at a time, so there's no neighbouring cell.
+  }
 
   if (view.items.length === 0) return <EmptyHint />
 
@@ -435,7 +470,7 @@ function BySubjectView({
               </tr>
             </thead>
             <tbody>
-              {view.students.map((s) => (
+              {view.students.map((s, si) => (
                 <tr
                   key={s.id}
                   className="border-b border-slate-100 last:border-b-0"
@@ -461,6 +496,10 @@ function BySubjectView({
                     return (
                       <td key={i.id} className="px-2 py-1 bg-amber-50/40">
                         <input
+                          ref={(el) => {
+                            if (el) inputRefs.current.set(s.id, el)
+                            else inputRefs.current.delete(s.id)
+                          }}
                           type="number"
                           inputMode="decimal"
                           step={0.1}
@@ -468,6 +507,7 @@ function BySubjectView({
                           max={100}
                           value={v === null || v === undefined ? '' : String(v)}
                           onChange={(e) => setDraft(s.id, e.target.value)}
+                          onKeyDown={(e) => onCellKeyDown(e, si)}
                           placeholder="—"
                           className="w-16 border border-slate-300 rounded-md px-2 py-1 text-sm text-right focus:outline-none focus:ring-2 focus:ring-amber-500"
                         />
