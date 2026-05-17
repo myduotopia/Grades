@@ -77,6 +77,16 @@
       "missing_fields": "Please fill in all fields"
     }
   },
+  "errors": {
+    "item": {
+      "not_found": "Item not found",
+      "duplicate_name": "An item with this name already exists in this classroom",
+      "subject_invalid": "Please select a valid subject",
+      "category_invalid": "Please select a valid category",
+      "semester_invalid": "Please select a valid semester",
+      "classroom_invalid": "Please select a valid classroom"
+    }
+  },
   "admin_semesters": {
     "title": "Semesters",
     "subtitle": "Configure how many terms make up an academic year, and add / switch the current semester. Other pages (grade entry, dashboards) default to filtering by the current semester.",

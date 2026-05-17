@@ -68,6 +68,15 @@ export function AdminItems() {
   )
 
   const [filters, setFilters] = useState<ItemFilters>({})
+  // Default semester filter to current once it loads (run once).
+  const [didDefault, setDidDefault] = useState(false)
+  if (!didDefault && currentSemester && !filters.semester_id) {
+    // setState during render is OK if it's gated by a flag (React docs allow
+    // this for "store derived state from props" cases). Triggers exactly one
+    // re-render the first time currentSemester resolves.
+    setFilters({ semester_id: currentSemester.id })
+    setDidDefault(true)
+  }
   const itemsQ = useQuery({
     queryKey: ['items', filters],
     queryFn: () => api.items.list(filters),
