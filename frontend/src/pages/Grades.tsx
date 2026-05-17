@@ -1,11 +1,16 @@
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Link, useNavigate, useParams } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useNavigate, useParams } from 'react-router-dom'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { PageContainer } from '../layout/PageContainer'
 import { PageHeader } from '../layout/PageHeader'
-import { api, SYSTEM_SUBJECT_KEYS } from '../lib/api'
+import {
+  api,
+  ApiError,
+  type GradeBulkEntry,
+  SYSTEM_SUBJECT_KEYS,
+} from '../lib/api'
 import { classroomDisplayName } from '../lib/classroomFormat'
 import {
   buildMatrix,
@@ -158,11 +163,7 @@ export function Grades() {
         />
       )}
       {view_data && view === 'by-subject' && (
-        <BySubjectView
-          view={view_data}
-          subjects={subjectsPresent}
-          classroomId={classroomId}
-        />
+        <BySubjectView view={view_data} subjects={subjectsPresent} />
       )}
     </PageContainer>
   )
@@ -267,14 +268,18 @@ function ByStudentTable({
 function BySubjectView({
   view,
   subjects,
-  classroomId,
 }: {
   view: import('../lib/api').ClassroomGradesView
   subjects: SubjectRef[]
-  classroomId: string
 }) {
   const { t } = useTranslation()
+  const qc = useQueryClient()
   const [pickedId, setPickedId] = useState<string>(subjects[0]?.id ?? '')
+  // One item at a time can be in edit mode.
+  const [editingItemId, setEditingItemId] = useState<string | null>(null)
+  // drafts[student_id] = score | null (null = blank → delete)
+  const [drafts, setDrafts] = useState<Record<string, number | null>>({})
+  const [saveErr, setSaveErr] = useState<string | null>(null)
 
   if (view.items.length === 0) return <EmptyHint />
 
@@ -286,13 +291,72 @@ function BySubjectView({
     lookup[g.student_id][g.item_id] = g.score
   }
 
+  function startEdit(itemId: string) {
+    // Initialize drafts from current server scores for this item.
+    const next: Record<string, number | null> = {}
+    for (const s of view.students) {
+      const cur = lookup[s.id]?.[itemId]
+      next[s.id] = cur === undefined ? null : cur
+    }
+    setDrafts(next)
+    setEditingItemId(itemId)
+    setSaveErr(null)
+  }
+
+  function cancelEdit() {
+    setDrafts({})
+    setEditingItemId(null)
+    setSaveErr(null)
+  }
+
+  const saveMut = useMutation({
+    mutationFn: async (itemId: string) => {
+      const entries: GradeBulkEntry[] = view.students.map((s) => ({
+        student_id: s.id,
+        score: drafts[s.id] ?? null,
+      }))
+      return api.gradeEntry.bulk({ item_id: itemId, entries })
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['grades'] })
+      qc.invalidateQueries({ queryKey: ['item-grades', editingItemId] })
+      setDrafts({})
+      setEditingItemId(null)
+    },
+    onError: (err) => {
+      setSaveErr(
+        err instanceof ApiError && err.body?.message
+          ? err.body.message
+          : err instanceof Error
+            ? err.message
+            : 'unknown',
+      )
+    },
+  })
+
+  function setDraft(studentId: string, raw: string) {
+    if (raw === '') {
+      setDrafts((d) => ({ ...d, [studentId]: null }))
+      return
+    }
+    const n = Number(raw)
+    if (Number.isNaN(n)) return
+    setDrafts((d) => ({
+      ...d,
+      [studentId]: Math.max(0, Math.min(100, n)),
+    }))
+  }
+
   return (
     <div className="space-y-4">
       <label className="text-sm text-slate-600 inline-flex items-center gap-2">
         {t('grades.pick_subject')}
         <select
           value={pickedId}
-          onChange={(e) => setPickedId(e.target.value)}
+          onChange={(e) => {
+            setPickedId(e.target.value)
+            cancelEdit()
+          }}
           className="border border-slate-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 bg-white"
         >
           {subjects.map((sub) => (
@@ -314,30 +378,60 @@ function BySubjectView({
                 <th className="px-4 py-3 text-left font-medium">
                   {t('students.col.name')}
                 </th>
-                {items.map((i) => (
-                  <th
-                    key={i.id}
-                    className="px-3 py-3 text-left font-medium"
-                    title={`${t(`category.${i.category_system_key}`)} · ${i.name}`}
-                  >
-                    <div className="flex items-start gap-1">
-                      <div>
-                        <div className="text-[10px] text-slate-500 uppercase tracking-wide">
-                          {t(`category.${i.category_system_key}`)}
+                {items.map((i) => {
+                  const isEditing = editingItemId === i.id
+                  const otherEditing =
+                    editingItemId !== null && editingItemId !== i.id
+                  return (
+                    <th
+                      key={i.id}
+                      className={`px-3 py-3 text-left font-medium ${
+                        isEditing ? 'bg-amber-50' : ''
+                      }`}
+                      title={`${t(`category.${i.category_system_key}`)} · ${i.name}`}
+                    >
+                      <div className="flex items-start gap-1">
+                        <div>
+                          <div className="text-[10px] text-slate-500 uppercase tracking-wide">
+                            {t(`category.${i.category_system_key}`)}
+                          </div>
+                          <div className="text-slate-700">{i.name}</div>
                         </div>
-                        <div className="text-slate-700">{i.name}</div>
+                        {!isEditing && (
+                          <button
+                            onClick={() => startEdit(i.id)}
+                            disabled={otherEditing}
+                            title={t('grades.edit_scores')}
+                            aria-label={t('grades.edit_scores')}
+                            className="ml-1 text-slate-400 hover:text-amber-700 disabled:opacity-30 disabled:cursor-not-allowed"
+                          >
+                            ✎
+                          </button>
+                        )}
+                        {isEditing && (
+                          <div className="ml-2 flex items-center gap-1">
+                            <button
+                              onClick={() => saveMut.mutate(i.id)}
+                              disabled={saveMut.isPending}
+                              className="px-2 py-0.5 rounded bg-amber-500 hover:bg-amber-600 text-white text-xs font-medium disabled:bg-slate-300"
+                            >
+                              {saveMut.isPending
+                                ? t('common.saving')
+                                : t('common.save')}
+                            </button>
+                            <button
+                              onClick={cancelEdit}
+                              disabled={saveMut.isPending}
+                              className="px-2 py-0.5 rounded border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-medium disabled:opacity-60"
+                            >
+                              {t('common.cancel')}
+                            </button>
+                          </div>
+                        )}
                       </div>
-                      <Link
-                        to={`/classes/${classroomId}/grades/entry?items=${i.id}`}
-                        title={t('grades.edit_scores')}
-                        aria-label={t('grades.edit_scores')}
-                        className="ml-1 text-slate-400 hover:text-amber-700"
-                      >
-                        ✎
-                      </Link>
-                    </div>
-                  </th>
-                ))}
+                    </th>
+                  )
+                })}
               </tr>
             </thead>
             <tbody>
@@ -354,17 +448,42 @@ function BySubjectView({
                       <span className="text-slate-400">—</span>
                     )}
                   </td>
-                  {items.map((i) => (
-                    <td key={i.id} className="px-3 py-2.5 text-slate-700">
-                      {formatScore(lookup[s.id]?.[i.id])}
-                    </td>
-                  ))}
+                  {items.map((i) => {
+                    const isEditing = editingItemId === i.id
+                    if (!isEditing) {
+                      return (
+                        <td key={i.id} className="px-3 py-2.5 text-slate-700">
+                          {formatScore(lookup[s.id]?.[i.id])}
+                        </td>
+                      )
+                    }
+                    const v = drafts[s.id]
+                    return (
+                      <td key={i.id} className="px-2 py-1 bg-amber-50/40">
+                        <input
+                          type="number"
+                          inputMode="decimal"
+                          step={0.1}
+                          min={0}
+                          max={100}
+                          value={v === null || v === undefined ? '' : String(v)}
+                          onChange={(e) => setDraft(s.id, e.target.value)}
+                          placeholder="—"
+                          className="w-16 border border-slate-300 rounded-md px-2 py-1 text-sm text-right focus:outline-none focus:ring-2 focus:ring-amber-500"
+                        />
+                      </td>
+                    )
+                  })}
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       </div>
+
+      {saveErr && (
+        <p className="text-sm text-rose-600">{saveErr}</p>
+      )}
     </div>
   )
 }
