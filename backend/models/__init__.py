@@ -13,7 +13,6 @@ from models.curriculum import (
     Semester,
     Subject,
     SubjectCategoryWeight,
-    item_classroom,
 )
 from models.grading import Grade, PointRecord, PointRule, StudentStandard, SubjectPointRule
 from models.settings import UserSettings
@@ -39,5 +38,4 @@ __all__ = [
     "SUBJECT_WEIGHT_PROFILES",
     "CUSTOM_SUBJECT_DEFAULT_PROFILE",
     "UserSettings",
-    "item_classroom",
 ]

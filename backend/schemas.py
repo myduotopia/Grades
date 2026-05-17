@@ -344,6 +344,39 @@ class ItemOut(BaseModel):
     exam_date: date | None = None  # placeholder; not yet stored
 
 
+class ItemDetailOut(BaseModel):
+    """Full item details for the /admin/items list."""
+    id: UUID
+    name: str
+    subject_id: UUID
+    subject_system_key: str | None
+    subject_display_name: str | None
+    category_id: UUID
+    category_system_key: str
+    semester_id: UUID
+    classroom_id: UUID
+    classroom_grade: int
+    classroom_name: str
+    grade_count: int
+    point_record_count: int
+
+
+class ItemDetailList(BaseModel):
+    data: list[ItemDetailOut]
+
+
+class ItemCreate(BaseModel):
+    subject_id: UUID
+    category_id: UUID
+    semester_id: UUID
+    classroom_id: UUID
+    name: str = Field(default="", max_length=200)
+
+
+class ItemUpdate(BaseModel):
+    name: str = Field(default="", max_length=200)
+
+
 class GradeEntryOut(BaseModel):
     item_id: UUID
     student_id: UUID

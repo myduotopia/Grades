@@ -22,6 +22,7 @@ from models.settings import UserSettings
 from routers import categories as categories_router
 from routers import classroom as classroom_router
 from routers import grades as grades_router
+from routers import item as item_router
 from routers import me as me_router
 from routers import semester as semester_router
 from routers import student as student_router
@@ -63,6 +64,7 @@ app.include_router(
 # /api/students/{id}) — mounted with no prefix.
 app.include_router(student_router.router, tags=["students"])
 app.include_router(grades_router.router, tags=["grades"])
+app.include_router(item_router.router, tags=["items"])
 app.include_router(subjects_router.router, tags=["subjects"])
 app.include_router(
     semester_router.router, prefix="/api/semesters", tags=["semesters"]

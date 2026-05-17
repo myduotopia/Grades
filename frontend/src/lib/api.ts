@@ -184,6 +184,45 @@ export const SYSTEM_SUBJECT_KEYS = [
 
 export type SystemSubjectKey = (typeof SYSTEM_SUBJECT_KEYS)[number]
 
+export interface ItemDetail {
+  id: string
+  name: string
+  subject_id: string
+  subject_system_key: string | null
+  subject_display_name: string | null
+  category_id: string
+  category_system_key: string
+  semester_id: string
+  classroom_id: string
+  classroom_grade: number
+  classroom_name: string
+  grade_count: number
+  point_record_count: number
+}
+
+export interface ItemDetailList {
+  data: ItemDetail[]
+}
+
+export interface ItemCreatePayload {
+  subject_id: string
+  category_id: string
+  semester_id: string
+  classroom_id: string
+  name: string
+}
+
+export interface ItemUpdatePayload {
+  name: string
+}
+
+export interface ItemFilters {
+  semester_id?: string
+  subject_id?: string
+  category_id?: string
+  classroom_id?: string
+}
+
 export interface GradeImportColumnPreview {
   column_index: number
   category_input: string | null
@@ -465,6 +504,28 @@ export const api = {
         method: 'PUT',
         body: JSON.stringify(body),
       }),
+  },
+  items: {
+    list: (filters: ItemFilters = {}) => {
+      const qs = new URLSearchParams()
+      for (const [k, v] of Object.entries(filters)) {
+        if (v) qs.set(k, v)
+      }
+      const tail = qs.toString() ? `?${qs.toString()}` : ''
+      return request<ItemDetailList>(`/api/items${tail}`)
+    },
+    create: (body: ItemCreatePayload) =>
+      request<ItemDetail>('/api/items', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+    update: (id: string, body: ItemUpdatePayload) =>
+      request<ItemDetail>(`/api/items/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(body),
+      }),
+    remove: (id: string) =>
+      request<void>(`/api/items/${id}`, { method: 'DELETE' }),
   },
   grades: {
     view: (classroomId: string, semesterId?: string) => {
