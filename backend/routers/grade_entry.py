@@ -10,12 +10,12 @@ from decimal import Decimal
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from auth import require_user_id
 from database import get_db
-from models.classroom import Student
+from models.classroom import Classroom, Student
 from models.curriculum import Category, Item, Subject
 from models.grading import Grade, PointRecord
 from routers.grades import apply_auto_award
@@ -82,26 +82,46 @@ def _award_points_for(db: Session, grade: Grade) -> int:
 @router.get("/api/items/{item_id}/grades", response_model=ItemGradesView)
 def get_item_grades(
     item_id: UUID,
+    classroom_id: Annotated[UUID, Query()],
     user_id: Annotated[UUID, Depends(require_user_id)],
     db: Annotated[Session, Depends(get_db)],
 ) -> ItemGradesView:
+    """Return the item's grades for ONE classroom's roster. Items are global
+    per teacher; the caller picks which class they're entering scores for."""
     item = _get_owned_item(db, user_id, item_id)
+    classroom = (
+        db.query(Classroom)
+        .filter(Classroom.id == classroom_id, Classroom.user_id == user_id)
+        .one_or_none()
+    )
+    if classroom is None:
+        raise _not_found("classroom")
     subj = db.get(Subject, item.subject_id)
     cat = db.get(Category, item.category_id)
 
     roster = (
         db.query(Student)
         .filter(
-            Student.classroom_id == item.classroom_id,
+            Student.classroom_id == classroom_id,
             Student.user_id == user_id,
         )
         .order_by(Student.seat_number.asc())
         .all()
     )
-    grades_by_student: dict[UUID, Grade] = {
-        g.student_id: g
-        for g in db.query(Grade).filter(Grade.item_id == item.id).all()
-    }
+    roster_ids = {s.id for s in roster}
+    grades_by_student: dict[UUID, Grade] = (
+        {
+            g.student_id: g
+            for g in db.query(Grade)
+            .filter(
+                Grade.item_id == item.id,
+                Grade.student_id.in_(roster_ids),
+            )
+            .all()
+        }
+        if roster_ids
+        else {}
+    )
 
     return ItemGradesView(
         item_id=item.id,
@@ -111,7 +131,7 @@ def get_item_grades(
         subject_display_name=subj.display_name if subj else None,
         category_system_key=cat.system_key if cat else "",
         semester_id=item.semester_id,
-        classroom_id=item.classroom_id,
+        classroom_id=classroom_id,
         students=[
             ItemGradesStudentRow(
                 student_id=s.id,
@@ -145,14 +165,13 @@ def create_grade(
         .filter(
             Student.id == body.student_id,
             Student.user_id == user_id,
-            Student.classroom_id == item.classroom_id,
         )
         .one_or_none()
     )
     if student is None:
         raise _bad_request(
-            "errors.grade.student_not_in_classroom",
-            "Student does not belong to this item's classroom.",
+            "errors.grade.student_not_found",
+            "Student not found.",
         )
     existing = (
         db.query(Grade)
@@ -246,7 +265,8 @@ def bulk_upsert_grades(
     if not body.entries:
         return GradeBulkResult(written=0, deleted=0, awarded=0, revoked=0)
 
-    # Sanity-check every student belongs to this item's classroom.
+    # Verify every student belongs to this teacher; cross-classroom is fine
+    # because items are global per teacher.
     student_ids = {e.student_id for e in body.entries}
     valid_students = {
         s.id
@@ -254,7 +274,6 @@ def bulk_upsert_grades(
         .filter(
             Student.id.in_(student_ids),
             Student.user_id == user_id,
-            Student.classroom_id == item.classroom_id,
         )
         .all()
     }

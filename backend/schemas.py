@@ -358,9 +358,8 @@ class ItemDetailOut(BaseModel):
     category_id: UUID
     category_system_key: str
     semester_id: UUID
-    classroom_id: UUID
-    classroom_grade: int
-    classroom_name: str
+    # An item is cross-classroom; these counts aggregate across every student
+    # who has a grade on it.
     grade_count: int
     point_record_count: int
 
@@ -373,7 +372,6 @@ class ItemCreate(BaseModel):
     subject_id: UUID
     category_id: UUID
     semester_id: UUID
-    classroom_id: UUID
     name: str = Field(default="", max_length=200)
 
 

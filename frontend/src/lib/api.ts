@@ -239,9 +239,6 @@ export interface ItemDetail {
   category_id: string
   category_system_key: string
   semester_id: string
-  classroom_id: string
-  classroom_grade: number
-  classroom_name: string
   grade_count: number
   point_record_count: number
 }
@@ -254,7 +251,6 @@ export interface ItemCreatePayload {
   subject_id: string
   category_id: string
   semester_id: string
-  classroom_id: string
   name: string
 }
 
@@ -266,7 +262,6 @@ export interface ItemFilters {
   semester_id?: string
   subject_id?: string
   category_id?: string
-  classroom_id?: string
 }
 
 export interface GradeImportColumnPreview {
@@ -579,8 +574,10 @@ export const api = {
       request<void>(`/api/items/${id}`, { method: 'DELETE' }),
   },
   gradeEntry: {
-    forItem: (itemId: string) =>
-      request<ItemGradesView>(`/api/items/${itemId}/grades`),
+    forItem: (itemId: string, classroomId: string) =>
+      request<ItemGradesView>(
+        `/api/items/${itemId}/grades?classroom_id=${classroomId}`,
+      ),
     create: (body: { item_id: string; student_id: string; score: number }) =>
       request<GradeWriteOut>('/api/grades', {
         method: 'POST',

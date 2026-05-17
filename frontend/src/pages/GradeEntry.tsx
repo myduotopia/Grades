@@ -77,8 +77,9 @@ export function GradeEntry() {
 
   const itemQueries = useQueries({
     queries: itemIds.map((id) => ({
-      queryKey: ['item-grades', id],
-      queryFn: () => api.gradeEntry.forItem(id),
+      queryKey: ['item-grades', id, classroomId],
+      queryFn: () => api.gradeEntry.forItem(id, classroomId as string),
+      enabled: !!classroomId,
     })),
   })
 
@@ -468,7 +469,6 @@ export function GradeEntry() {
 
       {addItemOpen && classroomId && (
         <AddItemModal
-          classroomId={classroomId}
           currentItemCount={itemIds.length}
           onClose={() => {
             setAddItemOpen(false)
@@ -491,12 +491,10 @@ export function GradeEntry() {
 }
 
 function AddItemModal({
-  classroomId,
   currentItemCount,
   onClose,
   onCreated,
 }: {
-  classroomId: string
   currentItemCount: number
   onClose: () => void
   onCreated: (itemId: string) => void
@@ -615,7 +613,6 @@ function AddItemModal({
       subject_id: subjectId,
       category_id: categoryId,
       semester_id: semesterId,
-      classroom_id: classroomId,
       name: name.trim(),
     })
   }

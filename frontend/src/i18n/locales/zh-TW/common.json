@@ -44,7 +44,7 @@
   },
   "admin_items": {
     "title": "考試項目",
-    "subtitle": "每個項目（段考 / 小考 / 作業…）屬於一個班級。同名同類別的項目可以在不同班獨立存在。",
+    "subtitle": "每個項目（段考 / 小考 / 作業…）是跨班共用的。同樣一份作業/考試只建立一次，之後在不同班輸入成績時就會關聯到同一筆，方便日後分析比較。",
     "add": "新增項目",
     "edit": "編輯",
     "enter_scores": "輸入成績",
@@ -89,7 +89,7 @@
   "errors": {
     "item": {
       "not_found": "找不到此項目",
-      "duplicate_name": "這個班的同類別已有同名項目",
+      "duplicate_name": "這個學期同科目同類別下已有同名項目",
       "subject_invalid": "請選擇有效的科目",
       "category_invalid": "請選擇有效的類別",
       "semester_invalid": "請選擇有效的學期",
