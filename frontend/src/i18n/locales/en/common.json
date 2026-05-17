@@ -61,7 +61,7 @@
       "clear": "Clear filters"
     },
     "modal": {
-      "add_title": "New exam item",
+      "add_title": "New item",
       "edit_title": "Edit item name",
       "subject": "Subject",
       "category": "Category",

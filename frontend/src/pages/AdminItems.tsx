@@ -34,6 +34,10 @@ const CATEGORY_KEYS = [
 // Names used when category = major_exam. Stored as-is in the item.name field.
 const MAJOR_EXAM_NAMES = ['期中考', '期末考', '第一次', '第二次', '第三次']
 
+// localStorage keys for "remember last selection" in the new-item modal.
+const LS_LAST_SUBJECT = 'admin_items.modal.last_subject_id'
+const LS_LAST_CATEGORY = 'admin_items.modal.last_category_id'
+
 function semesterLabel(s: { academic_year: number; term: number }): string {
   return `${s.academic_year}-${s.term}`
 }
@@ -280,7 +284,6 @@ export function AdminItems() {
           defaultClassroomId={filters.classroom_id ?? ''}
           subjects={subjects}
           categories={categories}
-          semesters={semesters}
           classrooms={classrooms}
           onClose={() => {
             setCreating(false)
@@ -316,7 +319,6 @@ function ItemModal({
   defaultClassroomId,
   subjects,
   categories,
-  semesters,
   classrooms,
   onClose,
   onSaved,
@@ -327,24 +329,39 @@ function ItemModal({
   defaultClassroomId: string
   subjects: { id: string; system_key: string | null; display_name: string | null }[]
   categories: { id: string; system_key: string }[]
-  semesters: { id: string; academic_year: number; term: number; is_current: boolean }[]
   classrooms: { id: string; grade: number; name: string }[]
   onClose: () => void
   onSaved: () => void
 }) {
   const { t } = useTranslation()
+  // Restore the last-used subject / category from localStorage so the teacher
+  // doesn't have to re-pick after every new item. Only used in create mode;
+  // edit mode is always the existing values.
+  const lastSubject =
+    typeof window !== 'undefined'
+      ? localStorage.getItem(LS_LAST_SUBJECT)
+      : null
+  const lastCategory =
+    typeof window !== 'undefined'
+      ? localStorage.getItem(LS_LAST_CATEGORY)
+      : null
   const [subjectId, setSubjectId] = useState(
-    existing?.subject_id ?? subjects[0]?.id ?? '',
+    existing?.subject_id ??
+      (lastSubject && subjects.some((s) => s.id === lastSubject)
+        ? lastSubject
+        : (subjects[0]?.id ?? '')),
   )
   const [categoryId, setCategoryId] = useState(
     existing?.category_id ??
-      categories.find((c) => c.system_key === 'quiz')?.id ??
-      categories[0]?.id ??
-      '',
+      (lastCategory && categories.some((c) => c.id === lastCategory)
+        ? lastCategory
+        : (categories.find((c) => c.system_key === 'quiz')?.id ??
+          categories[0]?.id ??
+          '')),
   )
-  const [semesterId, setSemesterId] = useState(
-    existing?.semester_id ?? defaultSemesterId,
-  )
+  // Semester is governed by the global top-bar switcher — no per-modal UI.
+  // Parent passes the current semester id via defaultSemesterId.
+  const semesterId = existing?.semester_id ?? defaultSemesterId
   const [classroomId, setClassroomId] = useState(
     existing?.classroom_id ?? defaultClassroomId ?? classrooms[0]?.id ?? '',
   )
@@ -358,6 +375,13 @@ function ItemModal({
   const createMut = useMutation({
     mutationFn: (body: ItemCreatePayload) => api.items.create(body),
     onSuccess: () => {
+      // Remember the just-used subject + category for next time.
+      try {
+        localStorage.setItem(LS_LAST_SUBJECT, subjectId)
+        localStorage.setItem(LS_LAST_CATEGORY, categoryId)
+      } catch {
+        // Ignore quota / privacy-mode errors — the rest of the flow still works.
+      }
       onSaved()
       onClose()
     },
@@ -468,21 +492,6 @@ function ItemModal({
                   </option>
                 ) : null
               })}
-            </select>
-          </Row>
-          <Row label={t('admin_items.modal.semester')}>
-            <select
-              value={semesterId}
-              onChange={(e) => setSemesterId(e.target.value)}
-              disabled={mode === 'edit'}
-              className={SELECT_CLS + ' w-full disabled:bg-slate-100'}
-            >
-              {semesters.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {semesterLabel(s)}
-                  {s.is_current ? ` (${t('admin_semesters.current_badge')})` : ''}
-                </option>
-              ))}
             </select>
           </Row>
           <Row label={t('admin_items.modal.classroom')}>
