@@ -465,12 +465,12 @@ export function GradeEntry() {
           currentItemCount={itemIds.length}
           onClose={() => {
             setAddItemOpen(false)
-            // If the modal was auto-opened because the page had no items
-            // selected, cancelling means "I didn't actually want to enter
-            // scores" — take the teacher back to the grades view rather
-            // than leaving them on an empty entry page.
+            // Auto-opened on a no-items entry page means "I didn't actually
+            // want to start entering scores". Go back to wherever the user
+            // came from (Classes list, grades view, etc.) instead of
+            // stranding them on a blank entry page.
             if (itemIds.length === 0) {
-              navigate(`/classes/${classroomId}/grades`)
+              navigate(-1)
             }
           }}
           onCreated={(id) => {
