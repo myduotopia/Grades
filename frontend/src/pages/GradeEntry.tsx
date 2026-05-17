@@ -463,7 +463,16 @@ export function GradeEntry() {
         <AddItemModal
           classroomId={classroomId}
           currentItemCount={itemIds.length}
-          onClose={() => setAddItemOpen(false)}
+          onClose={() => {
+            setAddItemOpen(false)
+            // If the modal was auto-opened because the page had no items
+            // selected, cancelling means "I didn't actually want to enter
+            // scores" — take the teacher back to the grades view rather
+            // than leaving them on an empty entry page.
+            if (itemIds.length === 0) {
+              navigate(`/classes/${classroomId}/grades`)
+            }
+          }}
           onCreated={(id) => {
             addItemId(id)
             setAddItemOpen(false)
@@ -569,7 +578,7 @@ function AddItemModal({
         className="bg-white rounded-2xl shadow-xl border border-slate-200 p-6 w-full max-w-md"
       >
         <h2 className="text-lg font-semibold tracking-tight mb-1 text-slate-900">
-          {t('grade_entry.modal.add_title')}
+          {t('admin_items.modal.add_title')}
         </h2>
         <p className="text-xs text-slate-500 mb-4">
           {t('grade_entry.modal.add_subtitle', {
