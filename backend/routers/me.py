@@ -17,8 +17,11 @@ from models.curriculum import (
     SubjectCategoryWeight,
     default_semester_dates,
 )
+from models.grading import SubjectPointRule
 from models.settings import UserSettings
 from schemas import MeSettingsUpdate, SeedResult
+
+DEFAULT_POINTS_AWARDED = 100
 
 router = APIRouter()
 
@@ -88,6 +91,7 @@ def seed(
     # we can resolve their ids.
     db.flush()
     _seed_subject_weights(db, user_id)
+    _seed_subject_point_rules(db, user_id)
 
     db.commit()
     return SeedResult(
@@ -134,6 +138,36 @@ def _seed_subject_weights(db: Session, user_id: UUID) -> None:
                     weight=weight,
                 )
             )
+
+
+def _seed_subject_point_rules(db: Session, user_id: UUID) -> None:
+    """Fill missing subject_point_rule rows for the user.
+
+    Idempotent: walks all subjects visible to the user (built-ins +
+    user-owned) and inserts a default row (points_awarded=100) for any subject
+    that doesn't already have one.
+    """
+    subjects = (
+        db.query(Subject)
+        .filter((Subject.user_id.is_(None)) | (Subject.user_id == user_id))
+        .all()
+    )
+    existing = {
+        row.subject_id
+        for row in db.query(SubjectPointRule)
+        .filter(SubjectPointRule.user_id == user_id)
+        .all()
+    }
+    for s in subjects:
+        if s.id in existing:
+            continue
+        db.add(
+            SubjectPointRule(
+                user_id=user_id,
+                subject_id=s.id,
+                points_awarded=DEFAULT_POINTS_AWARDED,
+            )
+        )
 
 
 @router.patch("/settings")

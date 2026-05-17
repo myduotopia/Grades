@@ -250,6 +250,20 @@ export interface SubjectWeightsUpdate {
   weight: number
 }
 
+export interface SubjectPointRule {
+  subject_id: string
+  points_awarded: number
+}
+
+export interface SubjectPointRulesList {
+  data: SubjectPointRule[]
+}
+
+export interface SubjectPointRuleUpdate {
+  subject_id: string
+  points_awarded: number
+}
+
 export interface SubjectCategoryWeightView {
   subject_id: string
   subject_system_key: string | null
@@ -439,6 +453,15 @@ export const api = {
     list: () => request<SubjectWeightsList>('/api/subject-weights'),
     update: (body: SubjectWeightsUpdate[]) =>
       request<SubjectWeightsList>('/api/subject-weights', {
+        method: 'PUT',
+        body: JSON.stringify(body),
+      }),
+  },
+  subjectPointRules: {
+    list: () =>
+      request<SubjectPointRulesList>('/api/subject-point-rules'),
+    update: (body: SubjectPointRuleUpdate[]) =>
+      request<SubjectPointRulesList>('/api/subject-point-rules', {
         method: 'PUT',
         body: JSON.stringify(body),
       }),

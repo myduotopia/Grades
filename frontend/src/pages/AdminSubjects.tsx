@@ -34,12 +34,19 @@ export function AdminSubjects() {
     queryKey: ['subject-weights'],
     queryFn: () => api.subjectWeights.list(),
   })
+  const pointRulesQ = useQuery({
+    queryKey: ['subject-point-rules'],
+    queryFn: () => api.subjectPointRules.list(),
+  })
 
   const subjects = subjectsQ.data?.data ?? []
   const weights = weightsQ.data?.data ?? []
+  const pointRules = pointRulesQ.data?.data ?? []
 
   // draft[subject_id][category_system_key] = weight
   const [draft, setDraft] = useState<Record<string, Record<string, number>>>({})
+  // pointDraft[subject_id] = points_awarded
+  const [pointDraft, setPointDraft] = useState<Record<string, number>>({})
 
   useEffect(() => {
     if (weights.length > 0) {
@@ -51,6 +58,12 @@ export function AdminSubjects() {
       setDraft(next)
     }
   }, [weightsQ.data])
+
+  useEffect(() => {
+    const next: Record<string, number> = {}
+    for (const p of pointRules) next[p.subject_id] = p.points_awarded
+    setPointDraft(next)
+  }, [pointRulesQ.data])
 
   // Lookup: subject_id × category_system_key → category_id (needed for PUT)
   const catIdLookup = useMemo(() => {
@@ -72,14 +85,23 @@ export function AdminSubjects() {
     return m
   }, [weights])
 
+  const originalPoints = useMemo(() => {
+    const m: Record<string, number> = {}
+    for (const p of pointRules) m[p.subject_id] = p.points_awarded
+    return m
+  }, [pointRules])
+
   const dirty = useMemo(() => {
     for (const sid of Object.keys(draft)) {
       for (const ck of Object.keys(draft[sid])) {
         if ((original[sid]?.[ck] ?? -1) !== draft[sid][ck]) return true
       }
     }
+    for (const sid of Object.keys(pointDraft)) {
+      if ((originalPoints[sid] ?? -1) !== pointDraft[sid]) return true
+    }
     return false
-  }, [draft, original])
+  }, [draft, original, pointDraft, originalPoints])
 
   // Per-subject sum of non-extra weights
   const sumsBySubject = useMemo(() => {
@@ -104,6 +126,12 @@ export function AdminSubjects() {
       api.subjectWeights.update(payload),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['subject-weights'] }),
   })
+  const updatePointsMut = useMutation({
+    mutationFn: (payload: Parameters<typeof api.subjectPointRules.update>[0]) =>
+      api.subjectPointRules.update(payload),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ['subject-point-rules'] }),
+  })
 
   const [saveErr, setSaveErr] = useState<string | null>(null)
   const [savedAt, setSavedAt] = useState<number | null>(null)
@@ -121,9 +149,19 @@ export function AdminSubjects() {
         payload.push({ subject_id: sid, category_id: cid, weight: w })
       }
     }
-    if (payload.length === 0) return
+    const pointPayload: { subject_id: string; points_awarded: number }[] = []
+    for (const sid of Object.keys(pointDraft)) {
+      const v = pointDraft[sid]
+      if ((originalPoints[sid] ?? -1) === v) continue
+      pointPayload.push({ subject_id: sid, points_awarded: v })
+    }
+    if (payload.length === 0 && pointPayload.length === 0) return
     try {
-      await updateMut.mutateAsync(payload)
+      const tasks: Promise<unknown>[] = []
+      if (payload.length > 0) tasks.push(updateMut.mutateAsync(payload))
+      if (pointPayload.length > 0)
+        tasks.push(updatePointsMut.mutateAsync(pointPayload))
+      await Promise.all(tasks)
       setSavedAt(Date.now())
     } catch (err) {
       setSaveErr(err instanceof Error ? err.message : 'unknown')
@@ -132,12 +170,14 @@ export function AdminSubjects() {
 
   function onReset() {
     setDraft(JSON.parse(JSON.stringify(original)))
+    setPointDraft({ ...originalPoints })
     setSaveErr(null)
     setSavedAt(null)
   }
 
   const [showAdd, setShowAdd] = useState(false)
-  const canSave = dirty && allRowsValid && !updateMut.isPending
+  const saving = updateMut.isPending || updatePointsMut.isPending
+  const canSave = dirty && allRowsValid && !saving
 
   return (
     <PageContainer>
@@ -151,13 +191,13 @@ export function AdminSubjects() {
         }
       />
 
-      {(subjectsQ.isLoading || weightsQ.isLoading) && (
+      {(subjectsQ.isLoading || weightsQ.isLoading || pointRulesQ.isLoading) && (
         <div className="text-center text-slate-400 py-16">
           {t('common.loading')}
         </div>
       )}
 
-      {!subjectsQ.isLoading && !weightsQ.isLoading && (
+      {!subjectsQ.isLoading && !weightsQ.isLoading && !pointRulesQ.isLoading && (
         <section className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
@@ -177,6 +217,9 @@ export function AdminSubjects() {
                   <th className="px-3 py-3 text-left font-medium">
                     {t('admin_subjects.col.sum')}
                   </th>
+                  <th className="px-3 py-3 text-left font-medium">
+                    {t('admin_subjects.col.points_awarded')}
+                  </th>
                   <th className="px-3 py-3 text-right font-medium">
                     {t('admin_subjects.col.actions')}
                   </th>
@@ -189,11 +232,15 @@ export function AdminSubjects() {
                     subject={s}
                     draft={draft[s.id] ?? {}}
                     sum={sumsBySubject[s.id]}
+                    points={pointDraft[s.id] ?? 0}
                     onChange={(k, w) =>
                       setDraft((d) => ({
                         ...d,
                         [s.id]: { ...(d[s.id] ?? {}), [k]: w },
                       }))
+                    }
+                    onPointsChange={(v) =>
+                      setPointDraft((p) => ({ ...p, [s.id]: v }))
                     }
                   />
                 ))}
@@ -213,7 +260,7 @@ export function AdminSubjects() {
               )}
               <button
                 onClick={onReset}
-                disabled={!dirty || updateMut.isPending}
+                disabled={!dirty || saving}
                 className={SECONDARY_BTN}
               >
                 {t('common.reset')}
@@ -228,7 +275,7 @@ export function AdminSubjects() {
                     : undefined
                 }
               >
-                {updateMut.isPending ? t('common.saving') : t('common.save')}
+                {saving ? t('common.saving') : t('common.save')}
               </button>
             </div>
           </div>
@@ -250,12 +297,16 @@ function WeightRow({
   subject,
   draft,
   sum,
+  points,
   onChange,
+  onPointsChange,
 }: {
   subject: Subject
   draft: Record<string, number>
   sum: number | undefined
+  points: number
   onChange: (cat: string, w: number) => void
+  onPointsChange: (v: number) => void
 }) {
   const { t } = useTranslation()
   const qc = useQueryClient()
@@ -323,6 +374,28 @@ function WeightRow({
         >
           {sum ?? '—'} / 100
         </span>
+      </td>
+      <td className="px-2 py-2.5">
+        <div className="flex items-center gap-1">
+          <input
+            type="number"
+            inputMode="numeric"
+            min={0}
+            max={500}
+            step={1}
+            value={points}
+            onChange={(e) => {
+              const n = e.target.value === '' ? 0 : Number(e.target.value)
+              if (Number.isNaN(n)) return
+              onPointsChange(Math.max(0, Math.min(500, Math.trunc(n))))
+            }}
+            className="w-20 border border-slate-300 rounded-md px-2 py-1 text-sm text-right focus:outline-none focus:ring-2 focus:ring-amber-500"
+            aria-label={`${label} ${t('admin_subjects.col.points_awarded')}`}
+          />
+          <span className="text-xs text-slate-400">
+            {t('admin_subjects.points_unit')}
+          </span>
+        </div>
       </td>
       <td className="px-3 py-2.5 text-right">
         {subject.is_custom && (
