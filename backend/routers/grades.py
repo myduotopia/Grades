@@ -557,7 +557,7 @@ def apply_auto_award(
 
     For each grade:
       1. If item.category.system_key NOT IN AUTO_AWARD_CATEGORY_KEYS → no-op.
-      2. Look up StudentStandard(student_id, item.category_id).threshold;
+      2. Look up StudentStandard(student_id, item.subject_id).threshold;
          if absent → no-op.
       3. Look up SubjectPointRule(user_id, item.subject_id).points_awarded.
       4. If score >= threshold: upsert PointRecord(source_grade_id=grade.id).
@@ -600,12 +600,12 @@ def apply_auto_award(
         .filter(
             StudentStandard.user_id == user_id,
             StudentStandard.student_id.in_(student_ids),
-            StudentStandard.category_id.in_(cat_ids),
+            StudentStandard.subject_id.in_(subj_ids),
         )
         .all()
     )
     standard_by_pair: dict[tuple[UUID, UUID], Decimal] = {
-        (s.student_id, s.category_id): s.threshold for s in standards
+        (s.student_id, s.subject_id): s.threshold for s in standards
     }
 
     grade_ids = [g.id for g in grades]
@@ -625,7 +625,7 @@ def apply_auto_award(
         cat_key = cat_keys.get(item.category_id, "")
         if cat_key not in AUTO_AWARD_CATEGORY_KEYS:
             continue
-        threshold = standard_by_pair.get((g.student_id, item.category_id))
+        threshold = standard_by_pair.get((g.student_id, item.subject_id))
         if threshold is None:
             continue
         pts = points_by_subject.get(item.subject_id)

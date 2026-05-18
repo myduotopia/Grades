@@ -68,7 +68,13 @@ class Grade(Base, UserScopedMixin, TimestampMixin):
 
 
 class StudentStandard(Base, UserScopedMixin, TimestampMixin):
-    """Per-student × per-category threshold for awarding points."""
+    """Per-student × per-subject threshold for awarding points (issue #10).
+
+    Auto-award uses this to decide whether a particular student "met
+    standard" for an item: if score >= threshold for (student_id,
+    item.subject_id), and the item's category is in
+    AUTO_AWARD_CATEGORY_KEYS, points fire.
+    """
     __tablename__ = "student_standard"
 
     id: Mapped[UUID] = mapped_column(
@@ -82,21 +88,20 @@ class StudentStandard(Base, UserScopedMixin, TimestampMixin):
         nullable=False,
         index=True,
     )
-    category_id: Mapped[UUID] = mapped_column(
+    subject_id: Mapped[UUID] = mapped_column(
         PG_UUID(as_uuid=True),
-        ForeignKey("category.id", ondelete="CASCADE"),
+        ForeignKey("subject.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
     threshold: Mapped[Decimal] = mapped_column(Numeric(4, 1), nullable=False)
 
     student: Mapped["Student"] = relationship(back_populates="standards")
-    category: Mapped["Category"] = relationship(back_populates="standards")
 
     __table_args__ = (
         UniqueConstraint(
-            "student_id", "category_id",
-            name="uq_standard_student_category",
+            "student_id", "subject_id",
+            name="uq_standard_student_subject",
         ),
         CheckConstraint(
             "threshold >= 0 AND threshold <= 100",

@@ -311,6 +311,19 @@
       "pick_subtitle": "Pick the item you want to enter scores for; Save takes you to this class's grades page with that column ready to edit."
     }
   },
+  "standards": {
+    "hint": "Per-student standard score per subject. Leave a cell to save automatically; clear it to remove the threshold (no auto-award for that subject).",
+    "select_all": "Select all",
+    "empty_roster": "This classroom has no students.",
+    "formula_hint": "Standard score = major-exam / quiz score must be ≥ this value to trigger auto-award for that student × subject. Subjects with no threshold never auto-award.",
+    "batch_apply": "Apply to {{count}} students",
+    "batch": {
+      "title": "Batch apply standards",
+      "subtitle": "Applying one (subject, value) to {{count}} student(s).",
+      "subject": "Subject",
+      "threshold": "Standard score"
+    }
+  },
   "grades": {
     "title": "Grades overview",
     "title_with_class": "{{name}} — Grades",
@@ -325,7 +338,8 @@
     "empty": "No grade data for this semester yet. Use 「Import grades」 on the class page to upload a file.",
     "view": {
       "by_student": "By student",
-      "by_subject": "By subject"
+      "by_subject": "By subject",
+      "standards": "Standards"
     },
     "import": {
       "title": "Batch import grades",

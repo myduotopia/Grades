@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
+import { StandardsMatrix } from '../components/StandardsMatrix'
 import { PageContainer } from '../layout/PageContainer'
 import { PageHeader } from '../layout/PageHeader'
 import {
@@ -18,7 +19,7 @@ import {
   subjectsInView,
 } from '../lib/gradeMath'
 
-type View = 'by-student' | 'by-subject'
+type View = 'by-student' | 'by-subject' | 'standards'
 const VIEW_KEY = 'grades.view'
 
 const SECONDARY_BTN =
@@ -127,6 +128,17 @@ export function Grades() {
           >
             {t('grades.view.by_subject')}
           </button>
+          <button
+            onClick={() => changeView('standards')}
+            className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
+              view === 'standards'
+                ? 'bg-slate-900 text-white'
+                : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+            }`}
+            aria-pressed={view === 'standards'}
+          >
+            {t('grades.view.standards')}
+          </button>
         </div>
       </div>
 
@@ -154,6 +166,9 @@ export function Grades() {
           subjects={subjectsPresent}
           editTarget={editParam}
         />
+      )}
+      {view === 'standards' && classroomId && (
+        <StandardsMatrix classroomId={classroomId} />
       )}
     </PageContainer>
   )
