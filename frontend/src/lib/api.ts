@@ -161,6 +161,63 @@ export interface StudentPayload {
   email?: string | null
 }
 
+// ---------- Student detail (issue #11) ----------
+
+export interface StudentDetail {
+  id: string
+  classroom_id: string
+  classroom_grade: number
+  classroom_name: string
+  seat_number: number
+  name: string | null
+  email: string | null
+  semester_id: string | null
+  semester_label: string | null
+  semester_points: number
+}
+
+export interface StudentGradeRow {
+  grade_id: string
+  item_id: string
+  item_name: string
+  subject_id: string
+  subject_system_key: string | null
+  subject_display_name: string | null
+  category_system_key: string
+  score: number
+  threshold: number | null
+  met_standard: boolean
+  created_at: string
+}
+
+export interface StudentSubjectSummary {
+  subject_id: string
+  subject_system_key: string | null
+  subject_display_name: string | null
+  weighted_total: number | null
+  category_averages: Record<string, number>
+}
+
+export interface StudentGradesView {
+  semester_id: string | null
+  subjects: StudentSubjectSummary[]
+  grades: StudentGradeRow[]
+}
+
+export interface StudentPointRow {
+  id: string
+  points: number
+  reason: string
+  source_grade_id: string | null
+  created_at: string
+}
+
+export interface StudentPointsView {
+  semester_id: string | null
+  total: number
+  data: StudentPointRow[]
+}
+
 export interface ImportRowPreview {
   row_number: number
   action: 'create' | 'update' | 'error'
@@ -534,6 +591,22 @@ export const api = {
           body: JSON.stringify(body),
         },
       ),
+    detail: (studentId: string, semesterId?: string) => {
+      const qs = semesterId ? `?semester_id=${semesterId}` : ''
+      return request<StudentDetail>(`/api/students/${studentId}${qs}`)
+    },
+    grades: (studentId: string, semesterId?: string) => {
+      const qs = semesterId ? `?semester_id=${semesterId}` : ''
+      return request<StudentGradesView>(
+        `/api/students/${studentId}/grades${qs}`,
+      )
+    },
+    points: (studentId: string, semesterId?: string) => {
+      const qs = semesterId ? `?semester_id=${semesterId}` : ''
+      return request<StudentPointsView>(
+        `/api/students/${studentId}/points${qs}`,
+      )
+    },
     import: (classroomId: string, file: File, dryRun: boolean) => {
       const fd = new FormData()
       fd.append('file', file)

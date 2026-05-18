@@ -28,6 +28,7 @@ from routers import me as me_router
 from routers import semester as semester_router
 from routers import standards as standards_router
 from routers import student as student_router
+from routers import student_detail as student_detail_router
 from routers import subjects as subjects_router
 
 app = FastAPI(
@@ -65,6 +66,7 @@ app.include_router(
 # Student router uses absolute paths (mixes /api/classrooms/{id}/students/* and
 # /api/students/{id}) — mounted with no prefix.
 app.include_router(student_router.router, tags=["students"])
+app.include_router(student_detail_router.router, tags=["student-detail"])
 app.include_router(standards_router.router, tags=["standards"])
 app.include_router(grades_router.router, tags=["grades"])
 app.include_router(grade_entry_router.router, tags=["grade-entry"])
