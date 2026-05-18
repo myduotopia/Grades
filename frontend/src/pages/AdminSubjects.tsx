@@ -23,10 +23,10 @@ import { PageContainer } from '../layout/PageContainer'
 import { PageHeader } from '../layout/PageHeader'
 import { api, ApiError, type Subject } from '../lib/api'
 
-// Academic subjects shown in this fixed order at the top of the list. The
-// teacher cannot reorder these — the row's drag handle only appears for
-// every OTHER subject (other built-ins + custom).
-const PINNED_ACADEMIC_KEYS = [
+// Default display order for the 5 academic subjects when the teacher has
+// no stored order yet. After that, the teacher can drag any subject to any
+// position — no row is pinned.
+const DEFAULT_ACADEMIC_KEYS = [
   'chinese',
   'english',
   'math',
@@ -75,38 +75,40 @@ export function AdminSubjects() {
   const meQ = useMe()
   const storedOrder: string[] = meQ.data?.subject_order ?? []
 
-  // Final display order: 5 academic in fixed order first, then everything
-  // else in the teacher's stored order, with any not-yet-stored subjects
-  // (e.g. a newly-created custom one) appended at the end.
+  // Final display order: teacher's stored order first, anything missing
+  // from storage falls back to "academic 5 in fixed order, then others
+  // alphabetical". Every row is draggable; no pinning.
   const orderedSubjects = useMemo(() => {
     const byId = new Map(subjects.map((s) => [s.id, s] as const))
-    const academic: Subject[] = []
-    for (const key of PINNED_ACADEMIC_KEYS) {
-      const s = subjects.find((x) => x.system_key === key)
-      if (s) academic.push(s)
-    }
-    const pinnedIds = new Set(academic.map((s) => s.id))
-    const others: Subject[] = []
+    const ordered: Subject[] = []
+    const seen = new Set<string>()
     for (const sid of storedOrder) {
-      if (pinnedIds.has(sid)) continue
       const s = byId.get(sid)
-      if (s) others.push(s)
+      if (s) {
+        ordered.push(s)
+        seen.add(s.id)
+      }
     }
-    const seen = new Set([...pinnedIds, ...others.map((s) => s.id)])
-    // Anything not yet in storedOrder — custom subjects just created, or
-    // legacy users without a stored order — falls in here, sorted by
-    // built-in vs custom then display_name for stability.
-    const remaining = subjects
+    const fallback: Subject[] = []
+    for (const key of DEFAULT_ACADEMIC_KEYS) {
+      const s = subjects.find(
+        (x) => x.system_key === key && !seen.has(x.id),
+      )
+      if (s) {
+        fallback.push(s)
+        seen.add(s.id)
+      }
+    }
+    const tail = subjects
       .filter((s) => !seen.has(s.id))
       .sort((a, b) => {
         const aLabel = a.system_key ?? a.display_name ?? ''
         const bLabel = b.system_key ?? b.display_name ?? ''
         return aLabel.localeCompare(bLabel)
       })
-    return [...academic, ...others, ...remaining]
+    return [...ordered, ...fallback, ...tail]
   }, [subjects, storedOrder])
 
-  // DnD state — only the non-academic tail is sortable.
   const orderMut = useMutation({
     mutationFn: (ids: string[]) => api.me.updateSubjectOrder(ids),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['me'] }),
@@ -117,20 +119,15 @@ export function AdminSubjects() {
       coordinateGetter: sortableKeyboardCoordinates,
     }),
   )
-  const pinnedCount = PINNED_ACADEMIC_KEYS.length
-  const sortableSubjects = orderedSubjects.slice(pinnedCount)
-  const sortableIds = sortableSubjects.map((s) => s.id)
+  const sortableIds = orderedSubjects.map((s) => s.id)
 
   function onDragEnd(e: DragEndEvent) {
     const { active, over } = e
     if (!over || active.id === over.id) return
-    const from = sortableSubjects.findIndex((s) => s.id === active.id)
-    const to = sortableSubjects.findIndex((s) => s.id === over.id)
+    const from = orderedSubjects.findIndex((s) => s.id === active.id)
+    const to = orderedSubjects.findIndex((s) => s.id === over.id)
     if (from === -1 || to === -1) return
-    const reordered = arrayMove(sortableSubjects, from, to)
-    // Re-pin the academic 5 at the front so the persisted snapshot is the
-    // full intended order.
-    const next = [...orderedSubjects.slice(0, pinnedCount), ...reordered]
+    const next = arrayMove(orderedSubjects, from, to)
     orderMut.mutate(next.map((s) => s.id))
   }
 
@@ -327,13 +324,11 @@ export function AdminSubjects() {
                   strategy={verticalListSortingStrategy}
                 >
                   <tbody>
-                    {orderedSubjects.map((s, idx) => {
-                      const isPinned = idx < pinnedCount
+                    {orderedSubjects.map((s) => {
                       return (
                         <SortableTableRow
                           key={s.id}
                           id={s.id}
-                          disabled={isPinned}
                           handleTitle={t('admin_subjects.drag_to_reorder')}
                         >
                           <WeightRowCells
