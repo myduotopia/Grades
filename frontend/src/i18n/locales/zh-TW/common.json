@@ -311,6 +311,28 @@
       "pick_subtitle": "選擇要輸入成績的項目；按儲存後會直接帶你到該班級的成績頁編輯這欄。"
     }
   },
+  "student_detail": {
+    "title": "學生成績單",
+    "semester_label": "學期：",
+    "semester_points": "{{count}} 點 / 本學期",
+    "weighted_summary": "各科加權成績",
+    "grade_history": "成績紀錄",
+    "point_history": "點數紀錄",
+    "points_total": "本學期合計 {{total}} 點",
+    "no_grades": "本學期還沒有成績紀錄。",
+    "no_points": "本學期還沒有點數紀錄。",
+    "met": "達標",
+    "col": {
+      "date": "日期",
+      "subject": "科目",
+      "category": "類別",
+      "item": "項目",
+      "score": "分數",
+      "threshold": "標準分",
+      "delta": "點數",
+      "reason": "原因"
+    }
+  },
   "standards": {
     "hint": "每位學生各科目的「達標分」。離開格子自動儲存，清空格子等於沒有設定（不會自動發點）。",
     "select_all": "全選",

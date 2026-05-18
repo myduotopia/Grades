@@ -242,7 +242,14 @@ function ByStudentTable({
                     {s.seat_number}
                   </td>
                   <td className="px-4 py-2.5 text-slate-700">
-                    {s.name || <span className="text-slate-400">—</span>}
+                    <a
+                      href={`/students/${s.id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="hover:text-amber-700 hover:underline"
+                    >
+                      {s.name || <span className="text-slate-400">—</span>}
+                    </a>
                   </td>
                   {subjects.map((sub) => (
                     <td

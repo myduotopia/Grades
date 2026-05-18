@@ -311,6 +311,28 @@
       "pick_subtitle": "Pick the item you want to enter scores for; Save takes you to this class's grades page with that column ready to edit."
     }
   },
+  "student_detail": {
+    "title": "Student transcript",
+    "semester_label": "Semester:",
+    "semester_points": "{{count}} pts this semester",
+    "weighted_summary": "Weighted totals",
+    "grade_history": "Grade history",
+    "point_history": "Point history",
+    "points_total": "Total {{total}} pts this semester",
+    "no_grades": "No grades for this semester yet.",
+    "no_points": "No points for this semester yet.",
+    "met": "met",
+    "col": {
+      "date": "Date",
+      "subject": "Subject",
+      "category": "Category",
+      "item": "Item",
+      "score": "Score",
+      "threshold": "Standard",
+      "delta": "Δ",
+      "reason": "Reason"
+    }
+  },
   "standards": {
     "hint": "Per-student standard score per subject. Leave a cell to save automatically; clear it to remove the threshold (no auto-award for that subject).",
     "select_all": "Select all",

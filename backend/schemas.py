@@ -231,6 +231,68 @@ class StandardsBatchResult(BaseModel):
     written: int
 
 
+# ---------- Student detail view (issue #11) ----------
+
+class StudentDetailOut(BaseModel):
+    id: UUID
+    classroom_id: UUID
+    classroom_grade: int
+    classroom_name: str
+    seat_number: int
+    name: str | None
+    email: str | None
+    # The semester currently being viewed (defaults to is_current=true; null
+    # when the user has no semester set).
+    semester_id: UUID | None
+    semester_label: str | None
+    # Sum of point_records.points whose created_at lies within the viewed
+    # semester's [start_date, end_date].
+    semester_points: int
+
+
+class StudentGradeRow(BaseModel):
+    grade_id: UUID
+    item_id: UUID
+    item_name: str
+    subject_id: UUID
+    subject_system_key: str | None
+    subject_display_name: str | None
+    category_system_key: str
+    score: float
+    threshold: float | None
+    met_standard: bool
+    created_at: datetime
+
+
+class StudentSubjectSummary(BaseModel):
+    subject_id: UUID
+    subject_system_key: str | None
+    subject_display_name: str | None
+    weighted_total: float | None
+    # Per-category average for this student × subject, keyed by system_key.
+    category_averages: dict[str, float]
+
+
+class StudentGradesView(BaseModel):
+    semester_id: UUID | None
+    subjects: list[StudentSubjectSummary]
+    grades: list[StudentGradeRow]
+
+
+class StudentPointRow(BaseModel):
+    id: UUID
+    points: int
+    reason: str
+    source_grade_id: UUID | None
+    created_at: datetime
+
+
+class StudentPointsView(BaseModel):
+    semester_id: UUID | None
+    total: int
+    data: list[StudentPointRow]
+
+
 class StudentCreate(BaseModel):
     seat_number: int = Field(ge=1, le=99)
     name: str | None = Field(default=None, max_length=200)
