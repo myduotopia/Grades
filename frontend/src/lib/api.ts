@@ -122,8 +122,20 @@ export interface CategoryWeightUpdate {
   weight: number
 }
 
+// Per-subject student standard (issue #10).
 export interface StudentStandard {
-  system_key: string
+  student_id: string
+  subject_id: string
+  threshold: number
+}
+
+export interface StandardsView {
+  data: StudentStandard[]
+}
+
+export interface StandardsBatchPayload {
+  student_ids: string[]
+  subject_id: string
   threshold: number
 }
 
@@ -136,7 +148,6 @@ export interface Student {
   source: ClassroomSource
   created_at: string
   updated_at: string
-  standards: StudentStandard[]
 }
 
 export interface StudentList {
@@ -148,7 +159,6 @@ export interface StudentPayload {
   seat_number: number
   name?: string | null
   email?: string | null
-  standards?: Record<string, number>
 }
 
 export interface ImportRowPreview {
@@ -495,6 +505,35 @@ export const api = {
       }),
     remove: (id: string) =>
       request<void>(`/api/students/${id}`, { method: 'DELETE' }),
+    standards: (classroomId: string) =>
+      request<StandardsView>(
+        `/api/classrooms/${classroomId}/standards`,
+      ),
+    upsertStandard: (
+      studentId: string,
+      subjectId: string,
+      threshold: number,
+    ) =>
+      request<StudentStandard>(
+        `/api/students/${studentId}/standards/${subjectId}`,
+        {
+          method: 'PUT',
+          body: JSON.stringify({ threshold }),
+        },
+      ),
+    deleteStandard: (studentId: string, subjectId: string) =>
+      request<void>(
+        `/api/students/${studentId}/standards/${subjectId}`,
+        { method: 'DELETE' },
+      ),
+    batchStandards: (classroomId: string, body: StandardsBatchPayload) =>
+      request<{ written: number }>(
+        `/api/classrooms/${classroomId}/standards/batch`,
+        {
+          method: 'POST',
+          body: JSON.stringify(body),
+        },
+      ),
     import: (classroomId: string, file: File, dryRun: boolean) => {
       const fd = new FormData()
       fd.append('file', file)

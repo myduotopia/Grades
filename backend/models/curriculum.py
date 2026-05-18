@@ -20,7 +20,7 @@ from models.base import Base, TimestampMixin, UserScopedMixin
 
 if TYPE_CHECKING:
     from models.classroom import Classroom
-    from models.grading import Grade, PointRule, StudentStandard
+    from models.grading import Grade, PointRule
 
 
 # System-default category keys (seeded per user on signup) and their
@@ -172,9 +172,6 @@ class Category(Base, UserScopedMixin, TimestampMixin):
     system_key: Mapped[str] = mapped_column(String(50), nullable=False)
     weight: Mapped[int] = mapped_column(nullable=False)
 
-    standards: Mapped[list["StudentStandard"]] = relationship(
-        back_populates="category"
-    )
     point_rule: Mapped["PointRule | None"] = relationship(
         back_populates="category", uselist=False
     )

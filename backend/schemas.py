@@ -204,18 +204,37 @@ class ClassroomList(BaseModel):
 # lookup tables will live with that code, not here.
 
 
-class StudentStandardOut(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+# ---------- Per-subject student standards (issue #10) ----------
 
-    system_key: str
+class StudentStandardOut(BaseModel):
+    student_id: UUID
+    subject_id: UUID
     threshold: float
+
+
+class StandardsView(BaseModel):
+    """One classroom's full standards matrix."""
+    data: list[StudentStandardOut]
+
+
+class StandardUpsert(BaseModel):
+    threshold: float = Field(ge=0, le=100)
+
+
+class StandardsBatchUpsert(BaseModel):
+    student_ids: list[UUID]
+    subject_id: UUID
+    threshold: float = Field(ge=0, le=100)
+
+
+class StandardsBatchResult(BaseModel):
+    written: int
 
 
 class StudentCreate(BaseModel):
     seat_number: int = Field(ge=1, le=99)
     name: str | None = Field(default=None, max_length=200)
     email: str | None = Field(default=None, max_length=255)
-    standards: dict[str, float] | None = None  # {system_key: threshold}
 
 
 class StudentUpdate(BaseModel):
@@ -223,7 +242,6 @@ class StudentUpdate(BaseModel):
     seat_number: int = Field(ge=1, le=99)
     name: str | None = Field(default=None, max_length=200)
     email: str | None = Field(default=None, max_length=255)
-    standards: dict[str, float] | None = None
 
 
 class StudentOut(BaseModel):
@@ -237,7 +255,6 @@ class StudentOut(BaseModel):
     source: str
     created_at: datetime
     updated_at: datetime
-    standards: list[StudentStandardOut] = []
 
 
 class StudentList(BaseModel):

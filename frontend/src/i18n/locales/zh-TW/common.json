@@ -311,6 +311,19 @@
       "pick_subtitle": "選擇要輸入成績的項目；按儲存後會直接帶你到該班級的成績頁編輯這欄。"
     }
   },
+  "standards": {
+    "hint": "每位學生各科目的「達標分」。離開格子自動儲存，清空格子等於沒有設定（不會自動發點）。",
+    "select_all": "全選",
+    "empty_roster": "這個班級還沒有學生。",
+    "formula_hint": "達標分 = 段考 / 小考分數 ≥ 此分數時，自動發給該學生這個科目的獎勵點數。沒設定的科目代表不會自動發點。",
+    "batch_apply": "套用標準分到 {{count}} 位學生",
+    "batch": {
+      "title": "批次套用標準分",
+      "subtitle": "將為 {{count}} 位學生套用同一個科目與分數。",
+      "subject": "科目",
+      "threshold": "達標分數"
+    }
+  },
   "grades": {
     "title": "成績總覽",
     "title_with_class": "{{name}} 成績",
@@ -325,7 +338,8 @@
     "empty": "這個學期還沒有成績資料。先到班級頁的「匯入成績」上傳檔案。",
     "view": {
       "by_student": "依學生",
-      "by_subject": "依科目"
+      "by_subject": "依科目",
+      "standards": "標準分"
     },
     "import": {
       "title": "批次匯入成績",
