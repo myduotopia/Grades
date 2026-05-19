@@ -20,8 +20,17 @@ export function useCurrentSemester(): Semester | null {
 
 export function useCreateSemester() {
   const qc = useQueryClient()
-  return useMutation<Semester, Error, void>({
-    mutationFn: () => api.semesters.create(),
+  return useMutation<
+    Semester,
+    Error,
+    {
+      academic_year: number
+      term: 1 | 2 | 3 | 4
+      start_date: string
+      end_date: string
+    }
+  >({
+    mutationFn: (body) => api.semesters.create(body),
     onSuccess: () => qc.invalidateQueries({ queryKey: semestersKey }),
   })
 }
