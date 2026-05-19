@@ -19,19 +19,56 @@ const PRIMARY_BTN =
 
 const TERM_OPTIONS = [2, 3, 4] as const
 
+type ModalState =
+  | { kind: 'closed' }
+  | { kind: 'add' }
+  | { kind: 'edit'; semester: Semester }
+
+/** Suggest defaults for a new semester based on today's date.
+ *  Taiwan academic year starts Aug 1 and is split evenly by `termsPerYear`. */
+function suggestedDefaults(termsPerYear: 2 | 3 | 4): {
+  academic_year: number
+  term: 1 | 2 | 3 | 4
+  start_date: string
+  end_date: string
+} {
+  const today = new Date()
+  const y = today.getFullYear()
+  const m = today.getMonth() + 1 // 1-12
+  const academicGregYear = m >= 8 ? y : y - 1
+  const taiwanYear = academicGregYear - 1911
+  const monthsPerTerm = 12 / termsPerYear
+  const monthsFromAug = m >= 8 ? m - 8 : m + 4 // 0..11
+  const term = (Math.floor(monthsFromAug / monthsPerTerm) + 1) as 1 | 2 | 3 | 4
+
+  const startIdx = (term - 1) * monthsPerTerm
+  const endIdx = startIdx + monthsPerTerm - 1
+
+  function resolve(idx: number): [number, number] {
+    const month = ((idx + 7) % 12) + 1
+    const yr = academicGregYear + (idx >= 5 ? 1 : 0)
+    return [yr, month]
+  }
+  const [sy, sm] = resolve(startIdx)
+  const [ey, em] = resolve(endIdx)
+  const start = `${sy}-${String(sm).padStart(2, '0')}-01`
+  const lastDay = new Date(em === 12 ? ey + 1 : ey, em === 12 ? 0 : em, 0).getDate()
+  const end = `${ey}-${String(em).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
+  return { academic_year: taiwanYear, term, start_date: start, end_date: end }
+}
+
 export function AdminSemesters() {
   const { t } = useTranslation()
   const meQ = useMe()
   const semestersQ = useSemesters()
-  const createSem = useCreateSemester()
   const setCurrent = useSetCurrentSemester()
   const deleteSem = useDeleteSemester()
   const updateSettings = useUpdateMeSettings()
   const [savedFlash, setSavedFlash] = useState(false)
-  const [editing, setEditing] = useState<Semester | null>(null)
+  const [modal, setModal] = useState<ModalState>({ kind: 'closed' })
   const [actionErr, setActionErr] = useState<string | null>(null)
 
-  const termsPerYear = meQ.data?.terms_per_year ?? 2
+  const termsPerYear = (meQ.data?.terms_per_year ?? 2) as 2 | 3 | 4
   const semesters = semestersQ.data?.data ?? []
 
   function onTermsChange(n: 2 | 3 | 4) {
@@ -93,13 +130,10 @@ export function AdminSemesters() {
             {t('admin_semesters.list_title')}
           </h2>
           <button
-            onClick={() => createSem.mutate()}
-            disabled={createSem.isPending}
+            onClick={() => setModal({ kind: 'add' })}
             className={PRIMARY_BTN}
           >
-            {createSem.isPending
-              ? t('common.saving')
-              : t('admin_semesters.add')}
+            {t('admin_semesters.add')}
           </button>
         </div>
 
@@ -153,7 +187,7 @@ export function AdminSemesters() {
                   <button
                     onClick={() => {
                       setActionErr(null)
-                      setEditing(s)
+                      setModal({ kind: 'edit', semester: s })
                     }}
                     className="text-slate-600 hover:text-slate-900 font-medium"
                   >
@@ -198,55 +232,75 @@ export function AdminSemesters() {
         )}
       </section>
 
-      {editing && (
-        <EditSemesterModal
-          semester={editing}
-          onClose={() => setEditing(null)}
+      {modal.kind !== 'closed' && (
+        <SemesterModal
+          mode={modal.kind}
+          semester={modal.kind === 'edit' ? modal.semester : undefined}
+          defaults={
+            modal.kind === 'add' ? suggestedDefaults(termsPerYear) : undefined
+          }
+          onClose={() => setModal({ kind: 'closed' })}
         />
       )}
     </PageContainer>
   )
 }
 
-function EditSemesterModal({
+function SemesterModal({
+  mode,
   semester,
+  defaults,
   onClose,
 }: {
-  semester: Semester
+  mode: 'add' | 'edit'
+  semester?: Semester
+  defaults?: {
+    academic_year: number
+    term: 1 | 2 | 3 | 4
+    start_date: string
+    end_date: string
+  }
   onClose: () => void
 }) {
   const { t } = useTranslation()
   const update = useUpdateSemester()
-  const [year, setYear] = useState(semester.academic_year)
-  const [term, setTerm] = useState<1 | 2 | 3 | 4>(semester.term)
-  const [startDate, setStartDate] = useState(semester.start_date)
-  const [endDate, setEndDate] = useState(semester.end_date)
+  const create = useCreateSemester()
+  const init = semester ?? defaults!
+  const [year, setYear] = useState(init.academic_year)
+  const [term, setTerm] = useState<1 | 2 | 3 | 4>(init.term as 1 | 2 | 3 | 4)
+  const [startDate, setStartDate] = useState(init.start_date)
+  const [endDate, setEndDate] = useState(init.end_date)
   const [errKey, setErrKey] = useState<string | null>(null)
 
   const dateOrderOk = startDate <= endDate
+  const pending = mode === 'edit' ? update.isPending : create.isPending
 
   function onSubmit(e: React.FormEvent) {
     e.preventDefault()
     setErrKey(null)
-    update.mutate(
-      {
-        id: semester.id,
-        academic_year: year,
-        term,
-        start_date: startDate,
-        end_date: endDate,
+    const body = {
+      academic_year: year,
+      term,
+      start_date: startDate,
+      end_date: endDate,
+    }
+    const opts = {
+      onSuccess: () => onClose(),
+      onError: (err: Error) => {
+        if (err instanceof ApiError && err.body?.message_key) {
+          setErrKey(err.body.message_key)
+        } else if (err instanceof ApiError && err.status === 409) {
+          setErrKey('admin_semesters.duplicate_slot')
+        } else {
+          setErrKey('common.error_generic')
+        }
       },
-      {
-        onSuccess: onClose,
-        onError: (err) => {
-          if (err instanceof ApiError && err.body?.message_key) {
-            setErrKey(err.body.message_key)
-          } else {
-            setErrKey('common.error_generic')
-          }
-        },
-      },
-    )
+    }
+    if (mode === 'edit' && semester) {
+      update.mutate({ id: semester.id, ...body }, opts)
+    } else {
+      create.mutate(body, opts)
+    }
   }
 
   return (
@@ -260,7 +314,11 @@ function EditSemesterModal({
         className="bg-white rounded-2xl shadow-xl border border-slate-200 p-6 w-full max-w-md"
       >
         <h2 className="text-lg font-semibold tracking-tight mb-4 text-slate-900">
-          {t('admin_semesters.edit_title')}
+          {t(
+            mode === 'add'
+              ? 'admin_semesters.add_title'
+              : 'admin_semesters.edit_title',
+          )}
         </h2>
 
         <label className="block text-sm font-medium text-slate-700 mb-1.5">
@@ -336,12 +394,10 @@ function EditSemesterModal({
           </button>
           <button
             type="submit"
-            disabled={
-              update.isPending || year < 1 || year > 999 || !dateOrderOk
-            }
+            disabled={pending || year < 1 || year > 999 || !dateOrderOk}
             className="inline-flex items-center px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-sm font-medium shadow-sm disabled:bg-slate-300 disabled:cursor-not-allowed"
           >
-            {update.isPending ? t('common.saving') : t('common.save')}
+            {pending ? t('common.saving') : t('common.save')}
           </button>
         </div>
       </form>

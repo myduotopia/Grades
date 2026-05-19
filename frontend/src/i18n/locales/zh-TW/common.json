@@ -171,13 +171,15 @@
     "empty": "尚未建立任何學期。按「新增學期」開始。",
     "current_badge": "目前學期",
     "confirm_delete": "確定刪除「{{label}}」?",
+    "add_title": "新增學期",
     "edit_title": "編輯學期",
     "year_label": "學年 (民國)",
     "term_label": "學期",
     "term_option": "第 {{n}} 學期",
     "start_date_label": "開始日期",
     "end_date_label": "結束日期",
-    "bad_date_range": "開始日期不能晚於結束日期"
+    "bad_date_range": "開始日期不能晚於結束日期",
+    "duplicate_slot": "這個學年 / 學期已經存在了"
   },
   "admin_subjects": {
     "title": "科目權重設定",

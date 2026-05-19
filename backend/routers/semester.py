@@ -24,7 +24,13 @@ from auth import require_user_id
 from database import get_db
 from models.curriculum import Item, Semester, default_semester_dates
 from models.settings import UserSettings
-from schemas import ListMeta, SemesterList, SemesterOut, SemesterUpdate
+from schemas import (
+    ListMeta,
+    SemesterCreate,
+    SemesterList,
+    SemesterOut,
+    SemesterUpdate,
+)
 
 router = APIRouter()
 
@@ -135,21 +141,28 @@ def list_semesters(
     status_code=status.HTTP_201_CREATED,
 )
 def create_semester(
+    body: SemesterCreate,
     user_id: Annotated[UUID, Depends(require_user_id)],
     db: Annotated[Session, Depends(get_db)],
 ) -> SemesterOut:
-    terms_per_year = _get_terms_per_year(db, user_id)
-    academic_year, term = _next_slot(db, user_id, terms_per_year)
-    start_date, end_date = default_semester_dates(
-        academic_year, term, terms_per_year
-    )
+    if body.start_date > body.end_date:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error": {
+                    "code": "INVALID_DATE_RANGE",
+                    "message_key": "errors.semester.bad_date_range",
+                    "message": "start_date must be on or before end_date.",
+                }
+            },
+        )
     semester = Semester(
         user_id=user_id,
-        academic_year=academic_year,
-        term=term,
+        academic_year=body.academic_year,
+        term=body.term,
         is_current=False,
-        start_date=start_date,
-        end_date=end_date,
+        start_date=body.start_date,
+        end_date=body.end_date,
     )
     db.add(semester)
     try:
