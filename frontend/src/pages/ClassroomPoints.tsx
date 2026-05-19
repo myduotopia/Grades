@@ -124,19 +124,6 @@ export function ClassroomPoints() {
     },
   })
 
-  function openReason(
-    studentId: string,
-    studentLabel: string,
-    reason: PointReason,
-  ) {
-    setModal({
-      studentId,
-      studentLabel,
-      reason: reason.name,
-      points: reason.default_points,
-      editableReason: false,
-    })
-  }
   function openCustom(studentId: string, studentLabel: string) {
     setModal({
       studentId,
@@ -244,13 +231,19 @@ export function ClassroomPoints() {
                           : s.semester_points}
                       </span>
                     </div>
-                    <div className="flex flex-wrap gap-1">
+                    <div className="flex flex-wrap gap-1.5">
                       {reasons.map((r) => (
                         <button
                           key={r.id}
-                          disabled={isArchived}
-                          onClick={() => openReason(s.student_id, label, r)}
-                          className={`inline-flex items-center gap-1 text-sm font-medium px-2.5 py-1.5 rounded-lg border disabled:opacity-40 disabled:cursor-not-allowed ${
+                          disabled={isArchived || addMut.isPending}
+                          onClick={() =>
+                            addMut.mutate({
+                              studentId: s.student_id,
+                              reason: r.name,
+                              points: r.default_points,
+                            })
+                          }
+                          className={`inline-flex items-center gap-1.5 text-sm font-medium px-3.5 py-2 rounded-full border disabled:opacity-40 disabled:cursor-not-allowed ${
                             r.default_points >= 0
                               ? 'bg-sky-50 border-sky-200 text-sky-800 hover:bg-sky-100'
                               : 'bg-rose-50 border-rose-200 text-rose-800 hover:bg-rose-100'
@@ -261,7 +254,7 @@ export function ClassroomPoints() {
                               : r.default_points
                           }`}
                         >
-                          {r.name}{' '}
+                          {r.name}
                           <span className="font-mono tabular-nums">
                             {r.default_points >= 0
                               ? `+${r.default_points}`
@@ -272,9 +265,9 @@ export function ClassroomPoints() {
                       <button
                         disabled={isArchived}
                         onClick={() => openCustom(s.student_id, label)}
-                        className="inline-flex items-center text-sm font-medium px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                        className="inline-flex items-center text-sm font-medium px-3.5 py-2 rounded-full bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
                       >
-                        +
+                        + {t('points.custom')}
                       </button>
                     </div>
                   </li>
@@ -337,9 +330,13 @@ export function ClassroomPoints() {
                             {reasons.map((r) => (
                               <button
                                 key={r.id}
-                                disabled={isArchived}
+                                disabled={isArchived || addMut.isPending}
                                 onClick={() =>
-                                  openReason(s.student_id, label, r)
+                                  addMut.mutate({
+                                    studentId: s.student_id,
+                                    reason: r.name,
+                                    points: r.default_points,
+                                  })
                                 }
                                 className={`text-sm font-medium px-3 py-1.5 rounded-lg border disabled:opacity-40 disabled:cursor-not-allowed ${
                                   r.default_points >= 0
