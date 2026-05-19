@@ -65,6 +65,26 @@ export function Points() {
         reason: args.reason,
       }),
     onSuccess: (data, vars) => {
+      // Optimistic local update so the card / row total moves instantly,
+      // without waiting for the invalidate-triggered refetch. The refetch
+      // below still runs and replaces this with server truth shortly after.
+      qc.setQueryData<{ data: ClassPointsSummary[] } | undefined>(
+        ['points-classrooms'],
+        (old) =>
+          old
+            ? {
+                data: old.data.map((c) =>
+                  c.classroom_id === vars.classroomId
+                    ? {
+                        ...c,
+                        semester_points:
+                          c.semester_points + vars.points * c.student_count,
+                      }
+                    : c,
+                ),
+              }
+            : old,
+      )
       setToast(
         t('points.toast.applied_class', {
           count: data.written,
