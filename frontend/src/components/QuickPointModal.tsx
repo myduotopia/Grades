@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { SignedNumberInput } from './SignedNumberInput'
+
 const PRESETS = [-10, -5, -3, -1, 1, 3, 5, 10] as const
 
 const PRIMARY_BTN =
@@ -90,18 +92,9 @@ export function QuickPointModal({
           <span className="block text-sm font-medium text-slate-700 mb-1">
             {t('points.quick_modal.points_label')}
           </span>
-          <input
-            type="number"
-            inputMode="numeric"
-            min={-100}
-            max={100}
-            step={1}
+          <SignedNumberInput
             value={pts}
-            onChange={(e) => {
-              const n = Number(e.target.value)
-              if (Number.isNaN(n)) return
-              setPts(Math.max(-100, Math.min(100, Math.trunc(n))))
-            }}
+            onChange={setPts}
             className="w-full border border-slate-300 rounded-lg px-3 py-2 text-base text-right font-semibold tabular-nums focus:outline-none focus:ring-2 focus:ring-amber-500"
           />
         </label>
