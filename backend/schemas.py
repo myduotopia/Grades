@@ -78,12 +78,14 @@ class PointReasonsUpdate(BaseModel):
 
 class ManualPointCreate(BaseModel):
     points: int = Field(ge=-100, le=100)
-    reason: str = Field(min_length=1, max_length=200)
+    # Empty string is allowed — the "+ 自訂" UI lets the teacher add points
+    # without categorising them; the row just displays as 「—」.
+    reason: str = Field(default="", max_length=200)
 
 
 class ClassPointsBatch(BaseModel):
     points: int = Field(ge=-100, le=100)
-    reason: str = Field(min_length=1, max_length=200)
+    reason: str = Field(default="", max_length=200)
 
 
 class ManualPointOut(BaseModel):
