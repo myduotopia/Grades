@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from auth import require_user_id
 from database import get_db
+from models.classroom import Classroom
 from models.curriculum import (
     SUBJECT_WEIGHT_PROFILES,
     SYSTEM_CATEGORY_DEFAULTS,
@@ -18,7 +19,12 @@ from models.curriculum import (
     SubjectCategoryWeight,
     default_semester_dates,
 )
-from models.grading import SubjectPointRule
+from models.grading import (
+    PointRecord,
+    PointRule,
+    StudentStandard,
+    SubjectPointRule,
+)
 from models.settings import UserSettings
 from schemas import (
     ItemOrderUpdate,
@@ -256,3 +262,62 @@ def update_item_order(
         settings.item_order = cleaned
     db.commit()
     return {"item_order": cleaned}
+
+
+@router.post("/reset", response_model=SeedResult)
+def reset(
+    user_id: Annotated[UUID, Depends(require_user_id)],
+    db: Annotated[Session, Depends(get_db)],
+) -> SeedResult:
+    """Wipe every row this user owns and re-seed defaults (issue #13).
+
+    Order matters because some tables hold their own user_id (so cascade
+    isn't enough): we clean those explicitly, then let FK CASCADE handle the
+    rest via Classroom → Student → Grade / PointRecord / StudentStandard
+    and Item → Grade.
+    """
+    # Wide rows owned directly by the user — clear them up front. Cascade
+    # then takes care of children.
+    db.query(PointRecord).filter(PointRecord.user_id == user_id).delete()
+    db.query(StudentStandard).filter(StudentStandard.user_id == user_id).delete()
+    db.query(SubjectPointRule).filter(SubjectPointRule.user_id == user_id).delete()
+    db.query(SubjectCategoryWeight).filter(
+        SubjectCategoryWeight.user_id == user_id
+    ).delete()
+    db.query(PointRule).filter(PointRule.user_id == user_id).delete()
+    # Classrooms own students which own grades — one delete reaches all of
+    # them via CASCADE.
+    db.query(Classroom).filter(Classroom.user_id == user_id).delete()
+    # Items live independently of classroom now; clear them explicitly.
+    db.query(Item).filter(Item.user_id == user_id).delete()
+    db.query(Semester).filter(Semester.user_id == user_id).delete()
+    db.query(Category).filter(Category.user_id == user_id).delete()
+    # Custom subjects (built-ins have user_id IS NULL — leave alone).
+    db.query(Subject).filter(Subject.user_id == user_id).delete()
+    # User-level prefs.
+    db.query(UserSettings).filter(UserSettings.user_id == user_id).delete()
+    db.flush()
+
+    # Re-seed defaults using the same logic as POST /api/me/seed.
+    categories_created = 0
+    for key, weight in SYSTEM_CATEGORY_DEFAULTS:
+        db.add(Category(user_id=user_id, system_key=key, weight=weight))
+        categories_created += 1
+    academic_year, term = _default_semester_for(date.today())
+    start_date, end_date = default_semester_dates(academic_year, term, 2)
+    db.add(
+        Semester(
+            user_id=user_id,
+            academic_year=academic_year,
+            term=term,
+            is_current=True,
+            start_date=start_date,
+            end_date=end_date,
+        )
+    )
+    db.add(UserSettings(user_id=user_id))
+    db.flush()
+    _seed_subject_weights(db, user_id)
+    _seed_subject_point_rules(db, user_id)
+    db.commit()
+    return SeedResult(categories_created=categories_created, semesters_created=1)
