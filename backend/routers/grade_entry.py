@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 from auth import require_user_id
 from database import get_db
 from models.classroom import Classroom, Student
-from models.curriculum import Category, Item, Subject
+from models.curriculum import Category, Item, Semester, Subject
 from models.grading import Grade, PointRecord
 from routers.grades import apply_auto_award
 from schemas import (
@@ -67,6 +67,32 @@ def _get_owned_item(db: Session, user_id: UUID, item_id: UUID) -> Item:
     if item is None:
         raise _not_found("item")
     return item
+
+
+def _archived_forbidden() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail={
+            "error": {
+                "code": "FORBIDDEN",
+                "message_key": "errors.semester.archived",
+                "message": "This semester is archived and read-only.",
+            }
+        },
+    )
+
+
+def _check_semester_writable(
+    db: Session, user_id: UUID, semester_id: UUID
+) -> None:
+    """Block writes targeting a non-current semester (issue #55)."""
+    sem = (
+        db.query(Semester)
+        .filter(Semester.id == semester_id, Semester.user_id == user_id)
+        .one_or_none()
+    )
+    if sem is None or not sem.is_current:
+        raise _archived_forbidden()
 
 
 def _award_points_for(db: Session, grade: Grade) -> int:
@@ -160,6 +186,7 @@ def create_grade(
     db: Annotated[Session, Depends(get_db)],
 ) -> GradeWriteOut:
     item = _get_owned_item(db, user_id, body.item_id)
+    _check_semester_writable(db, user_id, item.semester_id)
     student = (
         db.query(Student)
         .filter(
@@ -217,6 +244,9 @@ def update_grade(
     )
     if grade is None:
         raise _not_found("grade")
+    item = db.get(Item, grade.item_id)
+    if item is not None:
+        _check_semester_writable(db, user_id, item.semester_id)
     grade.score = Decimal(str(body.score))
     db.flush()
     apply_auto_award(db, user_id, [grade])
@@ -244,6 +274,9 @@ def delete_grade(
     )
     if grade is None:
         raise _not_found("grade")
+    item = db.get(Item, grade.item_id)
+    if item is not None:
+        _check_semester_writable(db, user_id, item.semester_id)
     db.delete(grade)  # cascade removes the linked point_record
     db.commit()
 
@@ -262,6 +295,7 @@ def bulk_upsert_grades(
       - otherwise → upsert the grade and run auto-award.
     """
     item = _get_owned_item(db, user_id, body.item_id)
+    _check_semester_writable(db, user_id, item.semester_id)
     if not body.entries:
         return GradeBulkResult(written=0, deleted=0, awarded=0, revoked=0)
 
