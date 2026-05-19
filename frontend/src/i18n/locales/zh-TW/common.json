@@ -350,6 +350,8 @@
     "title": "成績總覽",
     "title_with_class": "{{name}} 成績",
     "edit_scores": "線上輸入這個項目的成績",
+    "search_placeholder": "搜尋學生（座號或姓名）…",
+    "no_match": "沒有符合的學生。",
     "subtitle": "依類別權重自動計算每位學生在每個科目的加權總分。",
     "semester_label": "學期：",
     "semester_format": "{{year}} 學年第 {{term}} 學期",
