@@ -328,6 +328,17 @@
     },
     "errors": {
       "duplicate_name": "A class with this name already exists"
+    },
+    "bulk": {
+      "selected": "{{count}} selected",
+      "select_all": "Select all",
+      "clear": "Clear",
+      "promote": "Promote grade",
+      "demote": "Demote grade",
+      "select_row_aria": "Select {{name}}",
+      "max_grade_skipped": "{{count}} already at grade 12, skipped",
+      "min_grade_skipped": "{{count}} already at grade 1, skipped",
+      "applied": "{{count}} classes updated"
     }
   },
   "students": {

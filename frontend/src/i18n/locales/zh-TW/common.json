@@ -328,6 +328,17 @@
     },
     "errors": {
       "duplicate_name": "已經有同名的班級了"
+    },
+    "bulk": {
+      "selected": "已選 {{count}} 個",
+      "select_all": "全選",
+      "clear": "取消選取",
+      "promote": "升年級",
+      "demote": "降年級",
+      "select_row_aria": "勾選 {{name}}",
+      "max_grade_skipped": "{{count}} 個已是 12 年級，未調整",
+      "min_grade_skipped": "{{count}} 個已是 1 年級，未調整",
+      "applied": "已調整 {{count}} 個班級"
     }
   },
   "students": {
