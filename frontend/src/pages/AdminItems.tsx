@@ -17,9 +17,11 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 
+import { ArchivedSemesterBanner } from '../components/ArchivedSemesterBanner'
 import { ItemNameCombobox } from '../components/ItemNameCombobox'
 import { SortableTableRow } from '../components/SortableTableRow'
 import { useMe } from '../hooks/useMe'
+import { useSemesterView } from '../state/SemesterView'
 import { useSemesters } from '../hooks/useSemesters'
 import { PageContainer } from '../layout/PageContainer'
 import { PageHeader } from '../layout/PageHeader'
@@ -77,23 +79,20 @@ export function AdminItems() {
   const subjects = subjectsQ.data?.data ?? []
   const categories = categoriesQ.data?.data ?? []
 
-  const currentSemester = useMemo(
-    () => semesters.find((s) => s.is_current),
-    [semesters],
-  )
+  // Semester is governed by the global SemesterSwitcher (top bar) — a view
+  // filter, not a current-mutator. The page lists items for whichever
+  // semester is being viewed; if it isn't is_current the page goes read-only.
+  const { viewed: viewedSemester, isArchived } = useSemesterView()
 
-  // Semester is governed by the global SemesterSwitcher (top bar). The page
-  // always shows items belonging to the current semester; classroom / subject
-  // / category remain as in-page filters.
   const [filters, setFilters] = useState<ItemFilters>({})
   const effectiveFilters = useMemo<ItemFilters>(
-    () => ({ ...filters, semester_id: currentSemester?.id }),
-    [filters, currentSemester],
+    () => ({ ...filters, semester_id: viewedSemester?.id }),
+    [filters, viewedSemester],
   )
   const itemsQ = useQuery({
     queryKey: ['items', effectiveFilters],
     queryFn: () => api.items.list(effectiveFilters),
-    enabled: !!currentSemester,
+    enabled: !!viewedSemester,
   })
   const rawItems = itemsQ.data?.data ?? []
 
@@ -153,25 +152,37 @@ export function AdminItems() {
         title={t('admin_items.title')}
         subtitle={t('admin_items.subtitle')}
         actions={
-          <button
-            onClick={() => setCreating(true)}
-            className={PRIMARY_BTN}
-            disabled={
-              semesters.length === 0 ||
-              subjects.length === 0
-            }
-          >
-            {t('admin_items.add')}
-          </button>
+          !isArchived && (
+            <button
+              onClick={() => setCreating(true)}
+              className={PRIMARY_BTN}
+              disabled={
+                semesters.length === 0 ||
+                subjects.length === 0
+              }
+            >
+              {t('admin_items.add')}
+            </button>
+          )
         }
       />
 
+      {isArchived && (
+        <ArchivedSemesterBanner
+          label={
+            viewedSemester
+              ? `${viewedSemester.academic_year}-${viewedSemester.term}`
+              : null
+          }
+        />
+      )}
+
       <section className="bg-white border border-slate-200 rounded-xl shadow-sm p-4 mb-4">
         <div className="flex flex-wrap gap-3 items-center">
-          {currentSemester && (
+          {viewedSemester && (
             <span className="text-xs text-slate-500">
               {t('admin_items.filter.current_semester_hint', {
-                label: semesterLabel(currentSemester),
+                label: semesterLabel(viewedSemester),
               })}
             </span>
           )}
@@ -265,6 +276,7 @@ export function AdminItems() {
                       <SortableTableRow
                         key={it.id}
                         id={it.id}
+                        disabled={isArchived}
                         handleTitle={t('admin_items.drag_to_reorder')}
                       >
                         <td className="px-4 py-2.5 text-slate-900">
@@ -282,18 +294,22 @@ export function AdminItems() {
                           {it.grade_count}
                         </td>
                         <td className="px-4 py-2.5 text-right space-x-3">
-                          <button
-                            onClick={() => setEditing(it)}
-                            className="text-amber-700 hover:text-amber-800 font-medium text-sm"
-                          >
-                            {t('admin_items.edit')}
-                          </button>
-                          <button
-                            onClick={() => setDeleting(it)}
-                            className="text-rose-600 hover:text-rose-800 font-medium text-sm"
-                          >
-                            {t('classes.actions.delete')}
-                          </button>
+                          {!isArchived && (
+                            <>
+                              <button
+                                onClick={() => setEditing(it)}
+                                className="text-amber-700 hover:text-amber-800 font-medium text-sm"
+                              >
+                                {t('admin_items.edit')}
+                              </button>
+                              <button
+                                onClick={() => setDeleting(it)}
+                                className="text-rose-600 hover:text-rose-800 font-medium text-sm"
+                              >
+                                {t('classes.actions.delete')}
+                              </button>
+                            </>
+                          )}
                         </td>
                       </SortableTableRow>
                     ))}
@@ -314,7 +330,7 @@ export function AdminItems() {
           mode={editing ? 'edit' : 'create'}
           existing={editing}
           defaultSemesterId={
-            filters.semester_id ?? currentSemester?.id ?? semesters[0]?.id ?? ''
+            filters.semester_id ?? viewedSemester?.id ?? semesters[0]?.id ?? ''
           }
           subjects={subjects}
           categories={categories}

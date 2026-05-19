@@ -3,9 +3,11 @@ import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
+import { ArchivedSemesterBanner } from '../components/ArchivedSemesterBanner'
 import { StandardsMatrix } from '../components/StandardsMatrix'
 import { PageContainer } from '../layout/PageContainer'
 import { PageHeader } from '../layout/PageHeader'
+import { useSemesterView } from '../state/SemesterView'
 import {
   api,
   ApiError,
@@ -47,12 +49,13 @@ export function Grades() {
     queryFn: () => api.classrooms.get(classroomId as string),
     enabled: !!classroomId,
   })
-  // The semester to display is governed by the global SemesterSwitcher in the
-  // top bar (writes is_current). Omitting semester_id makes the backend resolve
-  // to whichever Semester has is_current=true, so the page just follows that.
+  // Follow the top-bar's "viewed" semester (a pure view filter — see
+  // state/SemesterView). If the viewed one isn't is_current, the page is
+  // read-only and shows the archived banner.
+  const { viewed, isArchived } = useSemesterView()
   const gradesQ = useQuery({
-    queryKey: ['grades', classroomId],
-    queryFn: () => api.grades.view(classroomId as string),
+    queryKey: ['grades', classroomId, viewed?.id],
+    queryFn: () => api.grades.view(classroomId as string, viewed?.id),
     enabled: !!classroomId,
   })
 
@@ -142,6 +145,12 @@ export function Grades() {
         </div>
       </div>
 
+      {isArchived && (
+        <ArchivedSemesterBanner
+          label={viewed ? `${viewed.academic_year}-${viewed.term}` : null}
+        />
+      )}
+
       {gradesQ.isLoading && (
         <div className="text-center text-slate-400 py-16">
           {t('common.loading')}
@@ -165,10 +174,14 @@ export function Grades() {
           view={view_data}
           subjects={subjectsPresent}
           editTarget={editParam}
+          readOnly={isArchived}
         />
       )}
       {view === 'standards' && classroomId && (
-        <StandardsMatrix classroomId={classroomId} />
+        <StandardsMatrix
+          classroomId={classroomId}
+          readOnly={isArchived}
+        />
       )}
     </PageContainer>
   )
@@ -377,10 +390,12 @@ function BySubjectView({
   view,
   subjects,
   editTarget,
+  readOnly,
 }: {
   view: import('../lib/api').ClassroomGradesView
   subjects: SubjectRef[]
   editTarget: string | null
+  readOnly: boolean
 }) {
   const { t } = useTranslation()
   const qc = useQueryClient()
@@ -574,7 +589,7 @@ function BySubjectView({
                           </div>
                           <div className="text-slate-700">{i.name}</div>
                         </div>
-                        {!isEditing && (
+                        {!isEditing && !readOnly && (
                           <button
                             onClick={() => startEdit(i.id)}
                             disabled={otherEditing}
