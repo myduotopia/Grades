@@ -682,8 +682,16 @@ export const api = {
   },
   semesters: {
     list: () => request<SemesterList>('/api/semesters'),
-    create: () =>
-      request<Semester>('/api/semesters', { method: 'POST' }),
+    create: (body: {
+      academic_year: number
+      term: 1 | 2 | 3 | 4
+      start_date: string
+      end_date: string
+    }) =>
+      request<Semester>('/api/semesters', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
     setCurrent: (id: string) =>
       request<Semester>(`/api/semesters/${id}/set-current`, { method: 'PUT' }),
     update: (

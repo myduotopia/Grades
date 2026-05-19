@@ -153,6 +153,10 @@ class SemesterUpdate(BaseModel):
     end_date: date
 
 
+class SemesterCreate(SemesterUpdate):
+    pass
+
+
 # ---------- /api/categories ----------
 
 

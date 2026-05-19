@@ -171,13 +171,15 @@
     "empty": "No semesters yet. Click \"Add semester\" to start.",
     "current_badge": "Current",
     "confirm_delete": "Delete \"{{label}}\"?",
+    "add_title": "Add semester",
     "edit_title": "Edit semester",
     "year_label": "Academic year (Minguo)",
     "term_label": "Term",
     "term_option": "Term {{n}}",
     "start_date_label": "Start date",
     "end_date_label": "End date",
-    "bad_date_range": "Start date cannot be after end date"
+    "bad_date_range": "Start date cannot be after end date",
+    "duplicate_slot": "This academic year / term already exists"
   },
   "admin_subjects": {
     "title": "Subject weights",
