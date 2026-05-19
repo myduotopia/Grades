@@ -21,10 +21,15 @@ from models.curriculum import Semester, Subject
 from models.settings import UserSettings
 from routers import categories as categories_router
 from routers import classroom as classroom_router
+from routers import grade_entry as grade_entry_router
 from routers import grades as grades_router
+from routers import item as item_router
 from routers import me as me_router
+from routers import points as points_router
 from routers import semester as semester_router
+from routers import standards as standards_router
 from routers import student as student_router
+from routers import student_detail as student_detail_router
 from routers import subjects as subjects_router
 
 app = FastAPI(
@@ -62,7 +67,12 @@ app.include_router(
 # Student router uses absolute paths (mixes /api/classrooms/{id}/students/* and
 # /api/students/{id}) — mounted with no prefix.
 app.include_router(student_router.router, tags=["students"])
+app.include_router(student_detail_router.router, tags=["student-detail"])
+app.include_router(standards_router.router, tags=["standards"])
+app.include_router(points_router.router, tags=["points"])
 app.include_router(grades_router.router, tags=["grades"])
+app.include_router(grade_entry_router.router, tags=["grade-entry"])
+app.include_router(item_router.router, tags=["items"])
 app.include_router(subjects_router.router, tags=["subjects"])
 app.include_router(
     semester_router.router, prefix="/api/semesters", tags=["semesters"]
@@ -92,6 +102,9 @@ def me(
     )
     settings_row = db.get(UserSettings, user_id)
     terms_per_year = settings_row.terms_per_year if settings_row else 2
+    subject_order = settings_row.subject_order if settings_row else []
+    item_order = settings_row.item_order if settings_row else []
+    point_reasons = settings_row.point_reasons if settings_row else []
     return {
         "user": {
             "id": user["sub"],
@@ -103,4 +116,7 @@ def me(
             "has_current_semester": has_current_semester,
         },
         "terms_per_year": terms_per_year,
+        "subject_order": subject_order,
+        "item_order": item_order,
+        "point_reasons": point_reasons,
     }

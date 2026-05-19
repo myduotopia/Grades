@@ -22,7 +22,7 @@ from models.classroom import SOURCE_VALUES
 
 if TYPE_CHECKING:
     from models.classroom import Student
-    from models.curriculum import Category, Item
+    from models.curriculum import Category, Item, Subject
 
 
 class Grade(Base, UserScopedMixin, TimestampMixin):
@@ -68,7 +68,13 @@ class Grade(Base, UserScopedMixin, TimestampMixin):
 
 
 class StudentStandard(Base, UserScopedMixin, TimestampMixin):
-    """Per-student × per-category threshold for awarding points."""
+    """Per-student × per-subject threshold for awarding points (issue #10).
+
+    Auto-award uses this to decide whether a particular student "met
+    standard" for an item: if score >= threshold for (student_id,
+    item.subject_id), and the item's category is in
+    AUTO_AWARD_CATEGORY_KEYS, points fire.
+    """
     __tablename__ = "student_standard"
 
     id: Mapped[UUID] = mapped_column(
@@ -82,21 +88,20 @@ class StudentStandard(Base, UserScopedMixin, TimestampMixin):
         nullable=False,
         index=True,
     )
-    category_id: Mapped[UUID] = mapped_column(
+    subject_id: Mapped[UUID] = mapped_column(
         PG_UUID(as_uuid=True),
-        ForeignKey("category.id", ondelete="CASCADE"),
+        ForeignKey("subject.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
     threshold: Mapped[Decimal] = mapped_column(Numeric(4, 1), nullable=False)
 
     student: Mapped["Student"] = relationship(back_populates="standards")
-    category: Mapped["Category"] = relationship(back_populates="standards")
 
     __table_args__ = (
         UniqueConstraint(
-            "student_id", "category_id",
-            name="uq_standard_student_category",
+            "student_id", "subject_id",
+            name="uq_standard_student_subject",
         ),
         CheckConstraint(
             "threshold >= 0 AND threshold <= 100",
@@ -130,6 +135,41 @@ class PointRule(Base, UserScopedMixin, TimestampMixin):
             name="uq_point_rule_user_category",
         ),
         CheckConstraint("points_awarded >= 0", name="ck_point_rule_non_negative"),
+    )
+
+
+class SubjectPointRule(Base, UserScopedMixin, TimestampMixin):
+    """Per-subject points awarded when a student meets their standard.
+
+    Replaces the per-category PointRule as the source of truth for auto-award
+    amount. Category still gates which grades trigger an award (only
+    major_exam + quiz); subject decides how many points.
+    """
+    __tablename__ = "subject_point_rule"
+
+    id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        primary_key=True,
+        server_default=text("gen_random_uuid()"),
+    )
+    subject_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("subject.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    points_awarded: Mapped[int] = mapped_column(nullable=False, default=100)
+
+    subject: Mapped["Subject"] = relationship()
+
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id", "subject_id", name="uq_subject_point_rule_user_subject"
+        ),
+        CheckConstraint(
+            "points_awarded BETWEEN 0 AND 500",
+            name="ck_subject_point_rule_range",
+        ),
     )
 
 

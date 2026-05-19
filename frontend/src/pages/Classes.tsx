@@ -53,33 +53,32 @@ export function Classes() {
       <PageHeader
         title={t('classes.title')}
         subtitle={isEmpty ? t('classes.empty.subheading') : t('classes.subtitle')}
-        actions={
-          !isLoading && !isError && classrooms.length > 0 ? (
-            <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-              <button
-                disabled
-                title={t('classes.cta.classroom_disabled')}
-                className={SECONDARY_BTN}
-              >
-                <span className="sm:hidden">{t('classes.cta.import_classroom_short')}</span>
-                <span className="hidden sm:inline">{t('classes.cta.import_classroom')}</span>
-              </button>
-              <button
-                disabled
-                title={t('classes.cta.duotopia_disabled')}
-                className={SECONDARY_BTN}
-              >
-                <span className="sm:hidden">{t('classes.cta.import_duotopia_short')}</span>
-                <span className="hidden sm:inline">{t('classes.cta.import_duotopia')}</span>
-              </button>
-              <button onClick={() => setModal({ kind: 'add' })} className={PRIMARY_BTN}>
-                <span className="sm:hidden">{t('classes.cta.add_manual_short')}</span>
-                <span className="hidden sm:inline">{t('classes.cta.add_manual')}</span>
-              </button>
-            </div>
-          ) : undefined
-        }
       />
+
+      {!isLoading && !isError && classrooms.length > 0 && (
+        <section className="mb-6 flex flex-wrap items-center gap-2">
+          <button
+            disabled
+            title={t('classes.cta.classroom_disabled')}
+            className={SECONDARY_BTN}
+          >
+            <span className="sm:hidden">{t('classes.cta.import_classroom_short')}</span>
+            <span className="hidden sm:inline">{t('classes.cta.import_classroom')}</span>
+          </button>
+          <button
+            disabled
+            title={t('classes.cta.duotopia_disabled')}
+            className={SECONDARY_BTN}
+          >
+            <span className="sm:hidden">{t('classes.cta.import_duotopia_short')}</span>
+            <span className="hidden sm:inline">{t('classes.cta.import_duotopia')}</span>
+          </button>
+          <button onClick={() => setModal({ kind: 'add' })} className={PRIMARY_BTN}>
+            <span className="sm:hidden">{t('classes.cta.add_manual_short')}</span>
+            <span className="hidden sm:inline">{t('classes.cta.add_manual')}</span>
+          </button>
+        </section>
+      )}
 
       {!isLoading && !isError && classrooms.length > 0 && (
         <div className="flex items-center justify-end gap-1 mb-4">
@@ -250,6 +249,13 @@ function RowActions({
       >
         {t('classes.actions.import_grades')}
       </button>
+      <Link
+        to={`/classes/${classroom.id}/grades/entry`}
+        onClick={stop}
+        className="text-slate-700 hover:text-slate-900 font-medium"
+      >
+        {t('classes.actions.grade_entry')}
+      </Link>
       <button
         onClick={(e) => {
           stop(e)

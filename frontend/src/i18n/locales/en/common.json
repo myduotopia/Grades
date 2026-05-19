@@ -28,12 +28,132 @@
     "home": "Home",
     "classes": "Classes",
     "admin_subjects": "Subject weights",
+    "admin_items": "Grade items",
+    "points": "Points",
+    "admin_reasons": "Point reasons",
     "admin_semesters": "Semesters",
-    "open_menu": "Open menu"
+    "settings": "Settings",
+    "open_menu": "Open menu",
+    "collapse_sidebar": "Collapse sidebar",
+    "expand_sidebar": "Expand sidebar"
+  },
+  "points": {
+    "title": "Points",
+    "subtitle": "Quick add/deduct points per class or per student. Click a reason chip to apply its default.",
+    "classroom_subtitle": "Per-student point adjustments. Click a reason chip and fine-tune the amount before confirming.",
+    "no_reasons": "You haven't set up any point reasons yet.",
+    "manage_reasons": "Manage reasons",
+    "empty_classrooms": "No classrooms yet.",
+    "empty_students": "This classroom has no students.",
+    "goto_classes": "Go to classes",
+    "back": "Back",
+    "custom": "Custom",
+    "classroom_card": {
+      "summary": "{{count}} students · {{total}} pts this semester"
+    },
+    "col": {
+      "classroom": "Classroom",
+      "students": "Students",
+      "semester_points": "Pts this semester",
+      "actions": "Quick add/deduct"
+    },
+    "quick_modal": {
+      "title_apply_class": "Apply to whole class",
+      "title_apply_student": "Apply to this student",
+      "reason_label": "Reason",
+      "reason_placeholder": "Type a reason…",
+      "points_label": "Points",
+      "confirm_class": "Apply to class",
+      "confirm_student": "Confirm"
+    },
+    "toast": {
+      "applied_class": "{{count}} students {{delta}} pts, reason \"{{reason}}\"",
+      "applied_student": "{{delta}} pts applied, reason \"{{reason}}\""
+    }
+  },
+  "admin_reasons": {
+    "title": "Point reasons",
+    "subtitle": "Manage reasons like \"asked a good question\" with default point amounts. Positive = reward, negative = deduction.",
+    "add": "+ Add reason",
+    "empty": "No reasons yet. Click 「Add reason」 to start.",
+    "hint": "Hit 「Save」 to commit. Drag rows to reorder.",
+    "invalid_hint": "Every reason needs a name (max 50 chars).",
+    "drag_to_reorder": "Drag to reorder",
+    "name_placeholder": "e.g., Helped a classmate",
+    "col": {
+      "name": "Name",
+      "default_points": "Default points",
+      "actions": "Actions"
+    }
   },
   "semester": {
-    "label": "Current semester",
-    "switcher_empty": "No semester yet"
+    "label": "Viewing",
+    "switcher_empty": "No semester yet",
+    "viewing_archived": "Viewing a past semester — read-only. Change which semester is current via Semesters admin.",
+    "archived_tag": "archived",
+    "current_tag": "current",
+    "manage_link": "→ Manage semesters (set current)"
+  },
+  "item_name_combobox": {
+    "no_existing": "No existing items yet — typing a name will create a new one",
+    "no_match": "No matching existing item",
+    "existing_header": "Existing ({{count}})",
+    "will_create": "No match — will create \"{{name}}\""
+  },
+  "admin_items": {
+    "title": "Exam items",
+    "subtitle": "Each item (exam / quiz / assignment) belongs to one classroom. Items with the same name and category can live independently in different classrooms.",
+    "add": "New item",
+    "edit": "Edit",
+    "enter_scores": "Enter scores",
+    "drag_to_reorder": "Drag to reorder",
+    "empty": "No items yet. Click \"New item\" to start.",
+    "col": {
+      "semester": "Semester",
+      "classroom": "Classroom",
+      "subject": "Subject",
+      "category": "Category",
+      "name": "Name",
+      "grades": "Grades",
+      "actions": "Actions"
+    },
+    "filter": {
+      "current_semester_hint": "Current semester: {{label}} (switch via top-right)",
+      "all_semesters": "All semesters",
+      "all_classrooms": "All classrooms",
+      "all_subjects": "All subjects",
+      "all_categories": "All categories",
+      "clear": "Clear filters"
+    },
+    "modal": {
+      "add_title": "New item",
+      "edit_title": "Edit item name",
+      "subject": "Subject",
+      "category": "Category",
+      "semester": "Semester",
+      "classroom": "Classroom",
+      "name": "Name",
+      "name_placeholder": "Search existing items or type a new name…",
+      "name_hint": "Prefer reusing names already used in other classes so the same exam can be compared later; only create new if nothing matches."
+    },
+    "delete": {
+      "title": "Delete item",
+      "confirm": "Delete \"{{name}}\"?",
+      "warning": "This will also delete {{grades}} grade(s) and {{points}} point record(s). This cannot be undone."
+    },
+    "error": {
+      "missing_fields": "Please fill in all fields"
+    }
+  },
+  "errors": {
+    "item": {
+      "not_found": "Item not found",
+      "duplicate_name": "An item with this name already exists for this subject + category + semester",
+      "subject_invalid": "Please select a valid subject",
+      "category_invalid": "Please select a valid category",
+      "semester_invalid": "Please select a valid semester",
+      "classroom_invalid": "Please select a valid classroom"
+    }
   },
   "admin_semesters": {
     "title": "Semesters",
@@ -61,22 +181,63 @@
   },
   "admin_subjects": {
     "title": "Subject weights",
-    "subtitle": "Each subject can have its own category-weight mix. Add custom subjects and adjust how 段考 / 小考 / 作業 / 出席率 / 額外加分 contribute per subject. Non-bonus weights per row must sum to 100%.",
+    "subtitle": "Each subject can have its own category-weight mix and per-subject reward-points amount awarded when a student meets the standard on a major exam or quiz.",
     "saved": "Saved",
     "add_subject": "Add subject",
     "custom_badge": "Custom",
+    "drag_to_reorder": "Drag to reorder",
     "sum_invalid_hint": "Each row (excluding bonus) must equal 100",
-    "formula_hint": "Bonus is added on top of the weighted total (capped at 100), not part of the 100% split.",
+    "formula_hint": "Bonus is added on top of the weighted total (capped at 100). Reward points = how many points to award when a student meets the standard on a major exam or quiz.",
+    "points_unit": "pts",
     "confirm_delete": "Delete subject \"{{name}}\"? This will also remove all exams and grades under it.",
     "col": {
       "subject": "Subject",
       "sum": "Sum",
+      "points_awarded": "Reward",
       "actions": "Actions"
     },
     "modal": {
       "add_title": "Add custom subject",
       "name_label": "Subject name",
       "name_placeholder": "e.g., Taiwanese, Homeroom"
+    }
+  },
+  "settings": {
+    "title": "Settings",
+    "subtitle": "Account, UI, semester, integrations, and data management.",
+    "account": {
+      "heading": "Account"
+    },
+    "ui": {
+      "heading": "Interface",
+      "language": "Language",
+      "language_hint": "Applies immediately; the choice is stored in this browser."
+    },
+    "semester": {
+      "heading": "Semester",
+      "terms_per_year": "Terms per academic year",
+      "terms_per_year_hint": "New semesters created after this change use the new split; existing ones stay as-is.",
+      "manage_link": "Manage semesters"
+    },
+    "integrations": {
+      "heading": "Integrations",
+      "duotopia_status": "Not connected yet",
+      "classroom_status": "Not connected yet",
+      "coming_soon": "Coming soon"
+    },
+    "danger": {
+      "heading": "Danger zone",
+      "warning": "Resetting your account wipes all data and re-seeds defaults. This cannot be undone.",
+      "bullets": {
+        "classrooms": "All classrooms and student rosters",
+        "items_grades": "All exam items and grades",
+        "points": "All point records",
+        "standards": "All per-student standards",
+        "weights": "Subject weights / point rules (reset to defaults)",
+        "custom_subjects": "Custom subjects"
+      },
+      "confirm_prompt": "Type \"DELETE\" to confirm:",
+      "button": "Reset account data"
     }
   },
   "home": {
@@ -162,6 +323,7 @@
       "view_students": "View students",
       "bulk_add_students": "Batch add students",
       "import_grades": "Import grades",
+      "grade_entry": "Enter scores online",
       "confirm_delete": "Delete \"{{name}}\"? This will also remove its students and grades."
     },
     "errors": {
@@ -225,9 +387,67 @@
       "duplicate_seat": "Seat number already exists in this class"
     }
   },
+  "grade_entry": {
+    "title": "Enter scores",
+    "title_with_class": "{{name}} — score entry",
+    "subtitle": "Scores save automatically when you leave a cell (Tab / Enter). Students who meet their standard get points awarded; lowering the score back below the threshold revokes them.",
+    "back_to_grades": "Back to grades view",
+    "add_item": "New item",
+    "flush_all": "Save all",
+    "remove_column": "Hide column (does not delete the item)",
+    "max_items_hint": "At most {{max}} items at once",
+    "empty_no_item": "No items selected. Click \"New item\" to start.",
+    "empty_no_students": "This class has no students. Add students first.",
+    "col": {
+      "seat": "Seat",
+      "name": "Name"
+    },
+    "modal": {
+      "add_title": "New exam item",
+      "pick_subtitle": "Pick the item you want to enter scores for; Save takes you to this class's grades page with that column ready to edit."
+    }
+  },
+  "student_detail": {
+    "title": "Student transcript",
+    "semester_label": "Semester:",
+    "semester_points": "{{count}} pts this semester",
+    "weighted_summary": "Weighted totals",
+    "grade_history": "Grade history",
+    "point_history": "Point history",
+    "points_total": "Total {{total}} pts this semester",
+    "no_grades": "No grades for this semester yet.",
+    "no_points": "No points for this semester yet.",
+    "met": "met",
+    "col": {
+      "date": "Date",
+      "subject": "Subject",
+      "category": "Category",
+      "item": "Item",
+      "score": "Score",
+      "threshold": "Standard",
+      "delta": "Δ",
+      "reason": "Reason"
+    }
+  },
+  "standards": {
+    "hint": "Per-student standard score per subject. Leave a cell to save automatically; clear it to remove the threshold (no auto-award for that subject).",
+    "select_all": "Select all",
+    "empty_roster": "This classroom has no students.",
+    "formula_hint": "Standard score = major-exam / quiz score must be ≥ this value to trigger auto-award for that student × subject. Subjects with no threshold never auto-award.",
+    "batch_apply": "Apply to {{count}} students",
+    "batch": {
+      "title": "Batch apply standards",
+      "subtitle": "Applying one (subject, value) to {{count}} student(s).",
+      "subject": "Subject",
+      "threshold": "Standard score"
+    }
+  },
   "grades": {
     "title": "Grades overview",
     "title_with_class": "{{name}} — Grades",
+    "edit_scores": "Enter scores for this item",
+    "search_placeholder": "Search students (seat or name)…",
+    "no_match": "No matching students.",
     "subtitle": "Per-subject weighted totals by category weight, computed live.",
     "semester_label": "Semester:",
     "semester_format": "Year {{year}}, Term {{term}}",
@@ -238,7 +458,8 @@
     "empty": "No grade data for this semester yet. Use 「Import grades」 on the class page to upload a file.",
     "view": {
       "by_student": "By student",
-      "by_subject": "By subject"
+      "by_subject": "By subject",
+      "standards": "Standards"
     },
     "import": {
       "title": "Batch import grades",
@@ -286,7 +507,12 @@
       "delete_current": "Cannot delete the current semester. Set another as current first.",
       "delete_has_items": "This semester has tests/grades and cannot be deleted. Move them to another semester first.",
       "not_found": "Semester not found",
-      "bad_date_range": "Start date cannot be after end date"
+      "bad_date_range": "Start date cannot be after end date",
+      "archived": "This semester is archived and read-only"
     }
+  },
+  "archived_banner": {
+    "body": "This semester is archived — view only. Switch to the current semester via the top-right picker to edit.",
+    "body_with_label": "{{label}} is archived — view only. Switch to the current semester via the top-right picker to edit."
   }
 }

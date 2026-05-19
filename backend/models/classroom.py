@@ -21,7 +21,6 @@ from models.base import Base, TimestampMixin, UserScopedMixin
 
 if TYPE_CHECKING:
     from models.access import AccountLink
-    from models.curriculum import Item
     from models.grading import Grade, PointRecord, StudentStandard
 
 
@@ -44,10 +43,6 @@ class Classroom(Base, UserScopedMixin, TimestampMixin):
     students: Mapped[list["Student"]] = relationship(
         back_populates="classroom",
         cascade="all, delete-orphan",
-    )
-    items: Mapped[list["Item"]] = relationship(
-        secondary="item_classroom",
-        back_populates="classrooms",
     )
 
     __table_args__ = (

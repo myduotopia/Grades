@@ -6,7 +6,6 @@ entity-level routes (update/delete) live under /api/students/{id}.
 """
 from __future__ import annotations
 
-from decimal import Decimal, InvalidOperation
 from io import BytesIO
 from typing import Annotated, Any
 from uuid import UUID
@@ -23,13 +22,11 @@ from fastapi import (
 from fastapi.responses import StreamingResponse
 from openpyxl import Workbook, load_workbook
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session
 
 from auth import require_user_id
 from database import get_db
 from models.classroom import Classroom, Student
-from models.curriculum import Category
-from models.grading import StudentStandard
 from schemas import (
     ImportPreviewSummary,
     ImportResult,
@@ -38,7 +35,6 @@ from schemas import (
     StudentCreate,
     StudentList,
     StudentOut,
-    StudentStandardOut,
     StudentUpdate,
 )
 
@@ -110,12 +106,7 @@ def _get_owned_student(db: Session, user_id: UUID, student_id: UUID) -> Student:
     return s
 
 
-def _categories_by_key(db: Session, user_id: UUID) -> dict[str, Category]:
-    rows = db.query(Category).filter(Category.user_id == user_id).all()
-    return {c.system_key: c for c in rows}
-
-
-def _serialize_student(s: Student, cats_by_id: dict[UUID, str]) -> StudentOut:
+def _serialize_student(s: Student) -> StudentOut:
     return StudentOut(
         id=s.id,
         classroom_id=s.classroom_id,
@@ -125,14 +116,6 @@ def _serialize_student(s: Student, cats_by_id: dict[UUID, str]) -> StudentOut:
         source=s.source,
         created_at=s.created_at,
         updated_at=s.updated_at,
-        standards=[
-            StudentStandardOut(
-                system_key=cats_by_id.get(std.category_id, ""),
-                threshold=float(std.threshold),
-            )
-            for std in s.standards
-            if std.category_id in cats_by_id
-        ],
     )
 
 
@@ -147,15 +130,12 @@ def list_students(
     _get_owned_classroom(db, user_id, classroom_id)
     rows = (
         db.query(Student)
-        .options(selectinload(Student.standards))
         .filter(Student.classroom_id == classroom_id, Student.user_id == user_id)
         .order_by(Student.seat_number.asc())
         .all()
     )
-    cats = _categories_by_key(db, user_id)
-    cats_by_id = {c.id: k for k, c in cats.items()}
     return StudentList(
-        data=[_serialize_student(s, cats_by_id) for s in rows],
+        data=[_serialize_student(s) for s in rows],
         meta=ListMeta(total=len(rows)),
     )
 
@@ -189,11 +169,9 @@ def create_student(
             "errors.student.duplicate_seat",
             "Seat number already exists in this classroom.",
         )
-    _apply_standards(db, user_id, student, body.standards or {})
     db.commit()
     db.refresh(student)
-    cats = _categories_by_key(db, user_id)
-    return _serialize_student(student, {c.id: k for k, c in cats.items()})
+    return _serialize_student(student)
 
 
 @router.put("/api/students/{student_id}", response_model=StudentOut)
@@ -218,12 +196,9 @@ def update_student(
             "errors.student.duplicate_seat",
             "Seat number already exists in this classroom.",
         )
-    if body.standards is not None:
-        _apply_standards(db, user_id, student, body.standards)
     db.commit()
     db.refresh(student)
-    cats = _categories_by_key(db, user_id)
-    return _serialize_student(student, {c.id: k for k, c in cats.items()})
+    return _serialize_student(student)
 
 
 @router.delete("/api/students/{student_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -235,46 +210,6 @@ def delete_student(
     student = _get_owned_student(db, user_id, student_id)
     db.delete(student)
     db.commit()
-
-
-# ---------- standards helper ----------
-
-def _apply_standards(
-    db: Session,
-    user_id: UUID,
-    student: Student,
-    standards: dict[str, float],
-) -> None:
-    """Upsert standards passed as {system_key: threshold}.
-
-    Unknown system_keys are silently ignored (caller validates earlier).
-    Existing rows for keys not present in the payload are left alone.
-    """
-    if not standards:
-        return
-    cats = _categories_by_key(db, user_id)
-    existing = {
-        std.category_id: std
-        for std in db.query(StudentStandard)
-        .filter(StudentStandard.student_id == student.id)
-        .all()
-    }
-    for key, value in standards.items():
-        cat = cats.get(key)
-        if cat is None:
-            continue
-        std = existing.get(cat.id)
-        if std is None:
-            db.add(
-                StudentStandard(
-                    user_id=user_id,
-                    student_id=student.id,
-                    category_id=cat.id,
-                    threshold=Decimal(str(value)),
-                )
-            )
-        else:
-            std.threshold = Decimal(str(value))
 
 
 # ---------- Excel template ----------

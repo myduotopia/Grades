@@ -1,10 +1,38 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  closestCenter,
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core'
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable'
 
+import { SortableTableRow } from '../components/SortableTableRow'
+import { useMe } from '../hooks/useMe'
 import { PageContainer } from '../layout/PageContainer'
 import { PageHeader } from '../layout/PageHeader'
 import { api, ApiError, type Subject } from '../lib/api'
+
+// Default display order for the 5 academic subjects when the teacher has
+// no stored order yet. After that, the teacher can drag any subject to any
+// position — no row is pinned.
+const DEFAULT_ACADEMIC_KEYS = [
+  'chinese',
+  'english',
+  'math',
+  'science',
+  'social_studies',
+] as const
 
 const PRIMARY_BTN =
   'inline-flex items-center px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white text-sm font-medium shadow-sm transition-colors disabled:bg-slate-300 disabled:shadow-none disabled:cursor-not-allowed'
@@ -34,12 +62,79 @@ export function AdminSubjects() {
     queryKey: ['subject-weights'],
     queryFn: () => api.subjectWeights.list(),
   })
+  const pointRulesQ = useQuery({
+    queryKey: ['subject-point-rules'],
+    queryFn: () => api.subjectPointRules.list(),
+  })
 
   const subjects = subjectsQ.data?.data ?? []
   const weights = weightsQ.data?.data ?? []
+  const pointRules = pointRulesQ.data?.data ?? []
+
+  // Read the teacher's stored order for non-academic subjects.
+  const meQ = useMe()
+  const storedOrder: string[] = meQ.data?.subject_order ?? []
+
+  // Final display order: teacher's stored order first, anything missing
+  // from storage falls back to "academic 5 in fixed order, then others
+  // alphabetical". Every row is draggable; no pinning.
+  const orderedSubjects = useMemo(() => {
+    const byId = new Map(subjects.map((s) => [s.id, s] as const))
+    const ordered: Subject[] = []
+    const seen = new Set<string>()
+    for (const sid of storedOrder) {
+      const s = byId.get(sid)
+      if (s) {
+        ordered.push(s)
+        seen.add(s.id)
+      }
+    }
+    const fallback: Subject[] = []
+    for (const key of DEFAULT_ACADEMIC_KEYS) {
+      const s = subjects.find(
+        (x) => x.system_key === key && !seen.has(x.id),
+      )
+      if (s) {
+        fallback.push(s)
+        seen.add(s.id)
+      }
+    }
+    const tail = subjects
+      .filter((s) => !seen.has(s.id))
+      .sort((a, b) => {
+        const aLabel = a.system_key ?? a.display_name ?? ''
+        const bLabel = b.system_key ?? b.display_name ?? ''
+        return aLabel.localeCompare(bLabel)
+      })
+    return [...ordered, ...fallback, ...tail]
+  }, [subjects, storedOrder])
+
+  const orderMut = useMutation({
+    mutationFn: (ids: string[]) => api.me.updateSubjectOrder(ids),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['me'] }),
+  })
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
+  )
+  const sortableIds = orderedSubjects.map((s) => s.id)
+
+  function onDragEnd(e: DragEndEvent) {
+    const { active, over } = e
+    if (!over || active.id === over.id) return
+    const from = orderedSubjects.findIndex((s) => s.id === active.id)
+    const to = orderedSubjects.findIndex((s) => s.id === over.id)
+    if (from === -1 || to === -1) return
+    const next = arrayMove(orderedSubjects, from, to)
+    orderMut.mutate(next.map((s) => s.id))
+  }
 
   // draft[subject_id][category_system_key] = weight
   const [draft, setDraft] = useState<Record<string, Record<string, number>>>({})
+  // pointDraft[subject_id] = points_awarded
+  const [pointDraft, setPointDraft] = useState<Record<string, number>>({})
 
   useEffect(() => {
     if (weights.length > 0) {
@@ -51,6 +146,12 @@ export function AdminSubjects() {
       setDraft(next)
     }
   }, [weightsQ.data])
+
+  useEffect(() => {
+    const next: Record<string, number> = {}
+    for (const p of pointRules) next[p.subject_id] = p.points_awarded
+    setPointDraft(next)
+  }, [pointRulesQ.data])
 
   // Lookup: subject_id × category_system_key → category_id (needed for PUT)
   const catIdLookup = useMemo(() => {
@@ -72,14 +173,23 @@ export function AdminSubjects() {
     return m
   }, [weights])
 
+  const originalPoints = useMemo(() => {
+    const m: Record<string, number> = {}
+    for (const p of pointRules) m[p.subject_id] = p.points_awarded
+    return m
+  }, [pointRules])
+
   const dirty = useMemo(() => {
     for (const sid of Object.keys(draft)) {
       for (const ck of Object.keys(draft[sid])) {
         if ((original[sid]?.[ck] ?? -1) !== draft[sid][ck]) return true
       }
     }
+    for (const sid of Object.keys(pointDraft)) {
+      if ((originalPoints[sid] ?? -1) !== pointDraft[sid]) return true
+    }
     return false
-  }, [draft, original])
+  }, [draft, original, pointDraft, originalPoints])
 
   // Per-subject sum of non-extra weights
   const sumsBySubject = useMemo(() => {
@@ -104,6 +214,12 @@ export function AdminSubjects() {
       api.subjectWeights.update(payload),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['subject-weights'] }),
   })
+  const updatePointsMut = useMutation({
+    mutationFn: (payload: Parameters<typeof api.subjectPointRules.update>[0]) =>
+      api.subjectPointRules.update(payload),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ['subject-point-rules'] }),
+  })
 
   const [saveErr, setSaveErr] = useState<string | null>(null)
   const [savedAt, setSavedAt] = useState<number | null>(null)
@@ -121,9 +237,19 @@ export function AdminSubjects() {
         payload.push({ subject_id: sid, category_id: cid, weight: w })
       }
     }
-    if (payload.length === 0) return
+    const pointPayload: { subject_id: string; points_awarded: number }[] = []
+    for (const sid of Object.keys(pointDraft)) {
+      const v = pointDraft[sid]
+      if ((originalPoints[sid] ?? -1) === v) continue
+      pointPayload.push({ subject_id: sid, points_awarded: v })
+    }
+    if (payload.length === 0 && pointPayload.length === 0) return
     try {
-      await updateMut.mutateAsync(payload)
+      const tasks: Promise<unknown>[] = []
+      if (payload.length > 0) tasks.push(updateMut.mutateAsync(payload))
+      if (pointPayload.length > 0)
+        tasks.push(updatePointsMut.mutateAsync(pointPayload))
+      await Promise.all(tasks)
       setSavedAt(Date.now())
     } catch (err) {
       setSaveErr(err instanceof Error ? err.message : 'unknown')
@@ -132,12 +258,14 @@ export function AdminSubjects() {
 
   function onReset() {
     setDraft(JSON.parse(JSON.stringify(original)))
+    setPointDraft({ ...originalPoints })
     setSaveErr(null)
     setSavedAt(null)
   }
 
   const [showAdd, setShowAdd] = useState(false)
-  const canSave = dirty && allRowsValid && !updateMut.isPending
+  const saving = updateMut.isPending || updatePointsMut.isPending
+  const canSave = dirty && allRowsValid && !saving
 
   return (
     <PageContainer>
@@ -151,18 +279,19 @@ export function AdminSubjects() {
         }
       />
 
-      {(subjectsQ.isLoading || weightsQ.isLoading) && (
+      {(subjectsQ.isLoading || weightsQ.isLoading || pointRulesQ.isLoading) && (
         <div className="text-center text-slate-400 py-16">
           {t('common.loading')}
         </div>
       )}
 
-      {!subjectsQ.isLoading && !weightsQ.isLoading && (
+      {!subjectsQ.isLoading && !weightsQ.isLoading && !pointRulesQ.isLoading && (
         <section className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
               <thead className="bg-slate-50 border-b border-slate-200 text-slate-600">
                 <tr>
+                  <th className="w-8 px-2 py-3" aria-hidden></th>
                   <th className="px-4 py-3 text-left font-medium">
                     {t('admin_subjects.col.subject')}
                   </th>
@@ -177,27 +306,52 @@ export function AdminSubjects() {
                   <th className="px-3 py-3 text-left font-medium">
                     {t('admin_subjects.col.sum')}
                   </th>
+                  <th className="px-3 py-3 text-left font-medium">
+                    {t('admin_subjects.col.points_awarded')}
+                  </th>
                   <th className="px-3 py-3 text-right font-medium">
                     {t('admin_subjects.col.actions')}
                   </th>
                 </tr>
               </thead>
-              <tbody>
-                {subjects.map((s) => (
-                  <WeightRow
-                    key={s.id}
-                    subject={s}
-                    draft={draft[s.id] ?? {}}
-                    sum={sumsBySubject[s.id]}
-                    onChange={(k, w) =>
-                      setDraft((d) => ({
-                        ...d,
-                        [s.id]: { ...(d[s.id] ?? {}), [k]: w },
-                      }))
-                    }
-                  />
-                ))}
-              </tbody>
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragEnd={onDragEnd}
+              >
+                <SortableContext
+                  items={sortableIds}
+                  strategy={verticalListSortingStrategy}
+                >
+                  <tbody>
+                    {orderedSubjects.map((s) => {
+                      return (
+                        <SortableTableRow
+                          key={s.id}
+                          id={s.id}
+                          handleTitle={t('admin_subjects.drag_to_reorder')}
+                        >
+                          <WeightRowCells
+                            subject={s}
+                            draft={draft[s.id] ?? {}}
+                            sum={sumsBySubject[s.id]}
+                            points={pointDraft[s.id] ?? 0}
+                            onChange={(k, w) =>
+                              setDraft((d) => ({
+                                ...d,
+                                [s.id]: { ...(d[s.id] ?? {}), [k]: w },
+                              }))
+                            }
+                            onPointsChange={(v) =>
+                              setPointDraft((p) => ({ ...p, [s.id]: v }))
+                            }
+                          />
+                        </SortableTableRow>
+                      )
+                    })}
+                  </tbody>
+                </SortableContext>
+              </DndContext>
             </table>
           </div>
 
@@ -213,7 +367,7 @@ export function AdminSubjects() {
               )}
               <button
                 onClick={onReset}
-                disabled={!dirty || updateMut.isPending}
+                disabled={!dirty || saving}
                 className={SECONDARY_BTN}
               >
                 {t('common.reset')}
@@ -228,7 +382,7 @@ export function AdminSubjects() {
                     : undefined
                 }
               >
-                {updateMut.isPending ? t('common.saving') : t('common.save')}
+                {saving ? t('common.saving') : t('common.save')}
               </button>
             </div>
           </div>
@@ -246,16 +400,20 @@ export function AdminSubjects() {
   )
 }
 
-function WeightRow({
+function WeightRowCells({
   subject,
   draft,
   sum,
+  points,
   onChange,
+  onPointsChange,
 }: {
   subject: Subject
   draft: Record<string, number>
   sum: number | undefined
+  points: number
   onChange: (cat: string, w: number) => void
+  onPointsChange: (v: number) => void
 }) {
   const { t } = useTranslation()
   const qc = useQueryClient()
@@ -264,6 +422,7 @@ function WeightRow({
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['subjects'] })
       qc.invalidateQueries({ queryKey: ['subject-weights'] })
+      qc.invalidateQueries({ queryKey: ['subject-point-rules'] })
     },
   })
   const label = subject.system_key
@@ -281,7 +440,7 @@ function WeightRow({
   }
 
   return (
-    <tr className="border-b border-slate-100 last:border-b-0">
+    <>
       <td className="px-4 py-2.5 text-slate-900 font-medium">
         {label}
         {subject.is_custom && (
@@ -324,6 +483,28 @@ function WeightRow({
           {sum ?? '—'} / 100
         </span>
       </td>
+      <td className="px-2 py-2.5">
+        <div className="flex items-center gap-1">
+          <input
+            type="number"
+            inputMode="numeric"
+            min={0}
+            max={500}
+            step={1}
+            value={points}
+            onChange={(e) => {
+              const n = e.target.value === '' ? 0 : Number(e.target.value)
+              if (Number.isNaN(n)) return
+              onPointsChange(Math.max(0, Math.min(500, Math.trunc(n))))
+            }}
+            className="w-20 border border-slate-300 rounded-md px-2 py-1 text-sm text-right focus:outline-none focus:ring-2 focus:ring-amber-500"
+            aria-label={`${label} ${t('admin_subjects.col.points_awarded')}`}
+          />
+          <span className="text-xs text-slate-400">
+            {t('admin_subjects.points_unit')}
+          </span>
+        </div>
+      </td>
       <td className="px-3 py-2.5 text-right">
         {subject.is_custom && (
           <button
@@ -335,7 +516,7 @@ function WeightRow({
           </button>
         )}
       </td>
-    </tr>
+    </>
   )
 }
 
@@ -350,6 +531,7 @@ function AddSubjectModal({ onClose }: { onClose: () => void }) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['subjects'] })
       qc.invalidateQueries({ queryKey: ['subject-weights'] })
+      qc.invalidateQueries({ queryKey: ['subject-point-rules'] })
       onClose()
     },
     onError: (err) => {

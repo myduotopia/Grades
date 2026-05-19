@@ -24,6 +24,37 @@ export interface MeResponse {
     has_current_semester: boolean
   }
   terms_per_year: 2 | 3 | 4
+  subject_order: string[]
+  item_order: string[]
+  point_reasons: PointReason[]
+}
+
+export interface PointReason {
+  id: string
+  name: string
+  default_points: number
+}
+
+export interface ClassPointsSummary {
+  classroom_id: string
+  grade: number
+  name: string
+  student_count: number
+  semester_points: number
+}
+
+export interface StudentPointsSummary {
+  student_id: string
+  seat_number: number
+  name: string | null
+  semester_points: number
+}
+
+export interface StudentPointsSummaryList {
+  classroom_id: string
+  classroom_grade: number
+  classroom_name: string
+  data: StudentPointsSummary[]
 }
 
 export interface MeSettingsUpdate {
@@ -120,8 +151,20 @@ export interface CategoryWeightUpdate {
   weight: number
 }
 
+// Per-subject student standard (issue #10).
 export interface StudentStandard {
-  system_key: string
+  student_id: string
+  subject_id: string
+  threshold: number
+}
+
+export interface StandardsView {
+  data: StudentStandard[]
+}
+
+export interface StandardsBatchPayload {
+  student_ids: string[]
+  subject_id: string
   threshold: number
 }
 
@@ -134,7 +177,6 @@ export interface Student {
   source: ClassroomSource
   created_at: string
   updated_at: string
-  standards: StudentStandard[]
 }
 
 export interface StudentList {
@@ -146,7 +188,63 @@ export interface StudentPayload {
   seat_number: number
   name?: string | null
   email?: string | null
-  standards?: Record<string, number>
+}
+
+// ---------- Student detail (issue #11) ----------
+
+export interface StudentDetail {
+  id: string
+  classroom_id: string
+  classroom_grade: number
+  classroom_name: string
+  seat_number: number
+  name: string | null
+  email: string | null
+  semester_id: string | null
+  semester_label: string | null
+  semester_points: number
+}
+
+export interface StudentGradeRow {
+  grade_id: string
+  item_id: string
+  item_name: string
+  subject_id: string
+  subject_system_key: string | null
+  subject_display_name: string | null
+  category_system_key: string
+  score: number
+  threshold: number | null
+  met_standard: boolean
+  created_at: string
+}
+
+export interface StudentSubjectSummary {
+  subject_id: string
+  subject_system_key: string | null
+  subject_display_name: string | null
+  weighted_total: number | null
+  category_averages: Record<string, number>
+}
+
+export interface StudentGradesView {
+  semester_id: string | null
+  subjects: StudentSubjectSummary[]
+  grades: StudentGradeRow[]
+}
+
+export interface StudentPointRow {
+  id: string
+  points: number
+  reason: string
+  source_grade_id: string | null
+  created_at: string
+}
+
+export interface StudentPointsView {
+  semester_id: string | null
+  total: number
+  data: StudentPointRow[]
 }
 
 export interface ImportRowPreview {
@@ -183,6 +281,86 @@ export const SYSTEM_SUBJECT_KEYS = [
 ] as const
 
 export type SystemSubjectKey = (typeof SYSTEM_SUBJECT_KEYS)[number]
+
+export interface ItemGradesStudentRow {
+  student_id: string
+  seat_number: number
+  name: string | null
+  grade_id: string | null
+  score: number | null
+}
+
+export interface ItemGradesView {
+  item_id: string
+  item_name: string
+  subject_id: string
+  subject_system_key: string | null
+  subject_display_name: string | null
+  category_system_key: string
+  semester_id: string
+  classroom_id: string
+  students: ItemGradesStudentRow[]
+}
+
+export interface GradeWriteOut {
+  id: string
+  item_id: string
+  student_id: string
+  score: number
+  awarded_points: number
+}
+
+export interface GradeBulkEntry {
+  student_id: string
+  score: number | null
+}
+
+export interface GradeBulkUpsertBody {
+  item_id: string
+  entries: GradeBulkEntry[]
+}
+
+export interface GradeBulkResult {
+  written: number
+  deleted: number
+  awarded: number
+  revoked: number
+}
+
+export interface ItemDetail {
+  id: string
+  name: string
+  subject_id: string
+  subject_system_key: string | null
+  subject_display_name: string | null
+  category_id: string
+  category_system_key: string
+  semester_id: string
+  grade_count: number
+  point_record_count: number
+  created_at: string
+}
+
+export interface ItemDetailList {
+  data: ItemDetail[]
+}
+
+export interface ItemCreatePayload {
+  subject_id: string
+  category_id: string
+  semester_id: string
+  name: string
+}
+
+export interface ItemUpdatePayload {
+  name: string
+}
+
+export interface ItemFilters {
+  semester_id?: string
+  subject_id?: string
+  category_id?: string
+}
 
 export interface GradeImportColumnPreview {
   column_index: number
@@ -248,6 +426,20 @@ export interface SubjectWeightsUpdate {
   subject_id: string
   category_id: string
   weight: number
+}
+
+export interface SubjectPointRule {
+  subject_id: string
+  points_awarded: number
+}
+
+export interface SubjectPointRulesList {
+  data: SubjectPointRule[]
+}
+
+export interface SubjectPointRuleUpdate {
+  subject_id: string
+  points_awarded: number
 }
 
 export interface SubjectCategoryWeightView {
@@ -349,6 +541,46 @@ export const api = {
         method: 'PATCH',
         body: JSON.stringify(body),
       }),
+    updateSubjectOrder: (subjectIds: string[]) =>
+      request<{ subject_order: string[] }>('/api/me/subject-order', {
+        method: 'PUT',
+        body: JSON.stringify({ subject_ids: subjectIds }),
+      }),
+    updateItemOrder: (itemIds: string[]) =>
+      request<{ item_order: string[] }>('/api/me/item-order', {
+        method: 'PUT',
+        body: JSON.stringify({ item_ids: itemIds }),
+      }),
+    reset: () => request<SeedResult>('/api/me/reset', { method: 'POST' }),
+    updatePointReasons: (reasons: PointReason[]) =>
+      request<{ point_reasons: PointReason[] }>('/api/me/point-reasons', {
+        method: 'PUT',
+        body: JSON.stringify({ reasons }),
+      }),
+  },
+  points: {
+    listClassrooms: () =>
+      request<{ data: ClassPointsSummary[] }>('/api/points/classrooms'),
+    listClassroomStudents: (classroomId: string) =>
+      request<StudentPointsSummaryList>(
+        `/api/points/classrooms/${classroomId}/students`,
+      ),
+    classBatch: (
+      classroomId: string,
+      body: { points: number; reason: string },
+    ) =>
+      request<{ written: number }>(
+        `/api/classrooms/${classroomId}/points/batch`,
+        { method: 'POST', body: JSON.stringify(body) },
+      ),
+    addStudent: (
+      studentId: string,
+      body: { points: number; reason: string },
+    ) =>
+      request<{ id: string; points: number; reason: string }>(
+        `/api/students/${studentId}/points`,
+        { method: 'POST', body: JSON.stringify(body) },
+      ),
   },
   classrooms: {
     list: () => request<ClassroomList>('/api/classrooms'),
@@ -389,6 +621,51 @@ export const api = {
       }),
     remove: (id: string) =>
       request<void>(`/api/students/${id}`, { method: 'DELETE' }),
+    standards: (classroomId: string) =>
+      request<StandardsView>(
+        `/api/classrooms/${classroomId}/standards`,
+      ),
+    upsertStandard: (
+      studentId: string,
+      subjectId: string,
+      threshold: number,
+    ) =>
+      request<StudentStandard>(
+        `/api/students/${studentId}/standards/${subjectId}`,
+        {
+          method: 'PUT',
+          body: JSON.stringify({ threshold }),
+        },
+      ),
+    deleteStandard: (studentId: string, subjectId: string) =>
+      request<void>(
+        `/api/students/${studentId}/standards/${subjectId}`,
+        { method: 'DELETE' },
+      ),
+    batchStandards: (classroomId: string, body: StandardsBatchPayload) =>
+      request<{ written: number }>(
+        `/api/classrooms/${classroomId}/standards/batch`,
+        {
+          method: 'POST',
+          body: JSON.stringify(body),
+        },
+      ),
+    detail: (studentId: string, semesterId?: string) => {
+      const qs = semesterId ? `?semester_id=${semesterId}` : ''
+      return request<StudentDetail>(`/api/students/${studentId}${qs}`)
+    },
+    grades: (studentId: string, semesterId?: string) => {
+      const qs = semesterId ? `?semester_id=${semesterId}` : ''
+      return request<StudentGradesView>(
+        `/api/students/${studentId}/grades${qs}`,
+      )
+    },
+    points: (studentId: string, semesterId?: string) => {
+      const qs = semesterId ? `?semester_id=${semesterId}` : ''
+      return request<StudentPointsView>(
+        `/api/students/${studentId}/points${qs}`,
+      )
+    },
     import: (classroomId: string, file: File, dryRun: boolean) => {
       const fd = new FormData()
       fd.append('file', file)
@@ -440,6 +717,60 @@ export const api = {
     update: (body: SubjectWeightsUpdate[]) =>
       request<SubjectWeightsList>('/api/subject-weights', {
         method: 'PUT',
+        body: JSON.stringify(body),
+      }),
+  },
+  subjectPointRules: {
+    list: () =>
+      request<SubjectPointRulesList>('/api/subject-point-rules'),
+    update: (body: SubjectPointRuleUpdate[]) =>
+      request<SubjectPointRulesList>('/api/subject-point-rules', {
+        method: 'PUT',
+        body: JSON.stringify(body),
+      }),
+  },
+  items: {
+    list: (filters: ItemFilters = {}) => {
+      const qs = new URLSearchParams()
+      for (const [k, v] of Object.entries(filters)) {
+        if (v) qs.set(k, v)
+      }
+      const tail = qs.toString() ? `?${qs.toString()}` : ''
+      return request<ItemDetailList>(`/api/items${tail}`)
+    },
+    create: (body: ItemCreatePayload) =>
+      request<ItemDetail>('/api/items', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+    update: (id: string, body: ItemUpdatePayload) =>
+      request<ItemDetail>(`/api/items/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(body),
+      }),
+    remove: (id: string) =>
+      request<void>(`/api/items/${id}`, { method: 'DELETE' }),
+  },
+  gradeEntry: {
+    forItem: (itemId: string, classroomId: string) =>
+      request<ItemGradesView>(
+        `/api/items/${itemId}/grades?classroom_id=${classroomId}`,
+      ),
+    create: (body: { item_id: string; student_id: string; score: number }) =>
+      request<GradeWriteOut>('/api/grades', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+    update: (gradeId: string, score: number) =>
+      request<GradeWriteOut>(`/api/grades/${gradeId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ score }),
+      }),
+    remove: (gradeId: string) =>
+      request<void>(`/api/grades/${gradeId}`, { method: 'DELETE' }),
+    bulk: (body: GradeBulkUpsertBody) =>
+      request<GradeBulkResult>('/api/grades/bulk', {
+        method: 'POST',
         body: JSON.stringify(body),
       }),
   },

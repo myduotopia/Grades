@@ -55,6 +55,76 @@ class MeSettingsUpdate(BaseModel):
     terms_per_year: Literal[2, 3, 4]
 
 
+class SubjectOrderUpdate(BaseModel):
+    subject_ids: list[UUID]
+
+
+class ItemOrderUpdate(BaseModel):
+    item_ids: list[UUID]
+
+
+# ---------- Manual point reasons (issue #84) ----------
+
+
+class PointReasonOut(BaseModel):
+    id: str
+    name: str
+    default_points: int
+
+
+class PointReasonsUpdate(BaseModel):
+    reasons: list[PointReasonOut]
+
+
+class ManualPointCreate(BaseModel):
+    points: int = Field(ge=-100, le=100)
+    reason: str = Field(min_length=1, max_length=200)
+
+
+class ClassPointsBatch(BaseModel):
+    points: int = Field(ge=-100, le=100)
+    reason: str = Field(min_length=1, max_length=200)
+
+
+class ManualPointOut(BaseModel):
+    id: UUID
+    student_id: UUID
+    points: int
+    reason: str
+    created_at: datetime
+
+
+class ClassPointsBatchResult(BaseModel):
+    written: int
+
+
+class ClassPointsSummary(BaseModel):
+    """Per-classroom rollup for /points top page."""
+    classroom_id: UUID
+    grade: int
+    name: str
+    student_count: int
+    semester_points: int
+
+
+class ClassPointsSummaryList(BaseModel):
+    data: list[ClassPointsSummary]
+
+
+class StudentPointsSummary(BaseModel):
+    student_id: UUID
+    seat_number: int
+    name: str | None
+    semester_points: int
+
+
+class StudentPointsSummaryList(BaseModel):
+    classroom_id: UUID
+    classroom_grade: int
+    classroom_name: str
+    data: list[StudentPointsSummary]
+
+
 # ---------- /api/semesters ----------
 
 
@@ -140,6 +210,20 @@ class SubjectWeightsUpdate(BaseModel):
     weight: int = Field(ge=0, le=100)
 
 
+class SubjectPointRuleOut(BaseModel):
+    subject_id: UUID
+    points_awarded: int
+
+
+class SubjectPointRulesList(BaseModel):
+    data: list[SubjectPointRuleOut]
+
+
+class SubjectPointRuleUpdate(BaseModel):
+    subject_id: UUID
+    points_awarded: int = Field(ge=0, le=500)
+
+
 # ---------- /api/classrooms ----------
 
 ClassroomSource = Literal["manual", "duotopia", "google_classroom"]
@@ -182,18 +266,99 @@ class ClassroomList(BaseModel):
 # lookup tables will live with that code, not here.
 
 
-class StudentStandardOut(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+# ---------- Per-subject student standards (issue #10) ----------
 
-    system_key: str
+class StudentStandardOut(BaseModel):
+    student_id: UUID
+    subject_id: UUID
     threshold: float
+
+
+class StandardsView(BaseModel):
+    """One classroom's full standards matrix."""
+    data: list[StudentStandardOut]
+
+
+class StandardUpsert(BaseModel):
+    threshold: float = Field(ge=0, le=100)
+
+
+class StandardsBatchUpsert(BaseModel):
+    student_ids: list[UUID]
+    subject_id: UUID
+    threshold: float = Field(ge=0, le=100)
+
+
+class StandardsBatchResult(BaseModel):
+    written: int
+
+
+# ---------- Student detail view (issue #11) ----------
+
+class StudentDetailOut(BaseModel):
+    id: UUID
+    classroom_id: UUID
+    classroom_grade: int
+    classroom_name: str
+    seat_number: int
+    name: str | None
+    email: str | None
+    # The semester currently being viewed (defaults to is_current=true; null
+    # when the user has no semester set).
+    semester_id: UUID | None
+    semester_label: str | None
+    # Sum of point_records.points whose created_at lies within the viewed
+    # semester's [start_date, end_date].
+    semester_points: int
+
+
+class StudentGradeRow(BaseModel):
+    grade_id: UUID
+    item_id: UUID
+    item_name: str
+    subject_id: UUID
+    subject_system_key: str | None
+    subject_display_name: str | None
+    category_system_key: str
+    score: float
+    threshold: float | None
+    met_standard: bool
+    created_at: datetime
+
+
+class StudentSubjectSummary(BaseModel):
+    subject_id: UUID
+    subject_system_key: str | None
+    subject_display_name: str | None
+    weighted_total: float | None
+    # Per-category average for this student × subject, keyed by system_key.
+    category_averages: dict[str, float]
+
+
+class StudentGradesView(BaseModel):
+    semester_id: UUID | None
+    subjects: list[StudentSubjectSummary]
+    grades: list[StudentGradeRow]
+
+
+class StudentPointRow(BaseModel):
+    id: UUID
+    points: int
+    reason: str
+    source_grade_id: UUID | None
+    created_at: datetime
+
+
+class StudentPointsView(BaseModel):
+    semester_id: UUID | None
+    total: int
+    data: list[StudentPointRow]
 
 
 class StudentCreate(BaseModel):
     seat_number: int = Field(ge=1, le=99)
     name: str | None = Field(default=None, max_length=200)
     email: str | None = Field(default=None, max_length=255)
-    standards: dict[str, float] | None = None  # {system_key: threshold}
 
 
 class StudentUpdate(BaseModel):
@@ -201,7 +366,6 @@ class StudentUpdate(BaseModel):
     seat_number: int = Field(ge=1, le=99)
     name: str | None = Field(default=None, max_length=200)
     email: str | None = Field(default=None, max_length=255)
-    standards: dict[str, float] | None = None
 
 
 class StudentOut(BaseModel):
@@ -215,7 +379,6 @@ class StudentOut(BaseModel):
     source: str
     created_at: datetime
     updated_at: datetime
-    standards: list[StudentStandardOut] = []
 
 
 class StudentList(BaseModel):
@@ -328,6 +491,95 @@ class ItemOut(BaseModel):
     subject_display_name: str | None  # set when subject is a custom one
     category_system_key: str
     exam_date: date | None = None  # placeholder; not yet stored
+
+
+class ItemDetailOut(BaseModel):
+    """Full item details for the /admin/items list."""
+    id: UUID
+    name: str
+    subject_id: UUID
+    subject_system_key: str | None
+    subject_display_name: str | None
+    category_id: UUID
+    category_system_key: str
+    semester_id: UUID
+    # An item is cross-classroom; these counts aggregate across every student
+    # who has a grade on it.
+    grade_count: int
+    point_record_count: int
+    created_at: datetime
+
+
+class ItemDetailList(BaseModel):
+    data: list[ItemDetailOut]
+
+
+class ItemCreate(BaseModel):
+    subject_id: UUID
+    category_id: UUID
+    semester_id: UUID
+    name: str = Field(default="", max_length=200)
+
+
+class ItemUpdate(BaseModel):
+    name: str = Field(default="", max_length=200)
+
+
+# ---------- Grade write endpoints (issue #9) ----------
+
+class GradeCreate(BaseModel):
+    item_id: UUID
+    student_id: UUID
+    score: float = Field(ge=0, le=100)
+
+
+class GradeUpdate(BaseModel):
+    score: float = Field(ge=0, le=100)
+
+
+class GradeWriteOut(BaseModel):
+    id: UUID
+    item_id: UUID
+    student_id: UUID
+    score: float
+    awarded_points: int  # points just awarded by this write (0 if no auto-award)
+
+
+class GradeBulkEntry(BaseModel):
+    student_id: UUID
+    score: float | None = Field(default=None, ge=0, le=100)
+
+
+class GradeBulkUpsert(BaseModel):
+    item_id: UUID
+    entries: list[GradeBulkEntry]
+
+
+class GradeBulkResult(BaseModel):
+    written: int      # POST/PUT count
+    deleted: int      # score=null entries that removed an existing grade
+    awarded: int      # students who newly received points
+    revoked: int      # students whose existing auto-award was revoked
+
+
+class ItemGradesStudentRow(BaseModel):
+    student_id: UUID
+    seat_number: int
+    name: str | None
+    grade_id: UUID | None
+    score: float | None
+
+
+class ItemGradesView(BaseModel):
+    item_id: UUID
+    item_name: str
+    subject_id: UUID
+    subject_system_key: str | None
+    subject_display_name: str | None
+    category_system_key: str
+    semester_id: UUID
+    classroom_id: UUID
+    students: list[ItemGradesStudentRow]
 
 
 class GradeEntryOut(BaseModel):

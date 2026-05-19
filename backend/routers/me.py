@@ -1,24 +1,60 @@
 """User-scoped utility endpoints (seeding, identity)."""
 from datetime import date
 from typing import Annotated
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from auth import require_user_id
 from database import get_db
+from models.classroom import Classroom
 from models.curriculum import (
     SUBJECT_WEIGHT_PROFILES,
     SYSTEM_CATEGORY_DEFAULTS,
     Category,
+    Item,
     Semester,
     Subject,
     SubjectCategoryWeight,
     default_semester_dates,
 )
+from models.grading import (
+    PointRecord,
+    PointRule,
+    StudentStandard,
+    SubjectPointRule,
+)
 from models.settings import UserSettings
-from schemas import MeSettingsUpdate, SeedResult
+from schemas import (
+    ItemOrderUpdate,
+    MeSettingsUpdate,
+    PointReasonOut,
+    PointReasonsUpdate,
+    SeedResult,
+    SubjectOrderUpdate,
+)
+
+DEFAULT_POINTS_AWARDED = 100
+
+# Seed list when a user first onboards (or runs /api/me/reset). Teachers can
+# rename / delete / add via /admin/reasons.
+DEFAULT_POINT_REASONS: list[dict] = [
+    {"name": "主動發問", "default_points": 3},
+    {"name": "幫助同學", "default_points": 2},
+    {"name": "課堂表現好", "default_points": 2},
+    {"name": "值日生", "default_points": 1},
+    {"name": "作業優秀", "default_points": 3},
+    {"name": "上課講話", "default_points": -1},
+]
+
+
+def _new_default_reasons() -> list[dict]:
+    """Materialise DEFAULT_POINT_REASONS with fresh uuid ids."""
+    return [
+        {"id": str(uuid4()), "name": r["name"], "default_points": r["default_points"]}
+        for r in DEFAULT_POINT_REASONS
+    ]
 
 router = APIRouter()
 
@@ -79,15 +115,23 @@ def seed(
         )
         semesters_created = 1
 
-    # User settings: ensure a row exists with the default terms_per_year=2.
-    if db.get(UserSettings, user_id) is None:
-        db.add(UserSettings(user_id=user_id))
+    # User settings: ensure a row exists with the default terms_per_year=2
+    # and a starter point_reasons list (idempotent — only fills if empty).
+    settings_row = db.get(UserSettings, user_id)
+    if settings_row is None:
+        db.add(UserSettings(
+            user_id=user_id,
+            point_reasons=_new_default_reasons(),
+        ))
+    elif not settings_row.point_reasons:
+        settings_row.point_reasons = _new_default_reasons()
 
     # Subject × category weights: fill any missing combinations using the
     # per-subject profile. Must run after Category rows above are flushed so
     # we can resolve their ids.
     db.flush()
     _seed_subject_weights(db, user_id)
+    _seed_subject_point_rules(db, user_id)
 
     db.commit()
     return SeedResult(
@@ -136,6 +180,36 @@ def _seed_subject_weights(db: Session, user_id: UUID) -> None:
             )
 
 
+def _seed_subject_point_rules(db: Session, user_id: UUID) -> None:
+    """Fill missing subject_point_rule rows for the user.
+
+    Idempotent: walks all subjects visible to the user (built-ins +
+    user-owned) and inserts a default row (points_awarded=100) for any subject
+    that doesn't already have one.
+    """
+    subjects = (
+        db.query(Subject)
+        .filter((Subject.user_id.is_(None)) | (Subject.user_id == user_id))
+        .all()
+    )
+    existing = {
+        row.subject_id
+        for row in db.query(SubjectPointRule)
+        .filter(SubjectPointRule.user_id == user_id)
+        .all()
+    }
+    for s in subjects:
+        if s.id in existing:
+            continue
+        db.add(
+            SubjectPointRule(
+                user_id=user_id,
+                subject_id=s.id,
+                points_awarded=DEFAULT_POINTS_AWARDED,
+            )
+        )
+
+
 @router.patch("/settings")
 def update_settings(
     body: MeSettingsUpdate,
@@ -151,3 +225,168 @@ def update_settings(
         settings.terms_per_year = body.terms_per_year
     db.commit()
     return {"terms_per_year": settings.terms_per_year}
+
+
+@router.put("/subject-order")
+def update_subject_order(
+    body: SubjectOrderUpdate,
+    user_id: Annotated[UUID, Depends(require_user_id)],
+    db: Annotated[Session, Depends(get_db)],
+) -> dict[str, list[str]]:
+    """Persist the teacher's chosen ordering for non-academic subjects.
+
+    `subject_ids` is filtered to subjects the user can see (built-ins or
+    their own custom rows); anything else is dropped silently. Stored as
+    strings since JSONB can't natively hold UUID objects.
+    """
+    visible = {
+        s.id
+        for s in db.query(Subject)
+        .filter((Subject.user_id.is_(None)) | (Subject.user_id == user_id))
+        .all()
+    }
+    cleaned: list[str] = []
+    seen: set[UUID] = set()
+    for sid in body.subject_ids:
+        if sid in visible and sid not in seen:
+            cleaned.append(str(sid))
+            seen.add(sid)
+    settings = db.get(UserSettings, user_id)
+    if settings is None:
+        settings = UserSettings(user_id=user_id, subject_order=cleaned)
+        db.add(settings)
+    else:
+        settings.subject_order = cleaned
+    db.commit()
+    return {"subject_order": cleaned}
+
+
+@router.put("/item-order")
+def update_item_order(
+    body: ItemOrderUpdate,
+    user_id: Annotated[UUID, Depends(require_user_id)],
+    db: Annotated[Session, Depends(get_db)],
+) -> dict[str, list[str]]:
+    """Persist the teacher's chosen ordering for /admin/items rows.
+
+    `item_ids` is filtered to items owned by this user; anything else is
+    dropped silently. Stored as strings since JSONB can't natively hold UUID.
+    """
+    visible = {
+        i.id
+        for i in db.query(Item).filter(Item.user_id == user_id).all()
+    }
+    cleaned: list[str] = []
+    seen: set[UUID] = set()
+    for iid in body.item_ids:
+        if iid in visible and iid not in seen:
+            cleaned.append(str(iid))
+            seen.add(iid)
+    settings = db.get(UserSettings, user_id)
+    if settings is None:
+        settings = UserSettings(user_id=user_id, item_order=cleaned)
+        db.add(settings)
+    else:
+        settings.item_order = cleaned
+    db.commit()
+    return {"item_order": cleaned}
+
+
+@router.post("/reset", response_model=SeedResult)
+def reset(
+    user_id: Annotated[UUID, Depends(require_user_id)],
+    db: Annotated[Session, Depends(get_db)],
+) -> SeedResult:
+    """Wipe every row this user owns and re-seed defaults (issue #13).
+
+    Order matters because some tables hold their own user_id (so cascade
+    isn't enough): we clean those explicitly, then let FK CASCADE handle the
+    rest via Classroom → Student → Grade / PointRecord / StudentStandard
+    and Item → Grade.
+    """
+    # Wide rows owned directly by the user — clear them up front. Cascade
+    # then takes care of children.
+    db.query(PointRecord).filter(PointRecord.user_id == user_id).delete()
+    db.query(StudentStandard).filter(StudentStandard.user_id == user_id).delete()
+    db.query(SubjectPointRule).filter(SubjectPointRule.user_id == user_id).delete()
+    db.query(SubjectCategoryWeight).filter(
+        SubjectCategoryWeight.user_id == user_id
+    ).delete()
+    db.query(PointRule).filter(PointRule.user_id == user_id).delete()
+    # Classrooms own students which own grades — one delete reaches all of
+    # them via CASCADE.
+    db.query(Classroom).filter(Classroom.user_id == user_id).delete()
+    # Items live independently of classroom now; clear them explicitly.
+    db.query(Item).filter(Item.user_id == user_id).delete()
+    db.query(Semester).filter(Semester.user_id == user_id).delete()
+    db.query(Category).filter(Category.user_id == user_id).delete()
+    # Custom subjects (built-ins have user_id IS NULL — leave alone).
+    db.query(Subject).filter(Subject.user_id == user_id).delete()
+    # User-level prefs.
+    db.query(UserSettings).filter(UserSettings.user_id == user_id).delete()
+    db.flush()
+
+    # Re-seed defaults using the same logic as POST /api/me/seed.
+    categories_created = 0
+    for key, weight in SYSTEM_CATEGORY_DEFAULTS:
+        db.add(Category(user_id=user_id, system_key=key, weight=weight))
+        categories_created += 1
+    academic_year, term = _default_semester_for(date.today())
+    start_date, end_date = default_semester_dates(academic_year, term, 2)
+    db.add(
+        Semester(
+            user_id=user_id,
+            academic_year=academic_year,
+            term=term,
+            is_current=True,
+            start_date=start_date,
+            end_date=end_date,
+        )
+    )
+    db.add(UserSettings(
+        user_id=user_id,
+        point_reasons=_new_default_reasons(),
+    ))
+    db.flush()
+    _seed_subject_weights(db, user_id)
+    _seed_subject_point_rules(db, user_id)
+    db.commit()
+    return SeedResult(categories_created=categories_created, semesters_created=1)
+
+
+@router.put("/point-reasons")
+def update_point_reasons(
+    body: PointReasonsUpdate,
+    user_id: Annotated[UUID, Depends(require_user_id)],
+    db: Annotated[Session, Depends(get_db)],
+) -> dict[str, list[dict]]:
+    """Replace the user's manual-point reasons list (#84).
+
+    Each entry is `{id, name, default_points}`. Server normalises name
+    (strip + length 1..50) and clamps default_points to -100..100; entries
+    that fail validation are dropped silently rather than failing the whole
+    payload so a single bad row never blocks a save.
+    """
+    cleaned: list[dict] = []
+    seen_ids: set[str] = set()
+    for r in body.reasons:
+        name = r.name.strip()
+        if not name or len(name) > 50:
+            continue
+        if r.id in seen_ids:
+            continue
+        pts = max(-100, min(100, int(r.default_points)))
+        cleaned.append({
+            "id": r.id,
+            "name": name,
+            "default_points": pts,
+        })
+        seen_ids.add(r.id)
+    settings = db.get(UserSettings, user_id)
+    if settings is None:
+        settings = UserSettings(user_id=user_id, point_reasons=cleaned)
+        db.add(settings)
+    else:
+        settings.point_reasons = cleaned
+    db.commit()
+    return {"point_reasons": cleaned}

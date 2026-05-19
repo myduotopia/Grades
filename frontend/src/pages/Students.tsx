@@ -16,15 +16,6 @@ import {
 import { api, ApiError, type Student } from '../lib/api'
 import { classroomDisplayName } from '../lib/classroomFormat'
 
-const STANDARD_KEYS = [
-  'major_exam',
-  'quiz',
-  'homework',
-  'attendance',
-  'extra',
-] as const
-type StandardKey = (typeof STANDARD_KEYS)[number]
-
 const PRIMARY_BTN =
   'inline-flex items-center px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white text-sm font-medium shadow-sm transition-colors disabled:bg-slate-300'
 
@@ -337,15 +328,6 @@ function StudentModal({ mode, classroomId, student, onClose }: ModalProps) {
   const [seat, setSeat] = useState<number | ''>(student?.seat_number ?? '')
   const [name, setName] = useState(student?.name ?? '')
   const [email, setEmail] = useState(student?.email ?? '')
-  const initialStandards: Record<StandardKey, number | ''> = STANDARD_KEYS.reduce(
-    (acc, k) => {
-      const v = student?.standards.find((s) => s.system_key === k)?.threshold
-      acc[k] = v !== undefined ? v : ''
-      return acc
-    },
-    {} as Record<StandardKey, number | ''>,
-  )
-  const [standards, setStandards] = useState(initialStandards)
   const [errKey, setErrKey] = useState<string | null>(null)
 
   const submitting = create.isPending || update.isPending || del.isPending
@@ -355,19 +337,11 @@ function StudentModal({ mode, classroomId, student, onClose }: ModalProps) {
     e.preventDefault()
     if (seat === '') return
     setErrKey(null)
-    const payloadStandards: Record<string, number> = {}
-    for (const k of STANDARD_KEYS) {
-      const v = standards[k]
-      if (v !== '' && !Number.isNaN(Number(v))) {
-        payloadStandards[k] = Number(v)
-      }
-    }
     try {
       const body = {
         seat_number: Number(seat),
         name: name.trim() || null,
         email: email.trim() || null,
-        standards: payloadStandards,
       }
       if (mode === 'add') {
         await create.mutateAsync(body)
@@ -456,35 +430,6 @@ function StudentModal({ mode, classroomId, student, onClose }: ModalProps) {
             className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
           />
         </label>
-
-        <fieldset className="mt-5">
-          <legend className="text-sm font-semibold text-slate-700 mb-2">
-            {t('students.standards_heading')}
-          </legend>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            {STANDARD_KEYS.map((k) => (
-              <label key={k} className="block">
-                <span className="text-xs text-slate-500 mb-1 block">
-                  {t(`category.${k}`)}
-                </span>
-                <input
-                  type="number"
-                  inputMode="decimal"
-                  min={0}
-                  max={100}
-                  value={standards[k]}
-                  onChange={(e) =>
-                    setStandards((s) => ({
-                      ...s,
-                      [k]: e.target.value === '' ? '' : Number(e.target.value),
-                    }))
-                  }
-                  className="w-full border border-slate-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
-                />
-              </label>
-            ))}
-          </div>
-        </fieldset>
 
         {errKey && <p className="mt-3 text-sm text-rose-600">{t(errKey)}</p>}
 

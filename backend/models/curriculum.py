@@ -1,4 +1,4 @@
-"""Subject, Category, Semester, Item, item_classroom (M2M)."""
+"""Subject, Category, Semester, Item."""
 from typing import TYPE_CHECKING
 from uuid import UUID
 
@@ -6,12 +6,10 @@ from datetime import date
 
 from sqlalchemy import (
     CheckConstraint,
-    Column,
     Date,
     ForeignKey,
     Index,
     String,
-    Table,
     UniqueConstraint,
     text,
 )
@@ -22,7 +20,7 @@ from models.base import Base, TimestampMixin, UserScopedMixin
 
 if TYPE_CHECKING:
     from models.classroom import Classroom
-    from models.grading import Grade, PointRule, StudentStandard
+    from models.grading import Grade, PointRule
 
 
 # System-default category keys (seeded per user on signup) and their
@@ -174,9 +172,6 @@ class Category(Base, UserScopedMixin, TimestampMixin):
     system_key: Mapped[str] = mapped_column(String(50), nullable=False)
     weight: Mapped[int] = mapped_column(nullable=False)
 
-    standards: Mapped[list["StudentStandard"]] = relationship(
-        back_populates="category"
-    )
     point_rule: Mapped["PointRule | None"] = relationship(
         back_populates="category", uselist=False
     )
@@ -266,26 +261,11 @@ class Semester(Base, UserScopedMixin, TimestampMixin):
     )
 
 
-# Many-to-many: one item can apply to multiple classrooms
-item_classroom = Table(
-    "item_classroom",
-    Base.metadata,
-    Column(
-        "item_id",
-        PG_UUID(as_uuid=True),
-        ForeignKey("item.id", ondelete="CASCADE"),
-        primary_key=True,
-    ),
-    Column(
-        "classroom_id",
-        PG_UUID(as_uuid=True),
-        ForeignKey("classroom.id", ondelete="CASCADE"),
-        primary_key=True,
-    ),
-)
-
-
 class Item(Base, UserScopedMixin, TimestampMixin):
+    """An exam / quiz / assignment "column". Items are cross-classroom: the
+    same "Quiz 3" given to multiple classes is ONE item, so grades for the
+    same assessment can be analysed across classes. Which class's roster a
+    teacher edits is determined at score-entry time, not at item creation."""
     __tablename__ = "item"
 
     id: Mapped[UUID] = mapped_column(
@@ -314,9 +294,6 @@ class Item(Base, UserScopedMixin, TimestampMixin):
     # name = "" for 段考-type categories; required for 小考/作業/custom
     name: Mapped[str] = mapped_column(String(200), nullable=False, server_default="")
 
-    classrooms: Mapped[list["Classroom"]] = relationship(
-        secondary=item_classroom, back_populates="items"
-    )
     grades: Mapped[list["Grade"]] = relationship(
         back_populates="item", cascade="all, delete-orphan"
     )

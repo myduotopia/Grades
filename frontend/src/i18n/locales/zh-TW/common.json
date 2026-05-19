@@ -28,12 +28,132 @@
     "home": "首頁",
     "classes": "班級管理",
     "admin_subjects": "科目權重設定",
+    "admin_items": "成績項目管理",
+    "points": "點數管理",
+    "admin_reasons": "點數原因",
     "admin_semesters": "學期管理",
-    "open_menu": "開啟選單"
+    "settings": "設定",
+    "open_menu": "開啟選單",
+    "collapse_sidebar": "收合側邊欄",
+    "expand_sidebar": "展開側邊欄"
+  },
+  "points": {
+    "title": "點數管理",
+    "subtitle": "依班級或學生快速加扣點數。點原因按鈕即可套用預設值。",
+    "classroom_subtitle": "依學生加扣點數；點原因按鈕後出現分數可微調。",
+    "no_reasons": "尚未設定點數原因。",
+    "manage_reasons": "管理原因清單",
+    "empty_classrooms": "還沒建立任何班級。",
+    "empty_students": "這個班級沒有學生。",
+    "goto_classes": "前往班級管理",
+    "back": "返回班級列表",
+    "custom": "自訂",
+    "classroom_card": {
+      "summary": "{{count}} 位學生・本學期累積 {{total}} 點"
+    },
+    "col": {
+      "classroom": "班級",
+      "students": "學生數",
+      "semester_points": "本學期點數",
+      "actions": "快速加扣點"
+    },
+    "quick_modal": {
+      "title_apply_class": "全班加扣點",
+      "title_apply_student": "為這位學生加扣點",
+      "reason_label": "原因",
+      "reason_placeholder": "輸入原因…",
+      "points_label": "點數",
+      "confirm_class": "套用到全班",
+      "confirm_student": "確認"
+    },
+    "toast": {
+      "applied_class": "已為 {{count}} 位學生 {{delta}} 點，原因「{{reason}}」",
+      "applied_student": "已 {{delta}} 點，原因「{{reason}}」"
+    }
+  },
+  "admin_reasons": {
+    "title": "點數原因",
+    "subtitle": "管理「主動發問」「值日生」這類原因的預設加扣點數；點數可以是正（加分）或負（扣分）。",
+    "add": "+ 新增原因",
+    "empty": "尚未建立任何原因，按「新增原因」開始。",
+    "hint": "全部設定好按「儲存」一次提交。原因可拖曳調整顯示順序。",
+    "invalid_hint": "每個原因都需要填名稱（最多 50 字）",
+    "drag_to_reorder": "拖曳調整順序",
+    "name_placeholder": "例如：主動發問",
+    "col": {
+      "name": "名稱",
+      "default_points": "預設點數",
+      "actions": "動作"
+    }
   },
   "semester": {
-    "label": "目前學期",
-    "switcher_empty": "尚未建立學期"
+    "label": "檢視學期",
+    "switcher_empty": "尚未建立學期",
+    "viewing_archived": "目前在檢視過去學期，內容唯讀。設定哪個學期為目前學期請到「學期管理」。",
+    "archived_tag": "封存",
+    "current_tag": "目前",
+    "manage_link": "→ 學期管理（設定目前學期）"
+  },
+  "item_name_combobox": {
+    "no_existing": "尚無項目，輸入名稱即會新增",
+    "no_match": "沒有匹配的既有項目",
+    "existing_header": "既有項目（{{count}}）",
+    "will_create": "查無此名稱，將新增「{{name}}」"
+  },
+  "admin_items": {
+    "title": "考試項目",
+    "subtitle": "每個項目（段考 / 小考 / 作業…）是跨班共用的。同樣一份作業/考試只建立一次，之後在不同班輸入成績時就會關聯到同一筆，方便日後分析比較。",
+    "add": "新增項目",
+    "edit": "編輯",
+    "enter_scores": "輸入成績",
+    "drag_to_reorder": "拖曳調整順序",
+    "empty": "目前沒有項目，請按「新增項目」開始。",
+    "col": {
+      "semester": "學期",
+      "classroom": "班級",
+      "subject": "科目",
+      "category": "類別",
+      "name": "名稱",
+      "grades": "成績數",
+      "actions": "動作"
+    },
+    "filter": {
+      "current_semester_hint": "目前學期：{{label}}（右上角切換）",
+      "all_semesters": "全部學期",
+      "all_classrooms": "全部班級",
+      "all_subjects": "全部科目",
+      "all_categories": "全部類別",
+      "clear": "清除篩選"
+    },
+    "modal": {
+      "add_title": "新增項目",
+      "edit_title": "編輯項目名稱",
+      "subject": "科目",
+      "category": "類別",
+      "semester": "學期",
+      "classroom": "班級",
+      "name": "名稱",
+      "name_placeholder": "搜尋既有項目或輸入新名稱…",
+      "name_hint": "為了之後分析比較，請優先選擇已在其他班使用過的項目；查無時才以你打的字新增。"
+    },
+    "delete": {
+      "title": "刪除項目",
+      "confirm": "確定刪除「{{name}}」？",
+      "warning": "將同時刪除 {{grades}} 筆成績與 {{points}} 點點數紀錄。此動作不可復原。"
+    },
+    "error": {
+      "missing_fields": "請填妥所有欄位"
+    }
+  },
+  "errors": {
+    "item": {
+      "not_found": "找不到此項目",
+      "duplicate_name": "這個學期同科目同類別下已有同名項目",
+      "subject_invalid": "請選擇有效的科目",
+      "category_invalid": "請選擇有效的類別",
+      "semester_invalid": "請選擇有效的學期",
+      "classroom_invalid": "請選擇有效的班級"
+    }
   },
   "admin_semesters": {
     "title": "學期管理",
@@ -61,22 +181,63 @@
   },
   "admin_subjects": {
     "title": "科目權重設定",
-    "subtitle": "每個科目可以有自己的類別權重組合。新增自訂科目，並調整每科目的段考 / 小考 / 作業 / 出席率 / 額外加分占比；非「額外加分」加總須為 100%。",
+    "subtitle": "每個科目可以有自己的類別權重組合與「達標獎勵」點數。段考 / 小考達標時，會用該科目設定的點數自動加給學生。",
     "saved": "已儲存",
     "add_subject": "新增科目",
     "custom_badge": "自訂",
+    "drag_to_reorder": "拖曳調整順序",
     "sum_invalid_hint": "每一列（不含額外加分）必須等於 100",
-    "formula_hint": "額外加分不計入 100%，會直接加在加權後的分數上（封頂 100）。",
+    "formula_hint": "額外加分不計入 100%，會直接加在加權後的分數上（封頂 100）。達標獎勵 = 學生段考或小考分數 ≥ 該科目標準時自動加的點數。",
+    "points_unit": "點",
     "confirm_delete": "確定刪除「{{name}}」這個科目？此動作會一併刪除這個科目下的所有考試與成績。",
     "col": {
       "subject": "科目",
       "sum": "加總",
+      "points_awarded": "達標獎勵",
       "actions": "動作"
     },
     "modal": {
       "add_title": "新增自訂科目",
       "name_label": "科目名稱",
       "name_placeholder": "例如：閩南語、班會"
+    }
+  },
+  "settings": {
+    "title": "設定",
+    "subtitle": "帳號、介面、學期、整合與資料管理。",
+    "account": {
+      "heading": "帳號"
+    },
+    "ui": {
+      "heading": "介面",
+      "language": "語言",
+      "language_hint": "切換後立即生效；偏好存於瀏覽器。"
+    },
+    "semester": {
+      "heading": "學期",
+      "terms_per_year": "一學年的學期數",
+      "terms_per_year_hint": "改了之後，新增的學期會用新值切日期；既有學期不受影響。",
+      "manage_link": "管理學期"
+    },
+    "integrations": {
+      "heading": "整合",
+      "duotopia_status": "尚未連結",
+      "classroom_status": "尚未連結",
+      "coming_soon": "敬請期待"
+    },
+    "danger": {
+      "heading": "危險區",
+      "warning": "重設帳號會清除所有資料並重新初始化預設值。此動作不可復原。",
+      "bullets": {
+        "classrooms": "所有班級與學生名單",
+        "items_grades": "所有考試項目與成績",
+        "points": "所有點數紀錄",
+        "standards": "所有學生標準分",
+        "weights": "科目權重 / 點數規則（會重設為預設值）",
+        "custom_subjects": "自訂科目"
+      },
+      "confirm_prompt": "確認請輸入「DELETE」：",
+      "button": "重設帳號資料"
     }
   },
   "home": {
@@ -104,7 +265,7 @@
     "extra": "額外加分"
   },
   "subject": {
-    "chinese": "國語",
+    "chinese": "國文",
     "math": "數學",
     "english": "英文",
     "science": "自然",
@@ -162,6 +323,7 @@
       "view_students": "查看學生",
       "bulk_add_students": "批次新增學生",
       "import_grades": "匯入成績",
+      "grade_entry": "線上輸入成績",
       "confirm_delete": "確定刪除「{{name}}」？此動作會一併刪除學生與成績。"
     },
     "errors": {
@@ -225,9 +387,67 @@
       "duplicate_seat": "這個班級已經有相同座號的學生了"
     }
   },
+  "grade_entry": {
+    "title": "線上輸入成績",
+    "title_with_class": "{{name}} 成績輸入",
+    "subtitle": "輸入分數後離開格子（Tab / Enter）會自動儲存。達標的學生會自動加上點數，把分數降到門檻以下會自動撤回。",
+    "back_to_grades": "返回成績檢視",
+    "add_item": "新增項目",
+    "flush_all": "全部儲存",
+    "remove_column": "從畫面移除（不刪除項目）",
+    "max_items_hint": "最多同時編輯 {{max}} 個項目",
+    "empty_no_item": "目前沒有選任何項目。請按「新增項目」開始。",
+    "empty_no_students": "這個班級沒有學生，請先去班級頁新增學生。",
+    "col": {
+      "seat": "座號",
+      "name": "姓名"
+    },
+    "modal": {
+      "add_title": "新增考試項目",
+      "pick_subtitle": "選擇要輸入成績的項目；按儲存後會直接帶你到該班級的成績頁編輯這欄。"
+    }
+  },
+  "student_detail": {
+    "title": "學生成績單",
+    "semester_label": "學期：",
+    "semester_points": "{{count}} 點 / 本學期",
+    "weighted_summary": "各科加權成績",
+    "grade_history": "成績紀錄",
+    "point_history": "點數紀錄",
+    "points_total": "本學期合計 {{total}} 點",
+    "no_grades": "本學期還沒有成績紀錄。",
+    "no_points": "本學期還沒有點數紀錄。",
+    "met": "達標",
+    "col": {
+      "date": "日期",
+      "subject": "科目",
+      "category": "類別",
+      "item": "項目",
+      "score": "分數",
+      "threshold": "標準分",
+      "delta": "點數",
+      "reason": "原因"
+    }
+  },
+  "standards": {
+    "hint": "每位學生各科目的「達標分」。離開格子自動儲存，清空格子等於沒有設定（不會自動發點）。",
+    "select_all": "全選",
+    "empty_roster": "這個班級還沒有學生。",
+    "formula_hint": "達標分 = 段考 / 小考分數 ≥ 此分數時，自動發給該學生這個科目的獎勵點數。沒設定的科目代表不會自動發點。",
+    "batch_apply": "套用標準分到 {{count}} 位學生",
+    "batch": {
+      "title": "批次套用標準分",
+      "subtitle": "將為 {{count}} 位學生套用同一個科目與分數。",
+      "subject": "科目",
+      "threshold": "達標分數"
+    }
+  },
   "grades": {
     "title": "成績總覽",
     "title_with_class": "{{name}} 成績",
+    "edit_scores": "線上輸入這個項目的成績",
+    "search_placeholder": "搜尋學生（座號或姓名）…",
+    "no_match": "沒有符合的學生。",
     "subtitle": "依類別權重自動計算每位學生在每個科目的加權總分。",
     "semester_label": "學期：",
     "semester_format": "{{year}} 學年第 {{term}} 學期",
@@ -238,7 +458,8 @@
     "empty": "這個學期還沒有成績資料。先到班級頁的「匯入成績」上傳檔案。",
     "view": {
       "by_student": "依學生",
-      "by_subject": "依科目"
+      "by_subject": "依科目",
+      "standards": "標準分"
     },
     "import": {
       "title": "批次匯入成績",
@@ -286,7 +507,12 @@
       "delete_current": "不能刪除目前學期。請先把另一個學期設為目前學期。",
       "delete_has_items": "這個學期下還有考試 / 成績，不能刪除。請先把考試移到其他學期。",
       "not_found": "找不到這個學期",
-      "bad_date_range": "開始日期不能晚於結束日期"
+      "bad_date_range": "開始日期不能晚於結束日期",
+      "archived": "此學期已封存，無法修改"
     }
+  },
+  "archived_banner": {
+    "body": "此學期已封存，僅供檢視。如需修改請從右上角切換到目前學期。",
+    "body_with_label": "{{label}} 已封存，僅供檢視。如需修改請從右上角切換到目前學期。"
   }
 }
