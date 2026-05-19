@@ -36,10 +36,13 @@ export function Classes() {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const { data, isLoading, isError, error, refetch } = useClassrooms()
+  const update = useUpdateClassroom()
   const [modal, setModal] = useState<ModalState>({ kind: 'closed' })
   const [view, setView] = useState<View>(
     (localStorage.getItem(VIEW_KEY) as View) || 'card',
   )
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [toast, setToast] = useState<string | null>(null)
 
   useEffect(() => {
     localStorage.setItem(VIEW_KEY, view)
@@ -47,6 +50,50 @@ export function Classes() {
 
   const classrooms = data?.data ?? []
   const isEmpty = !isLoading && !isError && classrooms.length === 0
+
+  function toggleOne(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+  function selectAll() {
+    setSelected(new Set(classrooms.map((c) => c.id)))
+  }
+  function clearSelection() {
+    setSelected(new Set())
+  }
+  async function bumpGrade(delta: 1 | -1) {
+    const picked = classrooms.filter((c) => selected.has(c.id))
+    const limit = delta === 1 ? 12 : 1
+    const skipped = picked.filter((c) => c.grade === limit)
+    const movable = picked.filter((c) => c.grade !== limit)
+    await Promise.all(
+      movable.map((c) =>
+        update.mutateAsync({ id: c.id, grade: c.grade + delta, name: c.name }),
+      ),
+    )
+    const parts: string[] = []
+    if (movable.length > 0)
+      parts.push(t('classes.bulk.applied', { count: movable.length }))
+    if (skipped.length > 0)
+      parts.push(
+        t(
+          delta === 1
+            ? 'classes.bulk.max_grade_skipped'
+            : 'classes.bulk.min_grade_skipped',
+          { count: skipped.length },
+        ),
+      )
+    setToast(parts.join(' · '))
+    setTimeout(() => setToast(null), 3500)
+    clearSelection()
+  }
+
+  const allSelected =
+    classrooms.length > 0 && selected.size === classrooms.length
 
   return (
     <PageContainer>
@@ -78,6 +125,35 @@ export function Classes() {
             <span className="hidden sm:inline">{t('classes.cta.add_manual')}</span>
           </button>
         </section>
+      )}
+
+      {!isLoading && !isError && classrooms.length > 0 && selected.size > 0 && (
+        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5">
+          <span className="text-sm font-medium text-amber-900">
+            {t('classes.bulk.selected', { count: selected.size })}
+          </span>
+          <button
+            onClick={allSelected ? clearSelection : selectAll}
+            className="text-sm font-medium text-amber-800 hover:text-amber-900 underline"
+          >
+            {allSelected ? t('classes.bulk.clear') : t('classes.bulk.select_all')}
+          </button>
+          <div className="grow" />
+          <button
+            disabled={update.isPending}
+            onClick={() => bumpGrade(1)}
+            className={SECONDARY_BTN}
+          >
+            ↑ {t('classes.bulk.promote')}
+          </button>
+          <button
+            disabled={update.isPending}
+            onClick={() => bumpGrade(-1)}
+            className={SECONDARY_BTN}
+          >
+            ↓ {t('classes.bulk.demote')}
+          </button>
+        </div>
       )}
 
       {!isLoading && !isError && classrooms.length > 0 && (
@@ -154,6 +230,8 @@ export function Classes() {
       {!isLoading && !isError && classrooms.length > 0 && view === 'card' && (
         <ClassroomCards
           classrooms={classrooms}
+          selected={selected}
+          onToggle={toggleOne}
           onEdit={(c) => setModal({ kind: 'edit', classroom: c })}
           onImportStudents={(c) =>
             setModal({ kind: 'import-students', classroomId: c.id })
@@ -168,6 +246,10 @@ export function Classes() {
       {!isLoading && !isError && classrooms.length > 0 && view === 'list' && (
         <ClassroomTable
           classrooms={classrooms}
+          selected={selected}
+          onToggle={toggleOne}
+          onToggleAll={allSelected ? clearSelection : selectAll}
+          allSelected={allSelected}
           onEdit={(c) => setModal({ kind: 'edit', classroom: c })}
           onImportStudents={(c) =>
             setModal({ kind: 'import-students', classroomId: c.id })
@@ -177,6 +259,12 @@ export function Classes() {
           }
           onOpen={(c) => navigate(`/classes/${c.id}/grades`)}
         />
+      )}
+
+      {toast && (
+        <div className="fixed bottom-6 right-6 px-4 py-3 rounded-lg bg-slate-900 text-white text-sm shadow-lg z-50">
+          {toast}
+        </div>
       )}
 
       {(modal.kind === 'add' || modal.kind === 'edit') && (
@@ -282,12 +370,16 @@ function RowActions({
 
 function ClassroomCards({
   classrooms,
+  selected,
+  onToggle,
   onEdit,
   onImportStudents,
   onImportGrades,
   onOpen,
 }: {
   classrooms: Classroom[]
+  selected: Set<string>
+  onToggle: (id: string) => void
   onEdit: (c: Classroom) => void
   onImportStudents: (c: Classroom) => void
   onImportGrades: (c: Classroom) => void
@@ -327,9 +419,21 @@ function ClassroomCards({
           })}
         >
           <div className="flex items-start justify-between gap-2">
-            <h3 className="font-semibold text-slate-900 break-all tracking-tight">
-              {classroomDisplayName(c.grade, c.name, i18n.language)}
-            </h3>
+            <div className="flex items-start gap-3 min-w-0">
+              <input
+                type="checkbox"
+                checked={selected.has(c.id)}
+                onClick={(e) => e.stopPropagation()}
+                onChange={() => onToggle(c.id)}
+                aria-label={t('classes.bulk.select_row_aria', {
+                  name: classroomDisplayName(c.grade, c.name, i18n.language),
+                })}
+                className="mt-1 h-4 w-4 rounded border-slate-300 text-amber-500 focus:ring-amber-500 cursor-pointer"
+              />
+              <h3 className="font-semibold text-slate-900 break-all tracking-tight">
+                {classroomDisplayName(c.grade, c.name, i18n.language)}
+              </h3>
+            </div>
             <span className="shrink-0 text-[10px] uppercase tracking-wider text-slate-500 bg-slate-100 rounded-full px-2 py-1">
               {t(`classes.source.${c.source}`)}
             </span>
@@ -353,12 +457,20 @@ function ClassroomCards({
 
 function ClassroomTable({
   classrooms,
+  selected,
+  onToggle,
+  onToggleAll,
+  allSelected,
   onEdit,
   onImportStudents,
   onImportGrades,
   onOpen,
 }: {
   classrooms: Classroom[]
+  selected: Set<string>
+  onToggle: (id: string) => void
+  onToggleAll: () => void
+  allSelected: boolean
   onEdit: (c: Classroom) => void
   onImportStudents: (c: Classroom) => void
   onImportGrades: (c: Classroom) => void
@@ -384,6 +496,15 @@ function ClassroomTable({
         <table className="min-w-full text-sm">
           <thead className="bg-slate-50 border-b border-slate-200 text-slate-600">
             <tr>
+              <th className="px-4 py-3 text-left font-medium w-10">
+                <input
+                  type="checkbox"
+                  checked={allSelected}
+                  onChange={onToggleAll}
+                  aria-label={t('classes.bulk.select_all')}
+                  className="h-4 w-4 rounded border-slate-300 text-amber-500 focus:ring-amber-500 cursor-pointer"
+                />
+              </th>
               <th className="px-4 py-3 text-left font-medium">
                 {t('classes.col.name')}
               </th>
@@ -410,6 +531,17 @@ function ClassroomTable({
                 }}
                 className="border-b border-slate-100 last:border-b-0 cursor-pointer hover:bg-slate-50 focus:outline-none focus:bg-amber-50"
               >
+                <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                  <input
+                    type="checkbox"
+                    checked={selected.has(c.id)}
+                    onChange={() => onToggle(c.id)}
+                    aria-label={t('classes.bulk.select_row_aria', {
+                      name: classroomDisplayName(c.grade, c.name, i18n.language),
+                    })}
+                    className="h-4 w-4 rounded border-slate-300 text-amber-500 focus:ring-amber-500 cursor-pointer"
+                  />
+                </td>
                 <td className="px-4 py-3 text-slate-900 font-medium">
                   {classroomDisplayName(c.grade, c.name, i18n.language)}
                 </td>
