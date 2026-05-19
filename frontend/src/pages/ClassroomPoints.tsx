@@ -12,7 +12,9 @@ import { useSemesterView } from '../state/SemesterView'
 import {
   api,
   ApiError,
+  type ClassPointsSummary,
   type PointReason,
+  type StudentPointsSummaryList,
 } from '../lib/api'
 
 type View = 'list' | 'card'
@@ -65,6 +67,42 @@ export function ClassroomPoints() {
         reason: args.reason,
       }),
     onSuccess: (_data, vars) => {
+      // Bump the local cache so the row's semester_points + the parent
+      // classroom rollup both move instantly, before the invalidate-driven
+      // refetch lands.
+      qc.setQueryData<StudentPointsSummaryList | undefined>(
+        ['points-students', classroomId],
+        (old) =>
+          old
+            ? {
+                ...old,
+                data: old.data.map((s) =>
+                  s.student_id === vars.studentId
+                    ? {
+                        ...s,
+                        semester_points: s.semester_points + vars.points,
+                      }
+                    : s,
+                ),
+              }
+            : old,
+      )
+      qc.setQueryData<{ data: ClassPointsSummary[] } | undefined>(
+        ['points-classrooms'],
+        (old) =>
+          old
+            ? {
+                data: old.data.map((c) =>
+                  c.classroom_id === classroomId
+                    ? {
+                        ...c,
+                        semester_points: c.semester_points + vars.points,
+                      }
+                    : c,
+                ),
+              }
+            : old,
+      )
       setToast(
         t('points.toast.applied_student', {
           delta: vars.points >= 0 ? `+${vars.points}` : String(vars.points),
