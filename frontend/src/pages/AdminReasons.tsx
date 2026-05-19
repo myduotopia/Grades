@@ -17,6 +17,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 
+import { SignedNumberInput } from '../components/SignedNumberInput'
 import { SortableTableRow } from '../components/SortableTableRow'
 import { useMe } from '../hooks/useMe'
 import { PageContainer } from '../layout/PageContainer'
@@ -158,23 +159,11 @@ export function AdminReasons() {
                         />
                       </td>
                       <td className="px-4 py-2">
-                        <input
-                          type="number"
-                          inputMode="numeric"
-                          min={-100}
-                          max={100}
-                          step={1}
+                        <SignedNumberInput
                           value={r.default_points}
-                          onChange={(e) => {
-                            const n = Number(e.target.value)
-                            if (Number.isNaN(n)) return
-                            updateRow(r.id, {
-                              default_points: Math.max(
-                                -100,
-                                Math.min(100, Math.trunc(n)),
-                              ),
-                            })
-                          }}
+                          onChange={(n) =>
+                            updateRow(r.id, { default_points: n })
+                          }
                           className="w-24 border border-slate-300 rounded-md px-2 py-1.5 text-sm text-right tabular-nums focus:outline-none focus:ring-2 focus:ring-amber-500"
                         />
                       </td>
