@@ -12,6 +12,7 @@ const NAV: { to: string; key: string; icon: 'home' | 'classes' | 'categories' }[
   { to: '/admin/subjects', key: 'nav.admin_subjects', icon: 'categories' },
   { to: '/admin/items', key: 'nav.admin_items', icon: 'categories' },
   { to: '/admin/semesters', key: 'nav.admin_semesters', icon: 'categories' },
+  { to: '/settings', key: 'nav.settings', icon: 'categories' },
 ]
 
 export function AppShell() {

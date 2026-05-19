@@ -13,6 +13,7 @@ import { GradeEntry } from './pages/GradeEntry'
 import { Grades } from './pages/Grades'
 import { Home } from './pages/Home'
 import { Login } from './pages/Login'
+import { Settings } from './pages/Settings'
 import { StudentDetail } from './pages/StudentDetail'
 import { Students } from './pages/Students'
 
@@ -49,6 +50,7 @@ function App() {
               <Route path="/admin/subjects" element={<AdminSubjects />} />
               <Route path="/admin/semesters" element={<AdminSemesters />} />
               <Route path="/admin/items" element={<AdminItems />} />
+              <Route path="/settings" element={<Settings />} />
             </Route>
           </Route>
         </Routes>

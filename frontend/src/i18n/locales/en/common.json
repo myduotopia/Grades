@@ -30,6 +30,7 @@
     "admin_subjects": "Subject weights",
     "admin_items": "Grade items",
     "admin_semesters": "Semesters",
+    "settings": "Settings",
     "open_menu": "Open menu"
   },
   "semester": {
@@ -146,6 +147,44 @@
       "add_title": "Add custom subject",
       "name_label": "Subject name",
       "name_placeholder": "e.g., Taiwanese, Homeroom"
+    }
+  },
+  "settings": {
+    "title": "Settings",
+    "subtitle": "Account, UI, semester, integrations, and data management.",
+    "account": {
+      "heading": "Account"
+    },
+    "ui": {
+      "heading": "Interface",
+      "language": "Language",
+      "language_hint": "Applies immediately; the choice is stored in this browser."
+    },
+    "semester": {
+      "heading": "Semester",
+      "terms_per_year": "Terms per academic year",
+      "terms_per_year_hint": "New semesters created after this change use the new split; existing ones stay as-is.",
+      "manage_link": "Manage semesters"
+    },
+    "integrations": {
+      "heading": "Integrations",
+      "duotopia_status": "Not connected yet",
+      "classroom_status": "Not connected yet",
+      "coming_soon": "Coming soon"
+    },
+    "danger": {
+      "heading": "Danger zone",
+      "warning": "Resetting your account wipes all data and re-seeds defaults. This cannot be undone.",
+      "bullets": {
+        "classrooms": "All classrooms and student rosters",
+        "items_grades": "All exam items and grades",
+        "points": "All point records",
+        "standards": "All per-student standards",
+        "weights": "Subject weights / point rules (reset to defaults)",
+        "custom_subjects": "Custom subjects"
+      },
+      "confirm_prompt": "Type \"DELETE\" to confirm:",
+      "button": "Reset account data"
     }
   },
   "home": {

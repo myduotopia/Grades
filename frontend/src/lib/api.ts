@@ -522,6 +522,7 @@ export const api = {
         method: 'PUT',
         body: JSON.stringify({ item_ids: itemIds }),
       }),
+    reset: () => request<SeedResult>('/api/me/reset', { method: 'POST' }),
   },
   classrooms: {
     list: () => request<ClassroomList>('/api/classrooms'),

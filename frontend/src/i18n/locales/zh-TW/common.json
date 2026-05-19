@@ -30,6 +30,7 @@
     "admin_subjects": "科目權重設定",
     "admin_items": "成績項目管理",
     "admin_semesters": "學期管理",
+    "settings": "設定",
     "open_menu": "開啟選單"
   },
   "semester": {
@@ -146,6 +147,44 @@
       "add_title": "新增自訂科目",
       "name_label": "科目名稱",
       "name_placeholder": "例如：閩南語、班會"
+    }
+  },
+  "settings": {
+    "title": "設定",
+    "subtitle": "帳號、介面、學期、整合與資料管理。",
+    "account": {
+      "heading": "帳號"
+    },
+    "ui": {
+      "heading": "介面",
+      "language": "語言",
+      "language_hint": "切換後立即生效；偏好存於瀏覽器。"
+    },
+    "semester": {
+      "heading": "學期",
+      "terms_per_year": "一學年的學期數",
+      "terms_per_year_hint": "改了之後，新增的學期會用新值切日期；既有學期不受影響。",
+      "manage_link": "管理學期"
+    },
+    "integrations": {
+      "heading": "整合",
+      "duotopia_status": "尚未連結",
+      "classroom_status": "尚未連結",
+      "coming_soon": "敬請期待"
+    },
+    "danger": {
+      "heading": "危險區",
+      "warning": "重設帳號會清除所有資料並重新初始化預設值。此動作不可復原。",
+      "bullets": {
+        "classrooms": "所有班級與學生名單",
+        "items_grades": "所有考試項目與成績",
+        "points": "所有點數紀錄",
+        "standards": "所有學生標準分",
+        "weights": "科目權重 / 點數規則（會重設為預設值）",
+        "custom_subjects": "自訂科目"
+      },
+      "confirm_prompt": "確認請輸入「DELETE」：",
+      "button": "重設帳號資料"
     }
   },
   "home": {
