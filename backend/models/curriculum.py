@@ -61,11 +61,13 @@ _ACADEMIC_PROFILE: dict[str, int] = {
     "attendance": 10,
     "extra": 0,
 }
-_ARTS_PE_PROFILE: dict[str, int] = {
+# Non-core subjects (everything outside 國英數自社) and teacher-added custom
+# subjects: 作業 90% + 出席率 10%, everything else 0%.
+_NON_CORE_PROFILE: dict[str, int] = {
     "major_exam": 0,
     "quiz": 0,
-    "homework": 60,
-    "attendance": 40,
+    "homework": 90,
+    "attendance": 10,
     "extra": 0,
 }
 
@@ -75,14 +77,14 @@ SUBJECT_WEIGHT_PROFILES: dict[str, dict[str, int]] = {
     "english": _ACADEMIC_PROFILE,
     "science": _ACADEMIC_PROFILE,
     "social_studies": _ACADEMIC_PROFILE,
-    "integrated": _ACADEMIC_PROFILE,
-    "music": _ARTS_PE_PROFILE,
-    "art": _ARTS_PE_PROFILE,
-    "pe": _ARTS_PE_PROFILE,
+    "integrated": _NON_CORE_PROFILE,
+    "music": _NON_CORE_PROFILE,
+    "art": _NON_CORE_PROFILE,
+    "pe": _NON_CORE_PROFILE,
 }
 
-# Custom subjects (teacher-added) inherit the academic profile by default.
-CUSTOM_SUBJECT_DEFAULT_PROFILE: dict[str, int] = _ACADEMIC_PROFILE
+# Custom (teacher-added) subjects fall outside 國英數自社 too.
+CUSTOM_SUBJECT_DEFAULT_PROFILE: dict[str, int] = _NON_CORE_PROFILE
 
 
 def default_semester_dates(
