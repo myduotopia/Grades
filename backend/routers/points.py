@@ -99,7 +99,6 @@ def _semester_points_for_student(
             PointRecord.user_id == user_id,
             PointRecord.student_id == student_id,
             func.date(PointRecord.created_at) >= sem.start_date,
-            func.date(PointRecord.created_at) <= sem.end_date,
         )
         .scalar()
     )
@@ -121,7 +120,6 @@ def _semester_points_for_classroom(
             PointRecord.user_id == user_id,
             Student.classroom_id == classroom_id,
             func.date(PointRecord.created_at) >= sem.start_date,
-            func.date(PointRecord.created_at) <= sem.end_date,
         )
         .scalar()
     )
