@@ -33,7 +33,9 @@
     "admin_reasons": "Point reasons",
     "admin_semesters": "Semesters",
     "settings": "Settings",
-    "open_menu": "Open menu"
+    "open_menu": "Open menu",
+    "collapse_sidebar": "Collapse sidebar",
+    "expand_sidebar": "Expand sidebar"
   },
   "points": {
     "title": "Points",
