@@ -417,6 +417,12 @@
     "points_total": "Total {{total}} pts this semester",
     "no_grades": "No grades for this semester yet.",
     "no_points": "No points for this semester yet.",
+    "no_points_filtered": "No records match the current filter.",
+    "sort_label": "Sort:",
+    "sort_newest": "Newest first",
+    "sort_oldest": "Oldest first",
+    "filter_reason_label": "Reason:",
+    "filter_reason_all": "All reasons",
     "met": "met",
     "col": {
       "date": "Date",
