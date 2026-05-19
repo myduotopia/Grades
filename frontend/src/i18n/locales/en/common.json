@@ -29,9 +29,60 @@
     "classes": "Classes",
     "admin_subjects": "Subject weights",
     "admin_items": "Grade items",
+    "points": "Points",
+    "admin_reasons": "Point reasons",
     "admin_semesters": "Semesters",
     "settings": "Settings",
     "open_menu": "Open menu"
+  },
+  "points": {
+    "title": "Points",
+    "subtitle": "Quick add/deduct points per class or per student. Click a reason chip to apply its default.",
+    "classroom_subtitle": "Per-student point adjustments. Click a reason chip and fine-tune the amount before confirming.",
+    "no_reasons": "You haven't set up any point reasons yet.",
+    "manage_reasons": "Manage reasons",
+    "empty_classrooms": "No classrooms yet.",
+    "empty_students": "This classroom has no students.",
+    "goto_classes": "Go to classes",
+    "back": "Back",
+    "custom": "Custom",
+    "classroom_card": {
+      "summary": "{{count}} students · {{total}} pts this semester"
+    },
+    "col": {
+      "classroom": "Classroom",
+      "students": "Students",
+      "semester_points": "Pts this semester",
+      "actions": "Quick add/deduct"
+    },
+    "quick_modal": {
+      "title_apply_class": "Apply to whole class",
+      "title_apply_student": "Apply to this student",
+      "reason_label": "Reason",
+      "reason_placeholder": "Type a reason…",
+      "points_label": "Points",
+      "confirm_class": "Apply to class",
+      "confirm_student": "Confirm"
+    },
+    "toast": {
+      "applied_class": "{{count}} students {{delta}} pts, reason \"{{reason}}\"",
+      "applied_student": "{{delta}} pts applied, reason \"{{reason}}\""
+    }
+  },
+  "admin_reasons": {
+    "title": "Point reasons",
+    "subtitle": "Manage reasons like \"asked a good question\" with default point amounts. Positive = reward, negative = deduction.",
+    "add": "+ Add reason",
+    "empty": "No reasons yet. Click 「Add reason」 to start.",
+    "hint": "Hit 「Save」 to commit. Drag rows to reorder.",
+    "invalid_hint": "Every reason needs a name (max 50 chars).",
+    "drag_to_reorder": "Drag to reorder",
+    "name_placeholder": "e.g., Helped a classmate",
+    "col": {
+      "name": "Name",
+      "default_points": "Default points",
+      "actions": "Actions"
+    }
   },
   "semester": {
     "label": "Viewing",

@@ -26,6 +26,35 @@ export interface MeResponse {
   terms_per_year: 2 | 3 | 4
   subject_order: string[]
   item_order: string[]
+  point_reasons: PointReason[]
+}
+
+export interface PointReason {
+  id: string
+  name: string
+  default_points: number
+}
+
+export interface ClassPointsSummary {
+  classroom_id: string
+  grade: number
+  name: string
+  student_count: number
+  semester_points: number
+}
+
+export interface StudentPointsSummary {
+  student_id: string
+  seat_number: number
+  name: string | null
+  semester_points: number
+}
+
+export interface StudentPointsSummaryList {
+  classroom_id: string
+  classroom_grade: number
+  classroom_name: string
+  data: StudentPointsSummary[]
 }
 
 export interface MeSettingsUpdate {
@@ -523,6 +552,35 @@ export const api = {
         body: JSON.stringify({ item_ids: itemIds }),
       }),
     reset: () => request<SeedResult>('/api/me/reset', { method: 'POST' }),
+    updatePointReasons: (reasons: PointReason[]) =>
+      request<{ point_reasons: PointReason[] }>('/api/me/point-reasons', {
+        method: 'PUT',
+        body: JSON.stringify({ reasons }),
+      }),
+  },
+  points: {
+    listClassrooms: () =>
+      request<{ data: ClassPointsSummary[] }>('/api/points/classrooms'),
+    listClassroomStudents: (classroomId: string) =>
+      request<StudentPointsSummaryList>(
+        `/api/points/classrooms/${classroomId}/students`,
+      ),
+    classBatch: (
+      classroomId: string,
+      body: { points: number; reason: string },
+    ) =>
+      request<{ written: number }>(
+        `/api/classrooms/${classroomId}/points/batch`,
+        { method: 'POST', body: JSON.stringify(body) },
+      ),
+    addStudent: (
+      studentId: string,
+      body: { points: number; reason: string },
+    ) =>
+      request<{ id: string; points: number; reason: string }>(
+        `/api/students/${studentId}/points`,
+        { method: 'POST', body: JSON.stringify(body) },
+      ),
   },
   classrooms: {
     list: () => request<ClassroomList>('/api/classrooms'),

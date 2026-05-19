@@ -1,7 +1,7 @@
 """User-scoped utility endpoints (seeding, identity)."""
 from datetime import date
 from typing import Annotated
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
@@ -29,11 +29,32 @@ from models.settings import UserSettings
 from schemas import (
     ItemOrderUpdate,
     MeSettingsUpdate,
+    PointReasonOut,
+    PointReasonsUpdate,
     SeedResult,
     SubjectOrderUpdate,
 )
 
 DEFAULT_POINTS_AWARDED = 100
+
+# Seed list when a user first onboards (or runs /api/me/reset). Teachers can
+# rename / delete / add via /admin/reasons.
+DEFAULT_POINT_REASONS: list[dict] = [
+    {"name": "主動發問", "default_points": 3},
+    {"name": "幫助同學", "default_points": 2},
+    {"name": "課堂表現好", "default_points": 2},
+    {"name": "值日生", "default_points": 1},
+    {"name": "作業優秀", "default_points": 3},
+    {"name": "上課講話", "default_points": -1},
+]
+
+
+def _new_default_reasons() -> list[dict]:
+    """Materialise DEFAULT_POINT_REASONS with fresh uuid ids."""
+    return [
+        {"id": str(uuid4()), "name": r["name"], "default_points": r["default_points"]}
+        for r in DEFAULT_POINT_REASONS
+    ]
 
 router = APIRouter()
 
@@ -94,9 +115,16 @@ def seed(
         )
         semesters_created = 1
 
-    # User settings: ensure a row exists with the default terms_per_year=2.
-    if db.get(UserSettings, user_id) is None:
-        db.add(UserSettings(user_id=user_id))
+    # User settings: ensure a row exists with the default terms_per_year=2
+    # and a starter point_reasons list (idempotent — only fills if empty).
+    settings_row = db.get(UserSettings, user_id)
+    if settings_row is None:
+        db.add(UserSettings(
+            user_id=user_id,
+            point_reasons=_new_default_reasons(),
+        ))
+    elif not settings_row.point_reasons:
+        settings_row.point_reasons = _new_default_reasons()
 
     # Subject × category weights: fill any missing combinations using the
     # per-subject profile. Must run after Category rows above are flushed so
@@ -315,9 +343,50 @@ def reset(
             end_date=end_date,
         )
     )
-    db.add(UserSettings(user_id=user_id))
+    db.add(UserSettings(
+        user_id=user_id,
+        point_reasons=_new_default_reasons(),
+    ))
     db.flush()
     _seed_subject_weights(db, user_id)
     _seed_subject_point_rules(db, user_id)
     db.commit()
     return SeedResult(categories_created=categories_created, semesters_created=1)
+
+
+@router.put("/point-reasons")
+def update_point_reasons(
+    body: PointReasonsUpdate,
+    user_id: Annotated[UUID, Depends(require_user_id)],
+    db: Annotated[Session, Depends(get_db)],
+) -> dict[str, list[dict]]:
+    """Replace the user's manual-point reasons list (#84).
+
+    Each entry is `{id, name, default_points}`. Server normalises name
+    (strip + length 1..50) and clamps default_points to -100..100; entries
+    that fail validation are dropped silently rather than failing the whole
+    payload so a single bad row never blocks a save.
+    """
+    cleaned: list[dict] = []
+    seen_ids: set[str] = set()
+    for r in body.reasons:
+        name = r.name.strip()
+        if not name or len(name) > 50:
+            continue
+        if r.id in seen_ids:
+            continue
+        pts = max(-100, min(100, int(r.default_points)))
+        cleaned.append({
+            "id": r.id,
+            "name": name,
+            "default_points": pts,
+        })
+        seen_ids.add(r.id)
+    settings = db.get(UserSettings, user_id)
+    if settings is None:
+        settings = UserSettings(user_id=user_id, point_reasons=cleaned)
+        db.add(settings)
+    else:
+        settings.point_reasons = cleaned
+    db.commit()
+    return {"point_reasons": cleaned}

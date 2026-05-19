@@ -36,6 +36,13 @@ class UserSettings(Base, TimestampMixin):
     item_order: Mapped[list] = mapped_column(
         JSONB, nullable=False, server_default=text("'[]'::jsonb")
     )
+    # Manual-point reasons (#84). Each entry is
+    # `{id: str, name: str, default_points: int}` — the id is teacher-local
+    # so that the UI can reorder / delete / edit rows; PointRecord.reason
+    # still stores the human name at write time.
+    point_reasons: Mapped[list] = mapped_column(
+        JSONB, nullable=False, server_default=text("'[]'::jsonb")
+    )
 
     __table_args__ = (
         CheckConstraint(

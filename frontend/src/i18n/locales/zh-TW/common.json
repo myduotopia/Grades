@@ -29,9 +29,60 @@
     "classes": "班級管理",
     "admin_subjects": "科目權重設定",
     "admin_items": "成績項目管理",
+    "points": "點數管理",
+    "admin_reasons": "點數原因",
     "admin_semesters": "學期管理",
     "settings": "設定",
     "open_menu": "開啟選單"
+  },
+  "points": {
+    "title": "點數管理",
+    "subtitle": "依班級或學生快速加扣點數。點原因按鈕即可套用預設值。",
+    "classroom_subtitle": "依學生加扣點數；點原因按鈕後出現分數可微調。",
+    "no_reasons": "尚未設定點數原因。",
+    "manage_reasons": "管理原因清單",
+    "empty_classrooms": "還沒建立任何班級。",
+    "empty_students": "這個班級沒有學生。",
+    "goto_classes": "前往班級管理",
+    "back": "返回班級列表",
+    "custom": "自訂",
+    "classroom_card": {
+      "summary": "{{count}} 位學生・本學期累積 {{total}} 點"
+    },
+    "col": {
+      "classroom": "班級",
+      "students": "學生數",
+      "semester_points": "本學期點數",
+      "actions": "快速加扣點"
+    },
+    "quick_modal": {
+      "title_apply_class": "全班加扣點",
+      "title_apply_student": "為這位學生加扣點",
+      "reason_label": "原因",
+      "reason_placeholder": "輸入原因…",
+      "points_label": "點數",
+      "confirm_class": "套用到全班",
+      "confirm_student": "確認"
+    },
+    "toast": {
+      "applied_class": "已為 {{count}} 位學生 {{delta}} 點，原因「{{reason}}」",
+      "applied_student": "已 {{delta}} 點，原因「{{reason}}」"
+    }
+  },
+  "admin_reasons": {
+    "title": "點數原因",
+    "subtitle": "管理「主動發問」「值日生」這類原因的預設加扣點數；點數可以是正（加分）或負（扣分）。",
+    "add": "+ 新增原因",
+    "empty": "尚未建立任何原因，按「新增原因」開始。",
+    "hint": "全部設定好按「儲存」一次提交。原因可拖曳調整顯示順序。",
+    "invalid_hint": "每個原因都需要填名稱（最多 50 字）",
+    "drag_to_reorder": "拖曳調整順序",
+    "name_placeholder": "例如：主動發問",
+    "col": {
+      "name": "名稱",
+      "default_points": "預設點數",
+      "actions": "動作"
+    }
   },
   "semester": {
     "label": "檢視學期",

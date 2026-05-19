@@ -63,6 +63,68 @@ class ItemOrderUpdate(BaseModel):
     item_ids: list[UUID]
 
 
+# ---------- Manual point reasons (issue #84) ----------
+
+
+class PointReasonOut(BaseModel):
+    id: str
+    name: str
+    default_points: int
+
+
+class PointReasonsUpdate(BaseModel):
+    reasons: list[PointReasonOut]
+
+
+class ManualPointCreate(BaseModel):
+    points: int = Field(ge=-100, le=100)
+    reason: str = Field(min_length=1, max_length=200)
+
+
+class ClassPointsBatch(BaseModel):
+    points: int = Field(ge=-100, le=100)
+    reason: str = Field(min_length=1, max_length=200)
+
+
+class ManualPointOut(BaseModel):
+    id: UUID
+    student_id: UUID
+    points: int
+    reason: str
+    created_at: datetime
+
+
+class ClassPointsBatchResult(BaseModel):
+    written: int
+
+
+class ClassPointsSummary(BaseModel):
+    """Per-classroom rollup for /points top page."""
+    classroom_id: UUID
+    grade: int
+    name: str
+    student_count: int
+    semester_points: int
+
+
+class ClassPointsSummaryList(BaseModel):
+    data: list[ClassPointsSummary]
+
+
+class StudentPointsSummary(BaseModel):
+    student_id: UUID
+    seat_number: int
+    name: str | None
+    semester_points: int
+
+
+class StudentPointsSummaryList(BaseModel):
+    classroom_id: UUID
+    classroom_grade: int
+    classroom_name: str
+    data: list[StudentPointsSummary]
+
+
 # ---------- /api/semesters ----------
 
 
