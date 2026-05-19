@@ -106,14 +106,6 @@ export function Points() {
     },
   })
 
-  function openReason(classroomId: string, reason: PointReason) {
-    setModal({
-      classroomId,
-      reason: reason.name,
-      points: reason.default_points,
-      editableReason: false,
-    })
-  }
   function openCustom(classroomId: string) {
     setModal({
       classroomId,
@@ -218,8 +210,14 @@ export function Points() {
                     {reasons.map((r) => (
                       <button
                         key={r.id}
-                        disabled={isArchived}
-                        onClick={() => openReason(c.classroom_id, r)}
+                        disabled={isArchived || batchMut.isPending}
+                        onClick={() =>
+                          batchMut.mutate({
+                            classroomId: c.classroom_id,
+                            reason: r.name,
+                            points: r.default_points,
+                          })
+                        }
                         className={`inline-flex items-center gap-1.5 text-sm font-medium px-3.5 py-2 rounded-full border disabled:opacity-40 disabled:cursor-not-allowed ${
                           r.default_points >= 0
                             ? 'bg-sky-50 border-sky-200 text-sky-800 hover:bg-sky-100'
@@ -289,8 +287,14 @@ export function Points() {
                           {reasons.map((r) => (
                             <button
                               key={r.id}
-                              disabled={isArchived}
-                              onClick={() => openReason(c.classroom_id, r)}
+                              disabled={isArchived || batchMut.isPending}
+                              onClick={() =>
+                                batchMut.mutate({
+                                  classroomId: c.classroom_id,
+                                  reason: r.name,
+                                  points: r.default_points,
+                                })
+                              }
                               className={`text-sm font-medium px-3 py-1.5 rounded-lg border disabled:opacity-40 disabled:cursor-not-allowed ${
                                 r.default_points >= 0
                                   ? 'bg-sky-50 border-sky-200 text-sky-800 hover:bg-sky-100'
