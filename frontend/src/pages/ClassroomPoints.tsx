@@ -250,7 +250,7 @@ export function ClassroomPoints() {
                           key={r.id}
                           disabled={isArchived}
                           onClick={() => openReason(s.student_id, label, r)}
-                          className={`text-[11px] font-medium px-1.5 py-0.5 rounded border disabled:opacity-40 disabled:cursor-not-allowed ${
+                          className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-md border disabled:opacity-40 disabled:cursor-not-allowed ${
                             r.default_points >= 0
                               ? 'bg-sky-50 border-sky-200 text-sky-800 hover:bg-sky-100'
                               : 'bg-rose-50 border-rose-200 text-rose-800 hover:bg-rose-100'
@@ -272,7 +272,7 @@ export function ClassroomPoints() {
                       <button
                         disabled={isArchived}
                         onClick={() => openCustom(s.student_id, label)}
-                        className="text-[11px] px-1.5 py-0.5 rounded border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                        className="inline-flex items-center text-xs font-medium px-2 py-1 rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
                       >
                         +
                       </button>
@@ -341,7 +341,7 @@ export function ClassroomPoints() {
                                 onClick={() =>
                                   openReason(s.student_id, label, r)
                                 }
-                                className={`text-xs font-medium px-2 py-1 rounded border disabled:opacity-40 disabled:cursor-not-allowed ${
+                                className={`text-sm font-medium px-3 py-1.5 rounded-lg border disabled:opacity-40 disabled:cursor-not-allowed ${
                                   r.default_points >= 0
                                     ? 'bg-sky-50 border-sky-200 text-sky-800 hover:bg-sky-100'
                                     : 'bg-rose-50 border-rose-200 text-rose-800 hover:bg-rose-100'
@@ -356,7 +356,7 @@ export function ClassroomPoints() {
                             <button
                               disabled={isArchived}
                               onClick={() => openCustom(s.student_id, label)}
-                              className="text-xs px-2 py-1 rounded border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                              className="text-sm font-medium px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
                             >
                               + {t('points.custom')}
                             </button>

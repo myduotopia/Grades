@@ -44,7 +44,10 @@ export function QuickPointModal({
     setPts(initialPoints)
   }, [initialReason, initialPoints])
 
-  const canSubmit = pts !== 0 && reason.trim().length > 0 && !pending
+  // Reason can be blank in the "+ 自訂" flow — the teacher might just want
+  // to add raw points without categorising them. Reasons coming in from a
+  // saved reason chip are never blank by construction.
+  const canSubmit = pts !== 0 && !pending
 
   function submit(e: React.FormEvent) {
     e.preventDefault()
