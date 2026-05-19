@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { NavLink, Outlet } from 'react-router-dom'
 
@@ -17,43 +17,82 @@ const NAV: { to: string; key: string; icon: 'home' | 'classes' | 'categories' }[
   { to: '/settings', key: 'nav.settings', icon: 'categories' },
 ]
 
+const COLLAPSE_KEY = 'appshell.sidebar_collapsed'
+
 export function AppShell() {
   const { t, i18n } = useTranslation()
   const { session } = useAuth()
+  // Mobile drawer state (slides in from off-screen)
   const [drawerOpen, setDrawerOpen] = useState(false)
+  // Desktop collapse state (icons-only rail vs. full sidebar). Persisted so
+  // the teacher's preference survives reloads.
+  const [collapsed, setCollapsed] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false
+    return localStorage.getItem(COLLAPSE_KEY) === '1'
+  })
+  useEffect(() => {
+    try {
+      localStorage.setItem(COLLAPSE_KEY, collapsed ? '1' : '0')
+    } catch {
+      // Ignore quota / privacy-mode errors.
+    }
+  }, [collapsed])
 
   const toggleLang = () =>
     i18n.changeLanguage(i18n.language === 'zh-TW' ? 'en' : 'zh-TW')
   const handleSignOut = () => supabase.auth.signOut()
 
+  const widthClass = collapsed ? 'md:w-16' : 'md:w-64'
+  // Drawer is always full-width on mobile; collapse only applies on md+.
+  const asideClass = `fixed md:static inset-y-0 left-0 z-30 w-64 ${widthClass} bg-slate-900 text-slate-200 transform transition-[transform,width] duration-200 md:translate-x-0 ${
+    drawerOpen ? 'translate-x-0' : '-translate-x-full'
+  }`
+
   return (
     <div className="min-h-screen bg-slate-50 md:flex">
-      <aside
-        className={`fixed md:static inset-y-0 left-0 z-30 w-64 bg-slate-900 text-slate-200 transform transition-transform duration-200 md:translate-x-0 ${
-          drawerOpen ? 'translate-x-0' : '-translate-x-full'
-        }`}
-      >
+      <aside className={asideClass}>
         <div className="h-full flex flex-col">
-          <div className="px-5 pt-6 pb-4">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-amber-500 flex items-center justify-center">
-                <span className="text-white font-bold text-sm">G</span>
-              </div>
-              <span className="text-base font-semibold text-white tracking-tight">
+          <div className="px-3 pt-4 pb-3 flex items-center gap-2">
+            <div className="w-8 h-8 rounded-lg bg-amber-500 flex items-center justify-center shrink-0">
+              <span className="text-white font-bold text-sm">G</span>
+            </div>
+            {!collapsed && (
+              <span className="text-base font-semibold text-white tracking-tight flex-1 truncate">
                 {t('app.title')}
               </span>
-            </div>
+            )}
+            {/* Collapse / expand button (desktop only). On mobile this row
+                stays simple — the drawer closes via the backdrop. */}
+            <button
+              onClick={() => setCollapsed((v) => !v)}
+              className="hidden md:flex w-7 h-7 items-center justify-center rounded text-slate-400 hover:text-white hover:bg-slate-800/60"
+              aria-label={
+                collapsed
+                  ? t('nav.expand_sidebar')
+                  : t('nav.collapse_sidebar')
+              }
+              title={
+                collapsed
+                  ? t('nav.expand_sidebar')
+                  : t('nav.collapse_sidebar')
+              }
+            >
+              <CollapseChevron collapsed={collapsed} />
+            </button>
           </div>
 
-          <nav className="flex-1 px-3 py-2 space-y-0.5">
+          <nav className="flex-1 px-2 py-2 space-y-0.5">
             {NAV.map((item) => (
               <NavLink
                 key={item.to}
                 to={item.to}
                 end={item.to === '/'}
                 onClick={() => setDrawerOpen(false)}
+                title={collapsed ? t(item.key) : undefined}
                 className={({ isActive }) =>
-                  `flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                  `flex items-center ${
+                    collapsed ? 'justify-center' : 'gap-3'
+                  } px-3 py-2 rounded-md text-sm font-medium transition-colors ${
                     isActive
                       ? 'bg-slate-800 text-white'
                       : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
@@ -61,26 +100,38 @@ export function AppShell() {
                 }
               >
                 <NavIcon kind={item.icon} />
-                <span>{t(item.key)}</span>
+                {!collapsed && <span className="truncate">{t(item.key)}</span>}
               </NavLink>
             ))}
           </nav>
 
-          <div className="px-3 py-3 border-t border-slate-800 space-y-0.5">
-            <div className="px-3 py-1.5 text-xs text-slate-500 truncate">
-              {session?.user.email}
-            </div>
+          <div className="px-2 py-3 border-t border-slate-800 space-y-0.5">
+            {!collapsed && (
+              <div className="px-3 py-1.5 text-xs text-slate-500 truncate">
+                {session?.user.email}
+              </div>
+            )}
             <button
               onClick={toggleLang}
-              className="w-full text-left px-3 py-2 rounded-md text-sm text-slate-400 hover:text-white hover:bg-slate-800/60 transition-colors"
+              title={collapsed ? t('app.switch_lang') : undefined}
+              className={`w-full ${
+                collapsed ? 'flex justify-center' : 'text-left'
+              } px-3 py-2 rounded-md text-sm text-slate-400 hover:text-white hover:bg-slate-800/60 transition-colors`}
             >
-              {t('app.switch_lang')}
+              {collapsed ? '🌐' : t('app.switch_lang')}
             </button>
             <button
               onClick={handleSignOut}
-              className="w-full text-left px-3 py-2 rounded-md text-sm text-slate-400 hover:text-rose-300 hover:bg-rose-500/10 transition-colors"
+              title={collapsed ? t('auth.sign_out') : undefined}
+              className={`w-full ${
+                collapsed ? 'flex justify-center' : 'text-left'
+              } px-3 py-2 rounded-md text-sm text-slate-400 hover:text-rose-300 hover:bg-rose-500/10 transition-colors`}
             >
-              {t('auth.sign_out')}
+              {collapsed ? (
+                <SignOutIcon />
+              ) : (
+                t('auth.sign_out')
+              )}
             </button>
           </div>
         </div>
@@ -119,6 +170,43 @@ export function AppShell() {
         </main>
       </div>
     </div>
+  )
+}
+
+function CollapseChevron({ collapsed }: { collapsed: boolean }) {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      style={{ transform: collapsed ? 'rotate(180deg)' : undefined }}
+    >
+      <polyline points="15 18 9 12 15 6" />
+    </svg>
+  )
+}
+
+function SignOutIcon() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+      <polyline points="16 17 21 12 16 7" />
+      <line x1="21" y1="12" x2="9" y2="12" />
+    </svg>
   )
 }
 

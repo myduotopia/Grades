@@ -33,7 +33,9 @@
     "admin_reasons": "點數原因",
     "admin_semesters": "學期管理",
     "settings": "設定",
-    "open_menu": "開啟選單"
+    "open_menu": "開啟選單",
+    "collapse_sidebar": "收合側邊欄",
+    "expand_sidebar": "展開側邊欄"
   },
   "points": {
     "title": "點數管理",

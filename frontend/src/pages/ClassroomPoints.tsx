@@ -212,7 +212,11 @@ export function ClassroomPoints() {
                           key={r.id}
                           disabled={isArchived}
                           onClick={() => openReason(s.student_id, label, r)}
-                          className="text-[11px] font-medium px-1.5 py-0.5 rounded bg-amber-50 border border-amber-200 text-amber-800 hover:bg-amber-100 disabled:opacity-40 disabled:cursor-not-allowed"
+                          className={`text-[11px] font-medium px-1.5 py-0.5 rounded border disabled:opacity-40 disabled:cursor-not-allowed ${
+                            r.default_points >= 0
+                              ? 'bg-sky-50 border-sky-200 text-sky-800 hover:bg-sky-100'
+                              : 'bg-rose-50 border-rose-200 text-rose-800 hover:bg-rose-100'
+                          }`}
                           title={`${r.name} ${
                             r.default_points >= 0
                               ? `+${r.default_points}`
@@ -299,7 +303,11 @@ export function ClassroomPoints() {
                                 onClick={() =>
                                   openReason(s.student_id, label, r)
                                 }
-                                className="text-xs font-medium px-2 py-1 rounded bg-amber-50 border border-amber-200 text-amber-800 hover:bg-amber-100 disabled:opacity-40 disabled:cursor-not-allowed"
+                                className={`text-xs font-medium px-2 py-1 rounded border disabled:opacity-40 disabled:cursor-not-allowed ${
+                                  r.default_points >= 0
+                                    ? 'bg-sky-50 border-sky-200 text-sky-800 hover:bg-sky-100'
+                                    : 'bg-rose-50 border-rose-200 text-rose-800 hover:bg-rose-100'
+                                }`}
                               >
                                 {r.name}{' '}
                                 {r.default_points >= 0

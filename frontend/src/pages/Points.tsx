@@ -200,7 +200,11 @@ export function Points() {
                         key={r.id}
                         disabled={isArchived}
                         onClick={() => openReason(c.classroom_id, r)}
-                        className="inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1.5 rounded-full bg-amber-50 border border-amber-200 text-amber-800 hover:bg-amber-100 disabled:opacity-40 disabled:cursor-not-allowed"
+                        className={`inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1.5 rounded-full border disabled:opacity-40 disabled:cursor-not-allowed ${
+                          r.default_points >= 0
+                            ? 'bg-sky-50 border-sky-200 text-sky-800 hover:bg-sky-100'
+                            : 'bg-rose-50 border-rose-200 text-rose-800 hover:bg-rose-100'
+                        }`}
                       >
                         {r.name}
                         <span className="font-mono tabular-nums">
@@ -267,7 +271,11 @@ export function Points() {
                               key={r.id}
                               disabled={isArchived}
                               onClick={() => openReason(c.classroom_id, r)}
-                              className="text-xs font-medium px-2 py-1 rounded bg-amber-50 border border-amber-200 text-amber-800 hover:bg-amber-100 disabled:opacity-40 disabled:cursor-not-allowed"
+                              className={`text-xs font-medium px-2 py-1 rounded border disabled:opacity-40 disabled:cursor-not-allowed ${
+                                r.default_points >= 0
+                                  ? 'bg-sky-50 border-sky-200 text-sky-800 hover:bg-sky-100'
+                                  : 'bg-rose-50 border-rose-200 text-rose-800 hover:bg-rose-100'
+                              }`}
                             >
                               {r.name}{' '}
                               {r.default_points >= 0
