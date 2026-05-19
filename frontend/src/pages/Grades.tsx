@@ -183,6 +183,9 @@ function subjectLabel(s: SubjectRef, t: (k: string) => string): string {
 
 // ---------- 依學生 view (overview matrix) ----------
 
+type SortKey = 'seat' | 'overall' | string // string = subject_id for subject columns
+type SortDir = 'asc' | 'desc'
+
 function ByStudentTable({
   view,
   matrix,
@@ -193,78 +196,171 @@ function ByStudentTable({
   subjects: SubjectRef[]
 }) {
   const { t } = useTranslation()
+  const [query, setQuery] = useState('')
+  const [sortKey, setSortKey] = useState<SortKey>('seat')
+  const [sortDir, setSortDir] = useState<SortDir>('asc')
 
   if (view.items.length === 0) {
     return <EmptyHint />
   }
 
+  function toggleSort(key: SortKey) {
+    if (key === sortKey) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setSortKey(key)
+      setSortDir('asc')
+    }
+  }
+
+  // Precompute (overall, per-subject-total) for each student so sort doesn't
+  // re-walk the matrix on every comparison.
+  const enriched = view.students.map((s) => {
+    const row = matrix[s.id] ?? {}
+    const totals = subjects
+      .map((sub) => row[sub.id]?.weightedTotal)
+      .filter((n): n is number => typeof n === 'number')
+    const overall =
+      totals.length > 0
+        ? totals.reduce((a, b) => a + b, 0) / totals.length
+        : null
+    return { student: s, row, overall }
+  })
+
+  const q = query.trim().toLowerCase()
+  const filtered = q
+    ? enriched.filter(({ student }) => {
+        const seatStr = String(student.seat_number)
+        const name = (student.name ?? '').toLowerCase()
+        return seatStr.includes(q) || name.includes(q)
+      })
+    : enriched
+
+  const dirMul = sortDir === 'asc' ? 1 : -1
+  const sorted = [...filtered].sort((a, b) => {
+    const valueOf = (
+      row: typeof enriched[number],
+    ): number | null => {
+      if (sortKey === 'seat') return row.student.seat_number
+      if (sortKey === 'overall') return row.overall
+      // subject column
+      const v = row.row[sortKey]?.weightedTotal
+      return typeof v === 'number' ? v : null
+    }
+    const av = valueOf(a)
+    const bv = valueOf(b)
+    // null/missing always at bottom regardless of direction.
+    if (av === null && bv === null) {
+      return a.student.seat_number - b.student.seat_number
+    }
+    if (av === null) return 1
+    if (bv === null) return -1
+    if (av === bv) return a.student.seat_number - b.student.seat_number
+    return (av - bv) * dirMul
+  })
+
+  function arrow(key: SortKey) {
+    if (key !== sortKey) {
+      return <span className="text-slate-300 ml-1">↕</span>
+    }
+    return (
+      <span className="text-slate-700 ml-1">
+        {sortDir === 'asc' ? '▲' : '▼'}
+      </span>
+    )
+  }
+
+  const headerBtn =
+    'inline-flex items-center text-left font-medium hover:text-slate-900 cursor-pointer select-none'
+
   return (
     <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+      <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/60">
+        <input
+          type="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder={t('grades.search_placeholder')}
+          className="w-full sm:w-72 border border-slate-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+        />
+      </div>
       <div className="overflow-x-auto">
         <table className="min-w-full text-sm">
           <thead className="bg-slate-50 border-b border-slate-200 text-slate-600">
             <tr>
-              <th className="px-4 py-3 text-left font-medium">
-                {t('students.col.seat')}
+              <th className="px-4 py-3 text-left">
+                <button onClick={() => toggleSort('seat')} className={headerBtn}>
+                  {t('students.col.seat')}
+                  {arrow('seat')}
+                </button>
               </th>
               <th className="px-4 py-3 text-left font-medium">
                 {t('students.col.name')}
               </th>
               {subjects.map((sub) => (
-                <th
-                  key={sub.id}
-                  className="px-4 py-3 text-left font-medium"
-                >
-                  {subjectLabel(sub, t)}
+                <th key={sub.id} className="px-4 py-3 text-left">
+                  <button
+                    onClick={() => toggleSort(sub.id)}
+                    className={headerBtn}
+                  >
+                    {subjectLabel(sub, t)}
+                    {arrow(sub.id)}
+                  </button>
                 </th>
               ))}
-              <th className="px-4 py-3 text-left font-medium">
-                {t('grades.overall_avg')}
+              <th className="px-4 py-3 text-left">
+                <button
+                  onClick={() => toggleSort('overall')}
+                  className={headerBtn}
+                >
+                  {t('grades.overall_avg')}
+                  {arrow('overall')}
+                </button>
               </th>
             </tr>
           </thead>
           <tbody>
-            {view.students.map((s) => {
-              const row = matrix[s.id] ?? {}
-              const totals = subjects
-                .map((sub) => row[sub.id]?.weightedTotal)
-                .filter((n): n is number => typeof n === 'number')
-              const overall =
-                totals.length > 0
-                  ? totals.reduce((a, b) => a + b, 0) / totals.length
-                  : null
-              return (
-                <tr
-                  key={s.id}
-                  className="border-b border-slate-100 last:border-b-0"
+            {sorted.map(({ student: s, row, overall }) => (
+              <tr
+                key={s.id}
+                className="border-b border-slate-100 last:border-b-0"
+              >
+                <td className="px-4 py-2.5 text-slate-900 font-medium">
+                  {s.seat_number}
+                </td>
+                <td className="px-4 py-2.5 text-slate-700">
+                  <a
+                    href={`/students/${s.id}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="hover:text-amber-700 hover:underline"
+                  >
+                    {s.name || <span className="text-slate-400">—</span>}
+                  </a>
+                </td>
+                {subjects.map((sub) => (
+                  <td
+                    key={sub.id}
+                    className="px-4 py-2.5 text-slate-700 tabular-nums"
+                  >
+                    {formatScore(row[sub.id]?.weightedTotal)}
+                  </td>
+                ))}
+                <td className="px-4 py-2.5 text-slate-900 font-semibold tabular-nums">
+                  {formatScore(overall)}
+                </td>
+              </tr>
+            ))}
+            {sorted.length === 0 && (
+              <tr>
+                <td
+                  colSpan={subjects.length + 3}
+                  className="px-4 py-8 text-center text-sm text-slate-400"
                 >
-                  <td className="px-4 py-2.5 text-slate-900 font-medium">
-                    {s.seat_number}
-                  </td>
-                  <td className="px-4 py-2.5 text-slate-700">
-                    <a
-                      href={`/students/${s.id}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="hover:text-amber-700 hover:underline"
-                    >
-                      {s.name || <span className="text-slate-400">—</span>}
-                    </a>
-                  </td>
-                  {subjects.map((sub) => (
-                    <td
-                      key={sub.id}
-                      className="px-4 py-2.5 text-slate-700"
-                    >
-                      {formatScore(row[sub.id]?.weightedTotal)}
-                    </td>
-                  ))}
-                  <td className="px-4 py-2.5 text-slate-900 font-semibold">
-                    {formatScore(overall)}
-                  </td>
-                </tr>
-              )
-            })}
+                  {t('grades.no_match')}
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>

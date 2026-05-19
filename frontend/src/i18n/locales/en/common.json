@@ -350,6 +350,8 @@
     "title": "Grades overview",
     "title_with_class": "{{name}} — Grades",
     "edit_scores": "Enter scores for this item",
+    "search_placeholder": "Search students (seat or name)…",
+    "no_match": "No matching students.",
     "subtitle": "Per-subject weighted totals by category weight, computed live.",
     "semester_label": "Semester:",
     "semester_format": "Year {{year}}, Term {{term}}",
