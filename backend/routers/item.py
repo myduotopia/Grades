@@ -63,6 +63,32 @@ def _bad_request(message_key: str, message: str) -> HTTPException:
     )
 
 
+def _archived_forbidden() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail={
+            "error": {
+                "code": "FORBIDDEN",
+                "message_key": "errors.semester.archived",
+                "message": "This semester is archived and read-only.",
+            }
+        },
+    )
+
+
+def _check_semester_writable(
+    db: Session, user_id: UUID, semester_id: UUID
+) -> None:
+    """Block item writes that target a non-current semester (issue #55)."""
+    sem = (
+        db.query(Semester)
+        .filter(Semester.id == semester_id, Semester.user_id == user_id)
+        .one_or_none()
+    )
+    if sem is None or not sem.is_current:
+        raise _archived_forbidden()
+
+
 def _validate_refs(
     db: Session,
     user_id: UUID,
@@ -187,6 +213,7 @@ def create_item(
     _validate_refs(
         db, user_id, body.subject_id, body.category_id, body.semester_id,
     )
+    _check_semester_writable(db, user_id, body.semester_id)
     item = Item(
         user_id=user_id,
         subject_id=body.subject_id,
@@ -221,6 +248,7 @@ def update_item(
     )
     if item is None:
         raise _not_found()
+    _check_semester_writable(db, user_id, item.semester_id)
     item.name = body.name.strip()
     try:
         db.commit()
@@ -247,6 +275,7 @@ def delete_item(
     )
     if item is None:
         raise _not_found()
+    _check_semester_writable(db, user_id, item.semester_id)
     db.delete(item)
     db.commit()
 

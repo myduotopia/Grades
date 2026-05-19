@@ -411,7 +411,12 @@
       "delete_current": "Cannot delete the current semester. Set another as current first.",
       "delete_has_items": "This semester has tests/grades and cannot be deleted. Move them to another semester first.",
       "not_found": "Semester not found",
-      "bad_date_range": "Start date cannot be after end date"
+      "bad_date_range": "Start date cannot be after end date",
+      "archived": "This semester is archived and read-only"
     }
+  },
+  "archived_banner": {
+    "body": "This semester is archived — view only. Switch to the current semester via the top-right picker to edit.",
+    "body_with_label": "{{label}} is archived — view only. Switch to the current semester via the top-right picker to edit."
   }
 }

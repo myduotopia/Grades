@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next'
 import { useParams, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 
+import { ArchivedSemesterBanner } from '../components/ArchivedSemesterBanner'
 import { useSemesters } from '../hooks/useSemesters'
 import { PageContainer } from '../layout/PageContainer'
 import { PageHeader } from '../layout/PageHeader'
@@ -39,6 +40,12 @@ export function StudentDetail() {
   const gradesView = gradesQ.data
   const pointsView = pointsQ.data
   const semesters = semestersQ.data?.data ?? []
+  const currentSemester = semesters.find((s) => s.is_current)
+  const viewedSem = semesters.find((s) => s.id === detail?.semester_id)
+  const isArchived =
+    !!detail?.semester_id &&
+    !!currentSemester &&
+    detail.semester_id !== currentSemester.id
 
   const headerTitle = detail
     ? `${detail.classroom_grade}年${detail.classroom_name}・${detail.seat_number} ${detail.name ?? ''}`
@@ -57,6 +64,16 @@ export function StudentDetail() {
           )
         }
       />
+
+      {isArchived && (
+        <ArchivedSemesterBanner
+          label={
+            viewedSem
+              ? `${viewedSem.academic_year}-${viewedSem.term}`
+              : detail?.semester_label
+          }
+        />
+      )}
 
       <div className="flex flex-wrap items-center gap-3 mb-4 text-sm text-slate-600">
         <label className="inline-flex items-center gap-2">
