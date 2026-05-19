@@ -6,12 +6,19 @@ import { useAuth } from '../auth/AuthProvider'
 import { supabase } from '../lib/supabase'
 import { SemesterSwitcher } from '../components/SemesterSwitcher'
 
-const NAV: { to: string; key: string; icon: 'home' | 'classes' | 'categories' }[] = [
+type NavItem = { to: string; key: string; icon: 'home' | 'classes' | 'categories' }
+
+// Daily-use surfaces (homepage + the two roll-up admin views).
+const NAV_PRIMARY: NavItem[] = [
   { to: '/', key: 'nav.home', icon: 'home' },
   { to: '/classes', key: 'nav.classes', icon: 'classes' },
+  { to: '/points', key: 'nav.points', icon: 'classes' },
+]
+
+// Configuration / settings — separated from the primary group by a divider.
+const NAV_SETTINGS: NavItem[] = [
   { to: '/admin/subjects', key: 'nav.admin_subjects', icon: 'categories' },
   { to: '/admin/items', key: 'nav.admin_items', icon: 'categories' },
-  { to: '/points', key: 'nav.points', icon: 'categories' },
   { to: '/admin/reasons', key: 'nav.admin_reasons', icon: 'categories' },
   { to: '/admin/semesters', key: 'nav.admin_semesters', icon: 'categories' },
   { to: '/settings', key: 'nav.settings', icon: 'categories' },
@@ -81,8 +88,30 @@ export function AppShell() {
             </button>
           </div>
 
-          <nav className="flex-1 px-2 py-2 space-y-0.5">
-            {NAV.map((item) => (
+          <nav className="flex-1 px-2 py-2 space-y-0.5 overflow-y-auto">
+            {NAV_PRIMARY.map((item) => (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                end={item.to === '/'}
+                onClick={() => setDrawerOpen(false)}
+                title={collapsed ? t(item.key) : undefined}
+                className={({ isActive }) =>
+                  `flex items-center ${
+                    collapsed ? 'justify-center' : 'gap-3'
+                  } px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                    isActive
+                      ? 'bg-slate-800 text-white'
+                      : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                  }`
+                }
+              >
+                <NavIcon kind={item.icon} />
+                {!collapsed && <span className="truncate">{t(item.key)}</span>}
+              </NavLink>
+            ))}
+            <div className="my-2 border-t border-slate-800 mx-2" aria-hidden />
+            {NAV_SETTINGS.map((item) => (
               <NavLink
                 key={item.to}
                 to={item.to}
