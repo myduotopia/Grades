@@ -3,6 +3,7 @@ import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import { AuthProvider } from './auth/AuthProvider'
 import { ProtectedRoute } from './auth/ProtectedRoute'
 import { AppShell } from './layout/AppShell'
+import { SemesterViewProvider } from './state/SemesterView'
 import { AdminItems } from './pages/AdminItems'
 import { AdminSemesters } from './pages/AdminSemesters'
 import { AdminSubjects } from './pages/AdminSubjects'
@@ -23,7 +24,13 @@ function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/auth/callback" element={<AuthCallback />} />
           <Route element={<ProtectedRoute />}>
-            <Route element={<AppShell />}>
+            <Route
+              element={
+                <SemesterViewProvider>
+                  <AppShell />
+                </SemesterViewProvider>
+              }
+            >
               <Route path="/" element={<Home />} />
               <Route path="/classes" element={<Classes />} />
               <Route

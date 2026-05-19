@@ -33,8 +33,12 @@
     "open_menu": "Open menu"
   },
   "semester": {
-    "label": "Current semester",
-    "switcher_empty": "No semester yet"
+    "label": "Viewing",
+    "switcher_empty": "No semester yet",
+    "viewing_archived": "Viewing a past semester — read-only. Change which semester is current via Semesters admin.",
+    "archived_tag": "archived",
+    "current_tag": "current",
+    "manage_link": "→ Manage semesters (set current)"
   },
   "item_name_combobox": {
     "no_existing": "No existing items yet — typing a name will create a new one",

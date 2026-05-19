@@ -36,7 +36,13 @@ const DEFAULT_ACADEMIC_KEYS = [
  * which opens a small modal to pick a subject + value and posts a bulk
  * upsert.
  */
-export function StandardsMatrix({ classroomId }: { classroomId: string }) {
+export function StandardsMatrix({
+  classroomId,
+  readOnly = false,
+}: {
+  classroomId: string
+  readOnly?: boolean
+}) {
   const { t } = useTranslation()
   const qc = useQueryClient()
 
@@ -192,7 +198,7 @@ export function StandardsMatrix({ classroomId }: { classroomId: string }) {
     <div className="space-y-3">
       <div className="flex items-center gap-2 text-sm text-slate-500">
         <span>{t('standards.hint')}</span>
-        {selected.size > 0 && (
+        {!readOnly && selected.size > 0 && (
           <button
             onClick={() => setBatchOpen(true)}
             className={PRIMARY_BTN + ' ml-auto'}
@@ -228,6 +234,7 @@ export function StandardsMatrix({ classroomId }: { classroomId: string }) {
                         students.length > 0
                       }
                       onChange={toggleAll}
+                      disabled={readOnly}
                       aria-label={t('standards.select_all')}
                     />
                   </th>
@@ -260,6 +267,7 @@ export function StandardsMatrix({ classroomId }: { classroomId: string }) {
                         type="checkbox"
                         checked={selected.has(s.id)}
                         onChange={() => toggle(s.id)}
+                        disabled={readOnly}
                         aria-label={`${s.seat_number} ${s.name ?? ''}`}
                       />
                     </td>
@@ -295,8 +303,10 @@ export function StandardsMatrix({ classroomId }: { classroomId: string }) {
                               }))
                             }}
                             onBlur={() => onCellBlur(s.id, subj.id)}
+                            readOnly={readOnly}
+                            disabled={readOnly}
                             placeholder="—"
-                            className="w-14 border border-slate-300 rounded-md px-1.5 py-1 text-sm text-right focus:outline-none focus:ring-2 focus:ring-amber-500"
+                            className="w-14 border border-slate-300 rounded-md px-1.5 py-1 text-sm text-right focus:outline-none focus:ring-2 focus:ring-amber-500 disabled:bg-slate-50 disabled:text-slate-400"
                           />
                         </td>
                       )

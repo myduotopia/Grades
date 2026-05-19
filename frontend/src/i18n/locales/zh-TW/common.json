@@ -33,8 +33,12 @@
     "open_menu": "開啟選單"
   },
   "semester": {
-    "label": "目前學期",
-    "switcher_empty": "尚未建立學期"
+    "label": "檢視學期",
+    "switcher_empty": "尚未建立學期",
+    "viewing_archived": "目前在檢視過去學期，內容唯讀。設定哪個學期為目前學期請到「學期管理」。",
+    "archived_tag": "封存",
+    "current_tag": "目前",
+    "manage_link": "→ 學期管理（設定目前學期）"
   },
   "item_name_combobox": {
     "no_existing": "尚無項目，輸入名稱即會新增",
