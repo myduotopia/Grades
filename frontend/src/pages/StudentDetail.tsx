@@ -1,3 +1,4 @@
+import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useParams, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
@@ -14,7 +15,7 @@ const SELECT_CLS =
 export function StudentDetail() {
   const { t } = useTranslation()
   const { studentId } = useParams<{ studentId: string }>()
-  const [params, setParams] = useSearchParams()
+  const [params] = useSearchParams()
   const semesterId = params.get('semester') ?? undefined
 
   const semestersQ = useSemesters()
@@ -74,32 +75,6 @@ export function StudentDetail() {
           }
         />
       )}
-
-      <div className="flex flex-wrap items-center gap-3 mb-4 text-sm text-slate-600">
-        <label className="inline-flex items-center gap-2">
-          {t('student_detail.semester_label')}
-          <select
-            value={semesterId ?? detail?.semester_id ?? ''}
-            onChange={(e) => {
-              const v = e.target.value
-              setParams((p) => {
-                const c = new URLSearchParams(p)
-                if (v) c.set('semester', v)
-                else c.delete('semester')
-                return c
-              })
-            }}
-            className={SELECT_CLS}
-          >
-            {semesters.map((s) => (
-              <option key={s.id} value={s.id}>
-                {`${s.academic_year}-${s.term}`}
-                {s.is_current ? ` (${t('admin_semesters.current_badge')})` : ''}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
 
       {detailQ.isLoading && (
         <div className="text-center text-slate-400 py-12">{t('common.loading')}</div>
@@ -252,47 +227,112 @@ function GradeHistoryTable({ rows }: { rows: StudentGradeRow[] }) {
 
 function PointHistoryTable({ rows }: { rows: StudentPointRow[] }) {
   const { t } = useTranslation()
+  const [sort, setSort] = useState<'newest' | 'oldest'>('newest')
+  const [reasonFilter, setReasonFilter] = useState<string>('')
+
+  // Distinct reasons (preserve the order they appear; treat empty reason as
+  // its own bucket so teachers can find "no-reason" entries).
+  const reasons = useMemo(() => {
+    const seen = new Set<string>()
+    const out: string[] = []
+    for (const r of rows) {
+      if (!seen.has(r.reason)) {
+        seen.add(r.reason)
+        out.push(r.reason)
+      }
+    }
+    return out
+  }, [rows])
+
+  const filteredSorted = useMemo(() => {
+    const filtered = reasonFilter
+      ? rows.filter((r) => r.reason === reasonFilter)
+      : rows
+    const sorted = [...filtered].sort((a, b) =>
+      sort === 'newest'
+        ? b.created_at.localeCompare(a.created_at)
+        : a.created_at.localeCompare(b.created_at),
+    )
+    return sorted
+  }, [rows, sort, reasonFilter])
+
   return (
-    <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
-      <div className="overflow-x-auto">
-        <table className="min-w-full text-sm">
-          <thead className="bg-slate-50 border-b border-slate-200 text-slate-600">
-            <tr>
-              <th className="px-4 py-3 text-left font-medium">
-                {t('student_detail.col.date')}
-              </th>
-              <th className="px-4 py-3 text-right font-medium">
-                {t('student_detail.col.delta')}
-              </th>
-              <th className="px-4 py-3 text-left font-medium">
-                {t('student_detail.col.reason')}
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((p) => (
-              <tr
-                key={p.id}
-                className="border-b border-slate-100 last:border-b-0"
-              >
-                <td className="px-4 py-2 text-slate-500 text-xs font-mono">
-                  {p.created_at.slice(0, 10)}
-                </td>
-                <td
-                  className={`px-4 py-2 text-right font-mono tabular-nums font-medium ${
-                    p.points >= 0 ? 'text-emerald-600' : 'text-rose-600'
-                  }`}
-                >
-                  {p.points >= 0 ? `+${p.points}` : p.points}
-                </td>
-                <td className="px-4 py-2 text-slate-700">
-                  {p.reason}
-                </td>
-              </tr>
+    <>
+      <div className="flex flex-wrap items-center gap-3 mb-3 text-sm text-slate-600">
+        <label className="inline-flex items-center gap-2">
+          {t('student_detail.filter_reason_label')}
+          <select
+            value={reasonFilter}
+            onChange={(e) => setReasonFilter(e.target.value)}
+            className={SELECT_CLS}
+          >
+            <option value="">{t('student_detail.filter_reason_all')}</option>
+            {reasons.map((r) => (
+              <option key={r} value={r}>
+                {r || '—'}
+              </option>
             ))}
-          </tbody>
-        </table>
+          </select>
+        </label>
+        <label className="inline-flex items-center gap-2">
+          {t('student_detail.sort_label')}
+          <select
+            value={sort}
+            onChange={(e) => setSort(e.target.value as 'newest' | 'oldest')}
+            className={SELECT_CLS}
+          >
+            <option value="newest">{t('student_detail.sort_newest')}</option>
+            <option value="oldest">{t('student_detail.sort_oldest')}</option>
+          </select>
+        </label>
       </div>
-    </div>
+      {filteredSorted.length === 0 ? (
+        <div className="bg-white border border-slate-200 rounded-xl p-6 text-sm text-slate-500 text-center">
+          {t('student_detail.no_points_filtered')}
+        </div>
+      ) : (
+        <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead className="bg-slate-50 border-b border-slate-200 text-slate-600">
+                <tr>
+                  <th className="px-4 py-3 text-left font-medium">
+                    {t('student_detail.col.date')}
+                  </th>
+                  <th className="px-4 py-3 text-right font-medium">
+                    {t('student_detail.col.delta')}
+                  </th>
+                  <th className="px-4 py-3 text-left font-medium">
+                    {t('student_detail.col.reason')}
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredSorted.map((p) => (
+                  <tr
+                    key={p.id}
+                    className="border-b border-slate-100 last:border-b-0"
+                  >
+                    <td className="px-4 py-2 text-slate-500 text-xs font-mono">
+                      {p.created_at.slice(0, 10)}
+                    </td>
+                    <td
+                      className={`px-4 py-2 text-right font-mono tabular-nums font-medium ${
+                        p.points >= 0 ? 'text-emerald-600' : 'text-rose-600'
+                      }`}
+                    >
+                      {p.points >= 0 ? `+${p.points}` : p.points}
+                    </td>
+                    <td className="px-4 py-2 text-slate-700">
+                      {p.reason || <span className="text-slate-400">—</span>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </>
   )
 }

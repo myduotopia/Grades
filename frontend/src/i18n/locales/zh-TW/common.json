@@ -417,6 +417,12 @@
     "points_total": "本學期合計 {{total}} 點",
     "no_grades": "本學期還沒有成績紀錄。",
     "no_points": "本學期還沒有點數紀錄。",
+    "no_points_filtered": "目前篩選條件下沒有紀錄。",
+    "sort_label": "排序：",
+    "sort_newest": "最新到最舊",
+    "sort_oldest": "最舊到最新",
+    "filter_reason_label": "原因：",
+    "filter_reason_all": "全部原因",
     "met": "達標",
     "col": {
       "date": "日期",
