@@ -5,14 +5,17 @@ import { ProtectedRoute } from './auth/ProtectedRoute'
 import { AppShell } from './layout/AppShell'
 import { SemesterViewProvider } from './state/SemesterView'
 import { AdminItems } from './pages/AdminItems'
+import { AdminReasons } from './pages/AdminReasons'
 import { AdminSemesters } from './pages/AdminSemesters'
 import { AdminSubjects } from './pages/AdminSubjects'
 import { AuthCallback } from './pages/AuthCallback'
 import { Classes } from './pages/Classes'
+import { ClassroomPoints } from './pages/ClassroomPoints'
 import { GradeEntry } from './pages/GradeEntry'
 import { Grades } from './pages/Grades'
 import { Home } from './pages/Home'
 import { Login } from './pages/Login'
+import { Points } from './pages/Points'
 import { Settings } from './pages/Settings'
 import { StudentDetail } from './pages/StudentDetail'
 import { Students } from './pages/Students'
@@ -50,6 +53,12 @@ function App() {
               <Route path="/admin/subjects" element={<AdminSubjects />} />
               <Route path="/admin/semesters" element={<AdminSemesters />} />
               <Route path="/admin/items" element={<AdminItems />} />
+              <Route path="/admin/reasons" element={<AdminReasons />} />
+              <Route path="/points" element={<Points />} />
+              <Route
+                path="/points/:classroomId"
+                element={<ClassroomPoints />}
+              />
               <Route path="/settings" element={<Settings />} />
             </Route>
           </Route>

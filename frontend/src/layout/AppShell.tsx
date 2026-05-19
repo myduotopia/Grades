@@ -11,6 +11,8 @@ const NAV: { to: string; key: string; icon: 'home' | 'classes' | 'categories' }[
   { to: '/classes', key: 'nav.classes', icon: 'classes' },
   { to: '/admin/subjects', key: 'nav.admin_subjects', icon: 'categories' },
   { to: '/admin/items', key: 'nav.admin_items', icon: 'categories' },
+  { to: '/points', key: 'nav.points', icon: 'categories' },
+  { to: '/admin/reasons', key: 'nav.admin_reasons', icon: 'categories' },
   { to: '/admin/semesters', key: 'nav.admin_semesters', icon: 'categories' },
   { to: '/settings', key: 'nav.settings', icon: 'categories' },
 ]
