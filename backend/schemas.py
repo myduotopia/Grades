@@ -449,21 +449,6 @@ class GradeImportResult(BaseModel):
     students: list[GradeImportStudentRow]
 
 
-# ---------- /api/semesters ----------
-
-class SemesterOut(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: UUID
-    academic_year: int
-    term: int  # 1 = 上學期, 2 = 下學期
-    is_current: bool
-
-
-class SemesterList(BaseModel):
-    data: list[SemesterOut]
-
-
 # ---------- /api/classrooms/:id/grades (view) ----------
 
 class SubjectCategoryWeightOut(BaseModel):
