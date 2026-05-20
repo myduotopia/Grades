@@ -73,6 +73,18 @@ _CATEGORY_NAME_TO_KEY: dict[str, str] = {
     "Homework": "homework",
 }
 
+# Inverse: system category key → Chinese label. Used by apply_auto_award to
+# format the PointRecord.reason as "達成標準 - 段考: 第一次段考".
+_CATEGORY_KEY_TO_NAME_ZH: dict[str, str] = {
+    "major_exam": "段考",
+    "quiz": "小考",
+    "homework": "作業",
+    "attendance": "出席",
+    "extra": "加分",
+}
+
+MEETING_STANDARD_REASON = "達成標準"
+
 # Excel layout: 3 metadata rows above the scores.
 #   Row 1: 類別 (dropdown)
 #   Row 2: 日期 (選填)
@@ -638,8 +650,9 @@ def apply_auto_award(
         meets = g.score >= threshold
         rec = record_by_grade.get(g.id)
         if meets:
-            subj_label = subj_labels.get(item.subject_id, "")
-            reason = f"auto-award: {subj_label} {item.name or cat_key}".strip()
+            cat_label = _CATEGORY_KEY_TO_NAME_ZH.get(cat_key, cat_key)
+            item_label = (item.name or "").strip() or cat_label
+            reason = f"{MEETING_STANDARD_REASON} - {cat_label}: {item_label}"
             if rec is None:
                 db.add(
                     PointRecord(

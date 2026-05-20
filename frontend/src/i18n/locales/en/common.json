@@ -84,7 +84,9 @@
       "name": "Name",
       "default_points": "Default points",
       "actions": "Actions"
-    }
+    },
+    "system_badge": "System",
+    "system_hint": "「達成標準」 (Meeting Standard) is written automatically when a student's score meets the per-subject standard you set. The per-subject bonus amount is configured under Subjects. This reason cannot be renamed or deleted."
   },
   "semester": {
     "label": "Viewing",

@@ -37,6 +37,14 @@ from schemas import (
 
 DEFAULT_POINTS_AWARDED = 100
 
+# System-managed reasons. Pinned to the top of every user's point_reasons
+# list; cannot be renamed or deleted. Identified by `system_key`. Auto-award
+# (apply_auto_award in routers/grades.py) writes PointRecord rows whose
+# `reason` text starts with the system reason name.
+SYSTEM_POINT_REASONS: list[dict] = [
+    {"system_key": "meeting_standard", "name": "達成標準", "default_points": 0},
+]
+
 # Seed list when a user first onboards (or runs /api/me/reset). Teachers can
 # rename / delete / add via /admin/reasons.
 DEFAULT_POINT_REASONS: list[dict] = [
@@ -50,11 +58,21 @@ DEFAULT_POINT_REASONS: list[dict] = [
 
 
 def _new_default_reasons() -> list[dict]:
-    """Materialise DEFAULT_POINT_REASONS with fresh uuid ids."""
-    return [
+    """SYSTEM + DEFAULT reasons with fresh uuid ids. System rows go first."""
+    system = [
+        {
+            "id": str(uuid4()),
+            "name": r["name"],
+            "default_points": r["default_points"],
+            "system_key": r["system_key"],
+        }
+        for r in SYSTEM_POINT_REASONS
+    ]
+    user_seed = [
         {"id": str(uuid4()), "name": r["name"], "default_points": r["default_points"]}
         for r in DEFAULT_POINT_REASONS
     ]
+    return system + user_seed
 
 router = APIRouter()
 
@@ -96,13 +114,37 @@ def seed(
         db.add(Category(user_id=user_id, system_key=key, weight=weight))
         categories_created += 1
 
+    # Auto-create the semester covering today's date if missing. Runs every
+    # login (this endpoint is called from AuthCallback), so a teacher who
+    # crosses into a new academic term gets the next semester provisioned
+    # automatically without ever opening the semester admin page.
+    today = date.today()
     semesters_created = 0
-    has_semester = (
-        db.query(Semester.id).filter(Semester.user_id == user_id).first() is not None
+    covers_today = (
+        db.query(Semester.id)
+        .filter(
+            Semester.user_id == user_id,
+            Semester.start_date <= today,
+            Semester.end_date >= today,
+        )
+        .first()
     )
-    if not has_semester:
-        academic_year, term = _default_semester_for(date.today())
-        start_date, end_date = default_semester_dates(academic_year, term, 2)
+    if covers_today is None:
+        existing_terms_per_year = (
+            db.query(UserSettings.terms_per_year)
+            .filter(UserSettings.user_id == user_id)
+            .scalar()
+        )
+        terms_per_year = existing_terms_per_year or 2
+        academic_year, term = _default_semester_for(today)
+        start_date, end_date = default_semester_dates(
+            academic_year, term, terms_per_year
+        )
+        # Partial unique index allows at most one is_current per user — clear
+        # any prior "current" so the freshly-created semester can take over.
+        db.query(Semester).filter(
+            Semester.user_id == user_id, Semester.is_current.is_(True)
+        ).update({"is_current": False})
         db.add(
             Semester(
                 user_id=user_id,
@@ -362,14 +404,43 @@ def update_point_reasons(
 ) -> dict[str, list[dict]]:
     """Replace the user's manual-point reasons list (#84).
 
-    Each entry is `{id, name, default_points}`. Server normalises name
-    (strip + length 1..50) and clamps default_points to -100..100; entries
-    that fail validation are dropped silently rather than failing the whole
-    payload so a single bad row never blocks a save.
+    Each entry is `{id, name, default_points, system_key?}`. Server normalises
+    name (strip + length 1..50) and clamps default_points to -100..100;
+    entries that fail validation are dropped silently rather than failing the
+    whole payload so a single bad row never blocks a save.
+
+    System-managed entries (`system_key` not None — e.g. "達成標準") are
+    immutable: client-sent rows targeting them by id are dropped, and the
+    DB's existing system rows are re-prepended at the top. If a user has
+    never seen the latest seed, missing system rows are added too.
     """
+    settings = db.get(UserSettings, user_id)
+    existing = settings.point_reasons if settings else []
+    existing_system_by_id = {
+        e["id"]: e for e in existing if e.get("system_key")
+    }
+    system_keys_present = {
+        e["system_key"] for e in existing_system_by_id.values()
+    }
+
+    # Always keep the user's existing system rows verbatim.
+    system_rows: list[dict] = list(existing_system_by_id.values())
+    # Fill in any system reason the user is missing (idempotent self-heal).
+    for sr in SYSTEM_POINT_REASONS:
+        if sr["system_key"] not in system_keys_present:
+            system_rows.append({
+                "id": str(uuid4()),
+                "name": sr["name"],
+                "default_points": sr["default_points"],
+                "system_key": sr["system_key"],
+            })
+
     cleaned: list[dict] = []
-    seen_ids: set[str] = set()
+    seen_ids: set[str] = {e["id"] for e in system_rows}
     for r in body.reasons:
+        # Client cannot modify system rows by id.
+        if r.id in existing_system_by_id:
+            continue
         name = r.name.strip()
         if not name or len(name) > 50:
             continue
@@ -382,11 +453,13 @@ def update_point_reasons(
             "default_points": pts,
         })
         seen_ids.add(r.id)
-    settings = db.get(UserSettings, user_id)
+
+    final = system_rows + cleaned
+
     if settings is None:
-        settings = UserSettings(user_id=user_id, point_reasons=cleaned)
+        settings = UserSettings(user_id=user_id, point_reasons=final)
         db.add(settings)
     else:
-        settings.point_reasons = cleaned
+        settings.point_reasons = final
     db.commit()
-    return {"point_reasons": cleaned}
+    return {"point_reasons": final}
