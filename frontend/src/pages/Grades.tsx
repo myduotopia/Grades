@@ -529,11 +529,29 @@ function BySubjectView({
     setSaveErr(null)
   }
 
+  // Items where ≥1 student still has a real score (>0) for this class.
+  // Server enforces the same rule; this is the UX preview so the ✕ button
+  // is disabled before the click rather than failing with a 409.
+  const itemsWithRealScores = useMemo(() => {
+    const s = new Set<string>()
+    for (const g of view.grades) {
+      if (g.score > 0) s.add(g.item_id)
+    }
+    return s
+  }, [view.grades])
+
   const deactivateMut = useMutation({
     mutationFn: (itemId: string) =>
       api.classrooms.deactivateItem(classroomId, itemId),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['grades'] })
+    },
+    onError: (err) => {
+      if (err instanceof ApiError && err.body?.message_key) {
+        setSaveErr(err.body.message_key)
+      } else {
+        setSaveErr('common.error_generic')
+      }
     },
   })
 
@@ -683,9 +701,21 @@ function BySubjectView({
                                   deactivateMut.mutate(i.id)
                                 }
                               }}
-                              disabled={otherEditing || deactivateMut.isPending}
-                              title={t('grades.deactivate_tooltip')}
-                              aria-label={t('grades.deactivate_tooltip')}
+                              disabled={
+                                otherEditing ||
+                                deactivateMut.isPending ||
+                                itemsWithRealScores.has(i.id)
+                              }
+                              title={
+                                itemsWithRealScores.has(i.id)
+                                  ? t('grades.deactivate_blocked_tooltip')
+                                  : t('grades.deactivate_tooltip')
+                              }
+                              aria-label={
+                                itemsWithRealScores.has(i.id)
+                                  ? t('grades.deactivate_blocked_tooltip')
+                                  : t('grades.deactivate_tooltip')
+                              }
                               className="ml-0.5 text-slate-300 hover:text-rose-600 disabled:opacity-30 disabled:cursor-not-allowed"
                             >
                               ✕

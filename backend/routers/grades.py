@@ -706,8 +706,38 @@ def deactivate_classroom_item(
     """Hide an item from the classroom's grade view. Historical Grade rows
     (and the underlying Item) are preserved — re-activating later via the
     online grade-entry save flow brings the column back with old grades
-    intact."""
+    intact.
+
+    Guard: rejects 409 if any student in this classroom still has a
+    score > 0 for this item. Forces the teacher to explicitly clear /
+    zero-out scores via the entry page before they can hide the column —
+    prevents accidentally orphaning a class's worth of real grades.
+    Grades with score = 0 don't block (they're "no real result")."""
     _get_owned_classroom(db, user_id, classroom_id)
+
+    has_real_score = (
+        db.query(Grade.id)
+        .join(Student, Student.id == Grade.student_id)
+        .filter(
+            Student.classroom_id == classroom_id,
+            Grade.item_id == item_id,
+            Grade.score > 0,
+        )
+        .first()
+        is not None
+    )
+    if has_real_score:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "error": {
+                    "code": "CONFLICT",
+                    "message_key": "errors.classroom_item.has_scores",
+                    "message": "Cannot deactivate: some students still have scores > 0. Clear them first.",
+                }
+            },
+        )
+
     db.query(ClassroomItem).filter(
         ClassroomItem.user_id == user_id,
         ClassroomItem.classroom_id == classroom_id,

@@ -155,6 +155,9 @@
       "category_invalid": "請選擇有效的類別",
       "semester_invalid": "請選擇有效的學期",
       "classroom_invalid": "請選擇有效的班級"
+    },
+    "classroom_item": {
+      "has_scores": "該班還有學生此項分數 > 0，請先把所有分數歸 0 或刪除後再取消啟用"
     }
   },
   "admin_semesters": {
@@ -468,7 +471,8 @@
     "title_with_class": "{{name}} 成績",
     "edit_scores": "線上輸入這個項目的成績",
     "deactivate_tooltip": "從本班取消啟用這個項目",
-    "deactivate_confirm": "確定要從本班取消啟用「{{name}}」嗎？該班將不再顯示這個項目，但已填的成績仍會保留，可隨時再啟用。",
+    "deactivate_blocked_tooltip": "該班還有學生此項分數 > 0，請先到「線上輸入成績」把所有分數歸 0 或刪除，才能取消啟用",
+    "deactivate_confirm": "確定要從本班取消啟用「{{name}}」嗎？該班將不再顯示這個項目。",
     "search_placeholder": "搜尋學生（座號或姓名）…",
     "no_match": "沒有符合的學生。",
     "subtitle": "依類別權重自動計算每位學生在每個科目的加權總分。",

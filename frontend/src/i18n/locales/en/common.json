@@ -155,6 +155,9 @@
       "category_invalid": "Please select a valid category",
       "semester_invalid": "Please select a valid semester",
       "classroom_invalid": "Please select a valid classroom"
+    },
+    "classroom_item": {
+      "has_scores": "Some students still have scores > 0 for this item. Clear (zero-out / delete) all scores first before hiding the column."
     }
   },
   "admin_semesters": {
@@ -468,7 +471,8 @@
     "title_with_class": "{{name}} — Grades",
     "edit_scores": "Enter scores for this item",
     "deactivate_tooltip": "Hide this item from this class",
-    "deactivate_confirm": "Hide 「{{name}}」 from this class? The column will no longer appear here, but any scores already entered are kept and the column comes back if you re-enter scores later.",
+    "deactivate_blocked_tooltip": "Some students still have scores > 0 for this item. Clear (zero-out / delete) all scores via online entry first to enable hide.",
+    "deactivate_confirm": "Hide 「{{name}}」 from this class? The column will no longer appear here.",
     "search_placeholder": "Search students (seat or name)…",
     "no_match": "No matching students.",
     "subtitle": "Per-subject weighted totals by category weight, computed live.",
