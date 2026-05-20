@@ -691,7 +691,42 @@ def apply_auto_award(
                 db.delete(rec)
 
 
-# ---------- deactivate an item for a classroom ----------
+# ---------- activate / deactivate an item for a classroom ----------
+
+@router.post(
+    "/api/classrooms/{classroom_id}/items/{item_id}/activation",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def activate_classroom_item(
+    classroom_id: UUID,
+    item_id: UUID,
+    user_id: Annotated[UUID, Depends(require_user_id)],
+    db: Annotated[Session, Depends(get_db)],
+) -> None:
+    """Idempotently mark an item as 'in use' for this classroom so it appears
+    as a column in the grades overview. Called by the online-entry modal
+    right after the teacher picks/creates an item, so the destination page
+    can show the item even before any score is saved."""
+    _get_owned_classroom(db, user_id, classroom_id)
+    item = (
+        db.query(Item)
+        .filter(Item.id == item_id, Item.user_id == user_id)
+        .first()
+    )
+    if item is None:
+        raise _not_found("item")
+    db.execute(
+        pg_insert(ClassroomItem)
+        .values(
+            user_id=user_id,
+            classroom_id=classroom_id,
+            item_id=item_id,
+        )
+        .on_conflict_do_nothing(constraint="uq_classroom_item")
+    )
+    db.commit()
+    return None
+
 
 @router.delete(
     "/api/classrooms/{classroom_id}/items/{item_id}/activation",

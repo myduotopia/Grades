@@ -599,6 +599,11 @@ export const api = {
       }),
     remove: (id: string) =>
       request<void>(`/api/classrooms/${id}`, { method: 'DELETE' }),
+    activateItem: (classroomId: string, itemId: string) =>
+      request<void>(
+        `/api/classrooms/${classroomId}/items/${itemId}/activation`,
+        { method: 'POST' },
+      ),
     deactivateItem: (classroomId: string, itemId: string) =>
       request<void>(
         `/api/classrooms/${classroomId}/items/${itemId}/activation`,
