@@ -41,6 +41,7 @@ from models.curriculum import (
     GradeSnapshot,
     Item,
     Semester,
+    SnapshotStudent,
     Subject,
     SubjectCategoryWeight,
 )
@@ -994,12 +995,15 @@ def get_classroom_grades(
 def _snapshot_to_out(
     db: Session, snap: GradeSnapshot
 ) -> SnapshotOut:
-    classroom = db.get(Classroom, snap.classroom_id)
+    # Read grade + name from the snapshot itself (frozen at archive time),
+    # NOT via the classroom FK — the classroom row may have been promoted
+    # to a different grade since the archive happened.
+    del db  # kept in signature for forward compat
     return SnapshotOut(
         id=snap.id,
         classroom_id=snap.classroom_id,
-        classroom_grade=classroom.grade if classroom else 0,
-        classroom_name=classroom.name if classroom else "",
+        classroom_grade=snap.classroom_grade,
+        classroom_name=snap.classroom_name,
         name=snap.name,
         created_at=snap.created_at,
     )
@@ -1020,8 +1024,13 @@ def create_snapshot(
     The activation rows (classroom_item with snapshot_id=NULL) get
     reassigned to the new snapshot, so they no longer show on the main
     classroom grades page. The Items and Grades themselves are untouched;
-    only the activation pointer moves."""
-    _get_owned_classroom(db, user_id, classroom_id)
+    only the activation pointer moves.
+
+    Also freezes the classroom's grade + name into the snapshot row and
+    copies the current student roster into snapshot_student, so the
+    snapshot's display label and 1-號 / 2-號 / ... assignments don't
+    drift if the live class is later promoted or its roster changes."""
+    classroom = _get_owned_classroom(db, user_id, classroom_id)
 
     active = (
         db.query(ClassroomItem)
@@ -1049,9 +1058,32 @@ def create_snapshot(
         user_id=user_id,
         classroom_id=classroom_id,
         name=f"{_dt.now():%Y-%m-%d %H:%M} 結算",
+        classroom_grade=classroom.grade,
+        classroom_name=classroom.name,
     )
     db.add(snap)
     db.flush()
+
+    # Freeze the roster: copy every current student in this class into
+    # snapshot_student. The student row itself stays in the live `student`
+    # table (so Grade FKs still resolve); seat_number + name on snapshot
+    # rows are the labels shown in the snapshot grades view.
+    current_students = (
+        db.query(Student)
+        .filter(Student.classroom_id == classroom_id, Student.user_id == user_id)
+        .all()
+    )
+    for s in current_students:
+        db.add(
+            SnapshotStudent(
+                user_id=user_id,
+                snapshot_id=snap.id,
+                student_id=s.id,
+                seat_number=s.seat_number,
+                name=s.name,
+            )
+        )
+
     for ci in active:
         ci.snapshot_id = snap.id
     db.commit()
@@ -1194,15 +1226,27 @@ def get_snapshot_grades(
         for r in scw_rows
     ]
 
-    students = (
-        db.query(Student)
-        .filter(
-            Student.classroom_id == classroom.id, Student.user_id == user_id
-        )
-        .order_by(Student.seat_number.asc())
+    # Frozen roster: pull from snapshot_student so transferred-out students
+    # still appear with their archived seat / name; seat reassignments after
+    # archive don't disturb the historical view. Email is read live (it's a
+    # contact field, not historical record-keeping).
+    ss_rows = (
+        db.query(SnapshotStudent, Student.email)
+        .join(Student, Student.id == SnapshotStudent.student_id)
+        .filter(SnapshotStudent.snapshot_id == snap.id)
+        .order_by(SnapshotStudent.seat_number.asc())
         .all()
     )
-    student_ids = {s.id for s in students}
+    student_ids = {row[0].student_id for row in ss_rows}
+    students_brief = [
+        StudentBriefOut(
+            id=row[0].student_id,
+            seat_number=row[0].seat_number,
+            name=row[0].name,
+            email=row[1],
+        )
+        for row in ss_rows
+    ]
 
     item_outs = [
         ItemOut(
@@ -1239,10 +1283,10 @@ def get_snapshot_grades(
     return ClassroomGradesView(
         semester=SemesterOut.model_validate(semester) if semester else None,
         classroom_id=classroom.id,
-        classroom_grade=classroom.grade,
-        classroom_name=classroom.name,
+        classroom_grade=snap.classroom_grade,
+        classroom_name=snap.classroom_name,
         subject_category_weights=subject_category_weights,
-        students=[StudentBriefOut.model_validate(s) for s in students],
+        students=students_brief,
         items=item_outs,
         grades=[
             GradeEntryOut(

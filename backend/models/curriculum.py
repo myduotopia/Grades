@@ -336,6 +336,51 @@ class GradeSnapshot(Base, UserScopedMixin, TimestampMixin):
     # Auto-generated at archive time ("2026-05-21 14:30 結算"); not editable
     # in v1 — open future issue if teachers ask for custom labels.
     name: Mapped[str] = mapped_column(String(100), nullable=False)
+    # Frozen at archive time so a 115-archive that was 7-甲 still reads
+    # "7-甲" after the class gets promoted to 8 in 116. Don't follow
+    # classroom.grade / classroom.name through the FK at display time.
+    classroom_grade: Mapped[int] = mapped_column(nullable=False)
+    classroom_name: Mapped[str] = mapped_column(String(50), nullable=False)
+
+
+class SnapshotStudent(Base, UserScopedMixin, TimestampMixin):
+    """Frozen roster row for a snapshot.
+
+    Copied from the classroom's current student list at archive time, so
+    seat numbers / names displayed in the snapshot view stay pegged to
+    "who was in this class when we archived" — even after a student
+    transfers out, gets renamed, or the seat number gets reused for
+    someone new.
+
+    `student_id` still FKs to the live `student` table (RESTRICT) so the
+    snapshot can link back to that student's Grade rows. The displayed
+    seat_number + name come from this row, not from `student`."""
+    __tablename__ = "snapshot_student"
+
+    id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        primary_key=True,
+        server_default=text("gen_random_uuid()"),
+    )
+    snapshot_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("grade_snapshot.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    student_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("student.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    seat_number: Mapped[int] = mapped_column(nullable=False)
+    name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "snapshot_id", "student_id", name="uq_snapshot_student"
+        ),
+    )
 
 
 class ClassroomItem(Base, UserScopedMixin, TimestampMixin):
