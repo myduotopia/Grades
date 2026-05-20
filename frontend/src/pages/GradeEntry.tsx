@@ -48,11 +48,23 @@ const SELECT_CLS =
  */
 export function GradeEntry() {
   const navigate = useNavigate()
+  const qc = useQueryClient()
   const { classroomId } = useParams<{ classroomId: string }>()
 
   if (!classroomId) return null
 
-  function gotoEdit(itemId: string) {
+  async function gotoEdit(itemId: string) {
+    // Activate the (classroom, item) so the destination grades page actually
+    // shows the column (server filters items by classroom_item — without
+    // this, picking an item via the modal would land on a page that hides
+    // the column and the ?edit=<id> deep-link would no-op).
+    try {
+      await api.classrooms.activateItem(classroomId as string, itemId)
+      qc.invalidateQueries({ queryKey: ['grades'] })
+    } catch {
+      // Surface failure indirectly — the destination page will simply not
+      // show the column. Better to navigate anyway than to dead-end.
+    }
     navigate(`/classes/${classroomId}/grades?edit=${itemId}`, {
       replace: true,
     })

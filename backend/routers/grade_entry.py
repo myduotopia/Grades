@@ -16,8 +16,9 @@ from sqlalchemy.orm import Session
 from auth import require_user_id
 from database import get_db
 from models.classroom import Classroom, Student
-from models.curriculum import Category, Item, Semester, Subject
+from models.curriculum import Category, ClassroomItem, Item, Semester, Subject
 from models.grading import Grade, PointRecord
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from routers.grades import apply_auto_award
 from schemas import (
     GradeBulkResult,
@@ -296,7 +297,31 @@ def bulk_upsert_grades(
     """
     item = _get_owned_item(db, user_id, body.item_id)
     _check_semester_writable(db, user_id, item.semester_id)
+
+    # Verify the classroom belongs to this teacher, then activate (idempotent)
+    # the item for that classroom. The activation happens even when entries is
+    # empty — a teacher explicitly saving the entry page counts as "this class
+    # uses this item", and that's what makes the column appear in the
+    # classroom grades view.
+    owned_classroom = (
+        db.query(Classroom.id)
+        .filter(Classroom.id == body.classroom_id, Classroom.user_id == user_id)
+        .first()
+    )
+    if owned_classroom is None:
+        raise _not_found("classroom")
+    db.execute(
+        pg_insert(ClassroomItem)
+        .values(
+            user_id=user_id,
+            classroom_id=body.classroom_id,
+            item_id=item.id,
+        )
+        .on_conflict_do_nothing(constraint="uq_classroom_item")
+    )
+
     if not body.entries:
+        db.commit()
         return GradeBulkResult(written=0, deleted=0, awarded=0, revoked=0)
 
     # Verify every student belongs to this teacher; cross-classroom is fine

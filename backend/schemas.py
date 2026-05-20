@@ -544,6 +544,10 @@ class GradeBulkEntry(BaseModel):
 
 class GradeBulkUpsert(BaseModel):
     item_id: UUID
+    # Required so the server can activate this item for the classroom
+    # (classroom_item row) on save. The frontend grade-entry page always
+    # knows the classroom from its URL.
+    classroom_id: UUID
     entries: list[GradeBulkEntry]
 
 

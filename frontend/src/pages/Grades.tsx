@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import {
+  Link,
+  useNavigate,
+  useParams,
+  useSearchParams,
+} from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { ArchivedSemesterBanner } from '../components/ArchivedSemesterBanner'
@@ -109,6 +114,14 @@ export function Grades() {
         subtitle={t('grades.subtitle')}
         actions={
           <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+            {!isArchived && (
+              <Link
+                to={`/classes/${classroomId}/grades/entry`}
+                className={SECONDARY_BTN}
+              >
+                {t('classes.actions.grade_entry')}
+              </Link>
+            )}
             <button
               onClick={() => navigate('/classes')}
               className={SECONDARY_BTN}
@@ -184,6 +197,7 @@ export function Grades() {
       {view_data && view === 'by-subject' && (
         <BySubjectView
           view={view_data}
+          classroomId={classroomId}
           subjects={subjectsPresent}
           editTarget={editParam}
           readOnly={isArchived}
@@ -400,11 +414,13 @@ function ByStudentTable({
 
 function BySubjectView({
   view,
+  classroomId,
   subjects,
   editTarget,
   readOnly,
 }: {
   view: import('../lib/api').ClassroomGradesView
+  classroomId: string
   subjects: SubjectRef[]
   editTarget: string | null
   readOnly: boolean
@@ -513,6 +529,32 @@ function BySubjectView({
     setSaveErr(null)
   }
 
+  // Items where ≥1 student still has a real score (>0) for this class.
+  // Server enforces the same rule; this is the UX preview so the ✕ button
+  // is disabled before the click rather than failing with a 409.
+  const itemsWithRealScores = useMemo(() => {
+    const s = new Set<string>()
+    for (const g of view.grades) {
+      if (g.score > 0) s.add(g.item_id)
+    }
+    return s
+  }, [view.grades])
+
+  const deactivateMut = useMutation({
+    mutationFn: (itemId: string) =>
+      api.classrooms.deactivateItem(classroomId, itemId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['grades'] })
+    },
+    onError: (err) => {
+      if (err instanceof ApiError && err.body?.message_key) {
+        setSaveErr(err.body.message_key)
+      } else {
+        setSaveErr('common.error_generic')
+      }
+    },
+  })
+
   const saveMut = useMutation({
     mutationFn: async (itemId: string) => {
       const entries: GradeBulkEntry[] = view.students.map((s) => {
@@ -522,7 +564,11 @@ function BySubjectView({
           v == null ? null : normaliseScore(String(v))
         return { student_id: s.id, score }
       })
-      return api.gradeEntry.bulk({ item_id: itemId, entries })
+      return api.gradeEntry.bulk({
+        item_id: itemId,
+        classroom_id: classroomId,
+        entries,
+      })
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['grades'] })
@@ -633,15 +679,48 @@ function BySubjectView({
                           <div className="text-slate-700">{i.name}</div>
                         </div>
                         {!isEditing && !readOnly && (
-                          <button
-                            onClick={() => startEdit(i.id)}
-                            disabled={otherEditing}
-                            title={t('grades.edit_scores')}
-                            aria-label={t('grades.edit_scores')}
-                            className="ml-1 text-slate-400 hover:text-amber-700 disabled:opacity-30 disabled:cursor-not-allowed"
-                          >
-                            ✎
-                          </button>
+                          <>
+                            <button
+                              onClick={() => startEdit(i.id)}
+                              disabled={otherEditing}
+                              title={t('grades.edit_scores')}
+                              aria-label={t('grades.edit_scores')}
+                              className="ml-1 text-slate-400 hover:text-amber-700 disabled:opacity-30 disabled:cursor-not-allowed"
+                            >
+                              ✎
+                            </button>
+                            <button
+                              onClick={() => {
+                                if (
+                                  window.confirm(
+                                    t('grades.deactivate_confirm', {
+                                      name: i.name,
+                                    }),
+                                  )
+                                ) {
+                                  deactivateMut.mutate(i.id)
+                                }
+                              }}
+                              disabled={
+                                otherEditing ||
+                                deactivateMut.isPending ||
+                                itemsWithRealScores.has(i.id)
+                              }
+                              title={
+                                itemsWithRealScores.has(i.id)
+                                  ? t('grades.deactivate_blocked_tooltip')
+                                  : t('grades.deactivate_tooltip')
+                              }
+                              aria-label={
+                                itemsWithRealScores.has(i.id)
+                                  ? t('grades.deactivate_blocked_tooltip')
+                                  : t('grades.deactivate_tooltip')
+                              }
+                              className="ml-0.5 text-slate-300 hover:text-rose-600 disabled:opacity-30 disabled:cursor-not-allowed"
+                            >
+                              ✕
+                            </button>
+                          </>
                         )}
                         {isEditing && (
                           <div className="ml-2 flex items-center gap-1">
