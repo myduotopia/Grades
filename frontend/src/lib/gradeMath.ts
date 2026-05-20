@@ -10,8 +10,12 @@
  *   else:
  *     weight_sum = sum(weight[subject, cat] for cat in cats_with_grades)
  *     weighted   = sum(avg(student×cat scores) × weight[subject, cat]) / weight_sum
- *   extra_bonus = avg of student's `extra` scores in this subject
+ *   extra_bonus = avg(student's `extra` scores in this subject) × weight[subject, extra]
  *   final = min(100, weighted + extra_bonus)
+ *
+ * Note: `extra` is the one category whose weight is NOT renormalised — it acts
+ * as a bonus on top of the (already 100%-normalised) weighted total. A teacher
+ * setting `extra = 5%` means "an extra-score of 80 adds 4 points".
  *
  * Weights are re-normalised among categories with grades; missing categories
  * don't pull the average down.
@@ -94,7 +98,9 @@ function computeSubjectBreakdown(
     }
     if (weightSum > 0) weightedTotal = acc / weightSum
   }
-  const extraBonus = byCategoryAvg[EXTRA_KEY] ? byCategoryAvg[EXTRA_KEY] : 0
+  const extraAvg = byCategoryAvg[EXTRA_KEY] ?? 0
+  const extraWeight = weights[EXTRA_KEY] ?? 0
+  const extraBonus = extraAvg * extraWeight
   if (weightedTotal !== null) {
     weightedTotal = Math.min(100, weightedTotal + extraBonus)
   }
