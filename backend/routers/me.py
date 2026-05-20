@@ -114,13 +114,37 @@ def seed(
         db.add(Category(user_id=user_id, system_key=key, weight=weight))
         categories_created += 1
 
+    # Auto-create the semester covering today's date if missing. Runs every
+    # login (this endpoint is called from AuthCallback), so a teacher who
+    # crosses into a new academic term gets the next semester provisioned
+    # automatically without ever opening the semester admin page.
+    today = date.today()
     semesters_created = 0
-    has_semester = (
-        db.query(Semester.id).filter(Semester.user_id == user_id).first() is not None
+    covers_today = (
+        db.query(Semester.id)
+        .filter(
+            Semester.user_id == user_id,
+            Semester.start_date <= today,
+            Semester.end_date >= today,
+        )
+        .first()
     )
-    if not has_semester:
-        academic_year, term = _default_semester_for(date.today())
-        start_date, end_date = default_semester_dates(academic_year, term, 2)
+    if covers_today is None:
+        existing_terms_per_year = (
+            db.query(UserSettings.terms_per_year)
+            .filter(UserSettings.user_id == user_id)
+            .scalar()
+        )
+        terms_per_year = existing_terms_per_year or 2
+        academic_year, term = _default_semester_for(today)
+        start_date, end_date = default_semester_dates(
+            academic_year, term, terms_per_year
+        )
+        # Partial unique index allows at most one is_current per user — clear
+        # any prior "current" so the freshly-created semester can take over.
+        db.query(Semester).filter(
+            Semester.user_id == user_id, Semester.is_current.is_(True)
+        ).update({"is_current": False})
         db.add(
             Semester(
                 user_id=user_id,
