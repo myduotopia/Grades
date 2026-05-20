@@ -1,7 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from 'react-router-dom'
-import { useMutation, useQueries, useQuery } from '@tanstack/react-query'
+import {
+  useMutation,
+  useQueries,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query'
 
 import { ItemNameCombobox } from '../components/ItemNameCombobox'
 import { useSemesters } from '../hooks/useSemesters'
@@ -69,6 +74,7 @@ function AddItemModal({
   onPicked: (itemId: string) => void
 }) {
   const { t } = useTranslation()
+  const qc = useQueryClient()
   const semestersQ = useSemesters()
   const subjectsQ = useQueriesSubjects()
   const categoriesQ = useQueriesCategories()
@@ -158,6 +164,11 @@ function AddItemModal({
     mutationFn: (body: ItemCreatePayload) => api.items.create(body),
     onSuccess: (item) => {
       rememberPicks()
+      // Drop cached grades/items so the destination page (/classes/:id/grades)
+      // refetches and includes the newly-created item column without forcing
+      // the teacher to refresh manually.
+      qc.invalidateQueries({ queryKey: ['grades'] })
+      qc.invalidateQueries({ queryKey: ['items'] })
       onPicked(item.id)
     },
     onError: (err) => {
