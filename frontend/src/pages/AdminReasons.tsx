@@ -56,22 +56,32 @@ export function AdminReasons() {
       coordinateGetter: sortableKeyboardCoordinates,
     }),
   )
+  // System rows (e.g. 達成標準) are pinned to the top, read-only, and not
+  // draggable. We split the draft conceptually but keep it as one array so
+  // the save payload stays simple — the backend re-prepends system rows on
+  // PUT regardless of order.
+  const systemRows = draft.filter((r) => r.system_key)
+  const userRows = draft.filter((r) => !r.system_key)
+
   function onDragEnd(e: DragEndEvent) {
     const { active, over } = e
     if (!over || active.id === over.id) return
-    const from = draft.findIndex((r) => r.id === active.id)
-    const to = draft.findIndex((r) => r.id === over.id)
+    const from = userRows.findIndex((r) => r.id === active.id)
+    const to = userRows.findIndex((r) => r.id === over.id)
     if (from === -1 || to === -1) return
-    setDraft(arrayMove(draft, from, to))
+    const reordered = arrayMove(userRows, from, to)
+    setDraft([...systemRows, ...reordered])
   }
 
   function updateRow(id: string, patch: Partial<PointReason>) {
     setDraft((d) =>
-      d.map((r) => (r.id === id ? { ...r, ...patch } : r)),
+      d.map((r) =>
+        r.id === id && !r.system_key ? { ...r, ...patch } : r,
+      ),
     )
   }
   function removeRow(id: string) {
-    setDraft((d) => d.filter((r) => r.id !== id))
+    setDraft((d) => d.filter((r) => r.id !== id || r.system_key))
   }
   function addRow() {
     setDraft((d) => [
@@ -81,7 +91,7 @@ export function AdminReasons() {
   }
 
   const dirty = JSON.stringify(draft) !== JSON.stringify(stored)
-  const allValid = draft.every(
+  const allValid = userRows.every(
     (r) => r.name.trim().length > 0 && r.name.trim().length <= 50,
   )
 
@@ -131,17 +141,49 @@ export function AdminReasons() {
                 </th>
               </tr>
             </thead>
+            <tbody>
+              {systemRows.map((r) => (
+                <tr
+                  key={r.id}
+                  className="border-b border-slate-100 last:border-b-0 bg-slate-50/60"
+                >
+                  <td className="w-8 px-2 py-2" aria-hidden></td>
+                  <td className="px-4 py-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-slate-900 font-medium">
+                        {r.name}
+                      </span>
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] bg-slate-200 text-slate-700 font-medium">
+                        {t('admin_reasons.system_badge')}
+                      </span>
+                    </div>
+                  </td>
+                  <td className="px-4 py-2">
+                    <SignedNumberInput
+                      value={r.default_points}
+                      onChange={(n) =>
+                        updateRow(r.id, { default_points: n })
+                      }
+                      className="w-24 border border-slate-300 rounded-md px-2 py-1.5 text-sm text-right tabular-nums focus:outline-none focus:ring-2 focus:ring-amber-500"
+                    />
+                  </td>
+                  <td className="px-4 py-2 text-right text-xs text-slate-400">
+                    —
+                  </td>
+                </tr>
+              ))}
+            </tbody>
             <DndContext
               sensors={sensors}
               collisionDetection={closestCenter}
               onDragEnd={onDragEnd}
             >
               <SortableContext
-                items={draft.map((r) => r.id)}
+                items={userRows.map((r) => r.id)}
                 strategy={verticalListSortingStrategy}
               >
                 <tbody>
-                  {draft.map((r) => (
+                  {userRows.map((r) => (
                     <SortableTableRow
                       key={r.id}
                       id={r.id}
@@ -182,10 +224,15 @@ export function AdminReasons() {
             </DndContext>
           </table>
 
-          <div className="border-t border-slate-100 px-5 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <p className="text-xs text-slate-500">
-              {t('admin_reasons.hint')}
-            </p>
+          <div className="border-t border-slate-100 px-5 py-3 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+            <div className="text-xs text-slate-500 space-y-1">
+              <p>{t('admin_reasons.hint')}</p>
+              {systemRows.length > 0 && (
+                <p className="text-slate-400">
+                  {t('admin_reasons.system_hint')}
+                </p>
+              )}
+            </div>
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setDraft(stored)}

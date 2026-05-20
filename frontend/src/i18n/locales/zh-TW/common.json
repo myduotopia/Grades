@@ -84,7 +84,9 @@
       "name": "名稱",
       "default_points": "預設點數",
       "actions": "動作"
-    }
+    },
+    "system_badge": "系統預設",
+    "system_hint": "「達成標準」由系統自動寫入：學生成績達到班級設定的標準分時，依「達標獎勵」自動加點。無法重新命名或刪除。"
   },
   "semester": {
     "label": "檢視學期",

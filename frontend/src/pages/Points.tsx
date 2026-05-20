@@ -40,7 +40,9 @@ export function Points() {
     queryFn: () => api.points.listClassrooms(),
   })
 
-  const reasons: PointReason[] = meQ.data?.point_reasons ?? []
+  const reasons: PointReason[] = (meQ.data?.point_reasons ?? []).filter(
+    (r) => !r.system_key,
+  )
   const summaries: ClassPointsSummary[] = summaryQ.data?.data ?? []
 
   const [view, setView] = useState<View>(

@@ -70,6 +70,7 @@ class PointReasonOut(BaseModel):
     id: str
     name: str
     default_points: int
+    system_key: str | None = None
 
 
 class PointReasonsUpdate(BaseModel):
