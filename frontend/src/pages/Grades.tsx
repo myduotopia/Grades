@@ -24,6 +24,18 @@ import {
 type View = 'by-student' | 'by-subject' | 'standards'
 const VIEW_KEY = 'grades.view'
 
+/** Parse a raw input/clipboard value into a DB-storable score.
+ *  Rounds to 1 decimal (DB column is Numeric(4, 1)) and clamps to [0, 100].
+ *  Returns null for blank / non-numeric — equivalent to "clear this cell". */
+function normaliseScore(raw: string): number | null {
+  const trimmed = raw.trim()
+  if (trimmed === '') return null
+  const n = Number(trimmed)
+  if (!Number.isFinite(n)) return null
+  const rounded = Math.round(n * 10) / 10
+  return Math.max(0, Math.min(100, rounded))
+}
+
 const SECONDARY_BTN =
   'inline-flex items-center px-4 py-2 rounded-lg bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-medium shadow-sm transition-colors disabled:opacity-60'
 
@@ -503,10 +515,13 @@ function BySubjectView({
 
   const saveMut = useMutation({
     mutationFn: async (itemId: string) => {
-      const entries: GradeBulkEntry[] = view.students.map((s) => ({
-        student_id: s.id,
-        score: drafts[s.id] ?? null,
-      }))
+      const entries: GradeBulkEntry[] = view.students.map((s) => {
+        const v = drafts[s.id]
+        // Normalise unrounded typed values (e.g. 78.46) before send.
+        const score =
+          v == null ? null : normaliseScore(String(v))
+        return { student_id: s.id, score }
+      })
       return api.gradeEntry.bulk({ item_id: itemId, entries })
     },
     onSuccess: () => {
@@ -527,6 +542,10 @@ function BySubjectView({
   })
 
   function setDraft(studentId: string, raw: string) {
+    // Allow blank → null; reject mid-typing non-numeric (don't clobber what
+    // the user has so far). Final rounding happens on save via
+    // normaliseScore; here we just store the parsed number so the user can
+    // keep typing "78.4" without it snapping mid-keystroke.
     if (raw === '') {
       setDrafts((d) => ({ ...d, [studentId]: null }))
       return
@@ -537,6 +556,30 @@ function BySubjectView({
       ...d,
       [studentId]: Math.max(0, Math.min(100, n)),
     }))
+  }
+
+  function handlePaste(
+    e: React.ClipboardEvent<HTMLInputElement>,
+    startIndex: number,
+  ) {
+    const text = e.clipboardData.getData('text')
+    // Excel column copy is newline-separated; normalise CRLF / CR.
+    const lines = text.replace(/\r\n?/g, '\n').split('\n')
+    // Excel appends a trailing newline → strip empty tail.
+    while (lines.length && lines[lines.length - 1] === '') lines.pop()
+    // Single-cell paste → let the native browser handler run.
+    if (lines.length <= 1) return
+
+    e.preventDefault()
+    setDrafts((d) => {
+      const next = { ...d }
+      for (let k = 0; k < lines.length; k++) {
+        const target = view.students[startIndex + k]
+        if (!target) break // pasted more rows than students
+        next[target.id] = normaliseScore(lines[k])
+      }
+      return next
+    })
   }
 
   return (
@@ -664,6 +707,7 @@ function BySubjectView({
                           max={100}
                           value={v === null || v === undefined ? '' : String(v)}
                           onChange={(e) => setDraft(s.id, e.target.value)}
+                          onPaste={(e) => handlePaste(e, si)}
                           onKeyDown={(e) => onCellKeyDown(e, si)}
                           placeholder="—"
                           className="w-16 border border-slate-300 rounded-md px-2 py-1 text-sm text-right focus:outline-none focus:ring-2 focus:ring-amber-500"
