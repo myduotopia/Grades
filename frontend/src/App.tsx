@@ -13,6 +13,7 @@ import { Classes } from './pages/Classes'
 import { ClassroomPoints } from './pages/ClassroomPoints'
 import { GradeEntry } from './pages/GradeEntry'
 import { Grades } from './pages/Grades'
+import { Snapshots } from './pages/Snapshots'
 import { Home } from './pages/Home'
 import { Login } from './pages/Login'
 import { Points } from './pages/Points'
@@ -48,6 +49,11 @@ function App() {
               <Route
                 path="/classes/:classroomId/grades/entry"
                 element={<GradeEntry />}
+              />
+              <Route path="/snapshots" element={<Snapshots />} />
+              <Route
+                path="/snapshots/:snapshotId/grades"
+                element={<Grades />}
               />
               <Route path="/students/:studentId" element={<StudentDetail />} />
               <Route path="/admin/subjects" element={<AdminSubjects />} />

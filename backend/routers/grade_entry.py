@@ -310,15 +310,28 @@ def bulk_upsert_grades(
     )
     if owned_classroom is None:
         raise _not_found("classroom")
-    db.execute(
-        pg_insert(ClassroomItem)
-        .values(
-            user_id=user_id,
-            classroom_id=body.classroom_id,
-            item_id=item.id,
-        )
-        .on_conflict_do_nothing(constraint="uq_classroom_item")
+    # Idempotent activation: pre-check existence in the matching bucket
+    # (main or snapshot) since the partial unique indexes don't compose
+    # cleanly with INSERT...ON CONFLICT here.
+    activation_q = db.query(ClassroomItem.id).filter(
+        ClassroomItem.classroom_id == body.classroom_id,
+        ClassroomItem.item_id == item.id,
     )
+    if body.snapshot_id is None:
+        activation_q = activation_q.filter(ClassroomItem.snapshot_id.is_(None))
+    else:
+        activation_q = activation_q.filter(
+            ClassroomItem.snapshot_id == body.snapshot_id
+        )
+    if activation_q.first() is None:
+        db.add(
+            ClassroomItem(
+                user_id=user_id,
+                classroom_id=body.classroom_id,
+                item_id=item.id,
+                snapshot_id=body.snapshot_id,
+            )
+        )
 
     if not body.entries:
         db.commit()

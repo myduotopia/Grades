@@ -548,7 +548,27 @@ class GradeBulkUpsert(BaseModel):
     # (classroom_item row) on save. The frontend grade-entry page always
     # knows the classroom from its URL.
     classroom_id: UUID
+    # When set, the activation row is written under this snapshot instead
+    # of the classroom's main bucket — i.e. the teacher is editing inside
+    # a snapshot (`/snapshots/:id/grades`). NULL = main classroom view.
+    snapshot_id: UUID | None = None
     entries: list[GradeBulkEntry]
+
+
+class SnapshotOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    classroom_id: UUID
+    classroom_grade: int
+    classroom_name: str
+    name: str
+    created_at: datetime
+
+
+class SnapshotList(BaseModel):
+    data: list[SnapshotOut]
+    meta: ListMeta
 
 
 class GradeBulkResult(BaseModel):
@@ -585,7 +605,15 @@ class GradeEntryOut(BaseModel):
 
 
 class ClassroomGradesView(BaseModel):
-    semester: SemesterOut
+    # Optional only for snapshot view edge case: an empty snapshot (every
+    # item deactivated) with no current semester. Main classroom view
+    # always provides a semester.
+    semester: SemesterOut | None = None
+    # Always provided. Frontend uses this for activate/deactivate API calls
+    # in snapshot mode where the route only carries snapshot_id.
+    classroom_id: UUID
+    classroom_grade: int
+    classroom_name: str
     subject_category_weights: list[SubjectCategoryWeightOut]
     students: list[StudentBriefOut]
     items: list[ItemOut]

@@ -32,6 +32,7 @@
     "points": "點數管理",
     "admin_reasons": "點數原因",
     "admin_semesters": "學期管理",
+    "snapshots": "成績封存區",
     "settings": "設定",
     "open_menu": "開啟選單",
     "collapse_sidebar": "收合側邊欄",
@@ -473,6 +474,10 @@
     "deactivate_tooltip": "從本班取消啟用這個項目",
     "deactivate_blocked_tooltip": "該班還有學生此項分數 > 0，請先到「線上輸入成績」把所有分數歸 0 或刪除，才能取消啟用",
     "deactivate_confirm": "確定要從本班取消啟用「{{name}}」嗎？該班將不再顯示這個項目。",
+    "snapshot_title_with_class": "{{name}}（封存）",
+    "archive_now": "封存目前成績",
+    "archive_confirm": "封存後該班所有已啟用成績項目會移至「成績封存區」，無法復原。確定？",
+    "archive_empty_tooltip": "目前班上沒有任何已啟用的成績項目可封存",
     "search_placeholder": "搜尋學生（座號或姓名）…",
     "no_match": "沒有符合的學生。",
     "subtitle": "依類別權重自動計算每位學生在每個科目的加權總分。",
@@ -541,5 +546,23 @@
   "archived_banner": {
     "body": "此學期已封存，僅供檢視。如需修改請從右上角切換到目前學期。",
     "body_with_label": "{{label}} 已封存，僅供檢視。如需修改請從右上角切換到目前學期。"
+  },
+  "snapshots": {
+    "title": "成績封存區",
+    "subtitle": "已封存的班級成績結算包。點進去可瀏覽、補加成績項目、編輯分數，所有操作不影響主班級頁。",
+    "empty": "尚未有任何成績封存。到班級成績頁右上角按「封存目前成績」開始第一份。",
+    "open": "開啟",
+    "back_to_list": "← 回封存列表",
+    "filter": {
+      "classroom": "班級",
+      "all_classes": "全部班級",
+      "from_date": "起始日期",
+      "to_date": "結束日期"
+    },
+    "col": {
+      "archived_at": "封存時間",
+      "class": "班級",
+      "label": "名稱"
+    }
   }
 }

@@ -38,6 +38,7 @@ from models.classroom import Classroom, Student
 from models.curriculum import (
     Category,
     ClassroomItem,
+    GradeSnapshot,
     Item,
     Semester,
     Subject,
@@ -53,7 +54,10 @@ from schemas import (
     GradeImportResult,
     GradeImportStudentRow,
     ItemOut,
+    ListMeta,
     SemesterOut,
+    SnapshotList,
+    SnapshotOut,
     StudentBriefOut,
     SubjectCategoryWeightOut,
 )
@@ -539,16 +543,9 @@ def _commit_grades(
     db.flush()
 
     # Activate every imported item for this classroom (idempotent).
+    # Import always targets the main bucket (snapshot_id IS NULL).
     for item in col_to_item.values():
-        db.execute(
-            pg_insert(ClassroomItem)
-            .values(
-                user_id=user_id,
-                classroom_id=classroom_id,
-                item_id=item.id,
-            )
-            .on_conflict_do_nothing(constraint="uq_classroom_item")
-        )
+        _ensure_activation(db, user_id, classroom_id, item.id, None)
 
     # Upsert grades.
     written_grades: list[Grade] = []
@@ -693,6 +690,40 @@ def apply_auto_award(
 
 # ---------- activate / deactivate an item for a classroom ----------
 
+
+def _ensure_activation(
+    db: Session,
+    user_id: UUID,
+    classroom_id: UUID,
+    item_id: UUID,
+    snapshot_id: UUID | None,
+) -> None:
+    """Idempotently insert a classroom_item row in the matching bucket
+    (snapshot_id NULL for main, otherwise the snapshot's id). Pre-checks
+    existence rather than using ON CONFLICT because the underlying
+    constraints are partial unique indexes — INSERT ... ON CONFLICT against
+    a partial index works in PG but composes awkwardly with the SQLAlchemy
+    layer, and this code path is per-modal-pick (not bulk)."""
+    q = db.query(ClassroomItem.id).filter(
+        ClassroomItem.classroom_id == classroom_id,
+        ClassroomItem.item_id == item_id,
+    )
+    if snapshot_id is None:
+        q = q.filter(ClassroomItem.snapshot_id.is_(None))
+    else:
+        q = q.filter(ClassroomItem.snapshot_id == snapshot_id)
+    if q.first() is not None:
+        return
+    db.add(
+        ClassroomItem(
+            user_id=user_id,
+            classroom_id=classroom_id,
+            item_id=item_id,
+            snapshot_id=snapshot_id,
+        )
+    )
+
+
 @router.post(
     "/api/classrooms/{classroom_id}/items/{item_id}/activation",
     status_code=status.HTTP_204_NO_CONTENT,
@@ -702,11 +733,15 @@ def activate_classroom_item(
     item_id: UUID,
     user_id: Annotated[UUID, Depends(require_user_id)],
     db: Annotated[Session, Depends(get_db)],
+    snapshot_id: UUID | None = None,
 ) -> None:
-    """Idempotently mark an item as 'in use' for this classroom so it appears
-    as a column in the grades overview. Called by the online-entry modal
-    right after the teacher picks/creates an item, so the destination page
-    can show the item even before any score is saved."""
+    """Mark an item as 'in use' for this classroom (or for a specific
+    snapshot of it) so it appears as a column in the grades overview.
+
+    `snapshot_id=None` (default) targets the classroom's main bucket.
+    Pass `?snapshot_id=<id>` to activate the item inside a snapshot — used
+    by the snapshot grades page when the teacher adds an item there.
+    """
     _get_owned_classroom(db, user_id, classroom_id)
     item = (
         db.query(Item)
@@ -715,15 +750,19 @@ def activate_classroom_item(
     )
     if item is None:
         raise _not_found("item")
-    db.execute(
-        pg_insert(ClassroomItem)
-        .values(
-            user_id=user_id,
-            classroom_id=classroom_id,
-            item_id=item_id,
+    if snapshot_id is not None:
+        snap = (
+            db.query(GradeSnapshot)
+            .filter(
+                GradeSnapshot.id == snapshot_id,
+                GradeSnapshot.user_id == user_id,
+                GradeSnapshot.classroom_id == classroom_id,
+            )
+            .first()
         )
-        .on_conflict_do_nothing(constraint="uq_classroom_item")
-    )
+        if snap is None:
+            raise _not_found("snapshot")
+    _ensure_activation(db, user_id, classroom_id, item_id, snapshot_id)
     db.commit()
     return None
 
@@ -737,6 +776,7 @@ def deactivate_classroom_item(
     item_id: UUID,
     user_id: Annotated[UUID, Depends(require_user_id)],
     db: Annotated[Session, Depends(get_db)],
+    snapshot_id: UUID | None = None,
 ) -> None:
     """Hide an item from the classroom's grade view. Historical Grade rows
     (and the underlying Item) are preserved — re-activating later via the
@@ -773,11 +813,16 @@ def deactivate_classroom_item(
             },
         )
 
-    db.query(ClassroomItem).filter(
+    q = db.query(ClassroomItem).filter(
         ClassroomItem.user_id == user_id,
         ClassroomItem.classroom_id == classroom_id,
         ClassroomItem.item_id == item_id,
-    ).delete()
+    )
+    if snapshot_id is None:
+        q = q.filter(ClassroomItem.snapshot_id.is_(None))
+    else:
+        q = q.filter(ClassroomItem.snapshot_id == snapshot_id)
+    q.delete()
     db.commit()
     return None
 
@@ -873,14 +918,16 @@ def get_classroom_grades(
     # Items are cross-classroom (one Item row per quiz across all classes),
     # but each classroom's view only includes items it has "activated" —
     # via the online grade-entry save flow or by importing grades. See the
-    # ClassroomItem model. Teachers can deactivate a column from the column
-    # header; the underlying Item and historical Grade rows are preserved.
+    # ClassroomItem model. The main classroom view shows the *current*
+    # bucket (snapshot_id IS NULL); items that have been archived into a
+    # snapshot don't appear here.
     items = (
         db.query(Item)
         .join(
             ClassroomItem,
             (ClassroomItem.item_id == Item.id)
-            & (ClassroomItem.classroom_id == classroom_id),
+            & (ClassroomItem.classroom_id == classroom_id)
+            & (ClassroomItem.snapshot_id.is_(None)),
         )
         .filter(
             Item.user_id == user_id,
@@ -924,6 +971,276 @@ def get_classroom_grades(
 
     return ClassroomGradesView(
         semester=SemesterOut.model_validate(semester),
+        classroom_id=classroom.id,
+        classroom_grade=classroom.grade,
+        classroom_name=classroom.name,
+        subject_category_weights=subject_category_weights,
+        students=[StudentBriefOut.model_validate(s) for s in students],
+        items=item_outs,
+        grades=[
+            GradeEntryOut(
+                item_id=g.item_id,
+                student_id=g.student_id,
+                score=float(g.score),
+            )
+            for g in grades
+        ],
+    )
+
+
+# ---------- snapshots ----------
+
+
+def _snapshot_to_out(
+    db: Session, snap: GradeSnapshot
+) -> SnapshotOut:
+    classroom = db.get(Classroom, snap.classroom_id)
+    return SnapshotOut(
+        id=snap.id,
+        classroom_id=snap.classroom_id,
+        classroom_grade=classroom.grade if classroom else 0,
+        classroom_name=classroom.name if classroom else "",
+        name=snap.name,
+        created_at=snap.created_at,
+    )
+
+
+@router.post(
+    "/api/classrooms/{classroom_id}/snapshots",
+    response_model=SnapshotOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_snapshot(
+    classroom_id: UUID,
+    user_id: Annotated[UUID, Depends(require_user_id)],
+    db: Annotated[Session, Depends(get_db)],
+) -> SnapshotOut:
+    """Bundle this classroom's currently-active items into a new snapshot.
+
+    The activation rows (classroom_item with snapshot_id=NULL) get
+    reassigned to the new snapshot, so they no longer show on the main
+    classroom grades page. The Items and Grades themselves are untouched;
+    only the activation pointer moves."""
+    _get_owned_classroom(db, user_id, classroom_id)
+
+    active = (
+        db.query(ClassroomItem)
+        .filter(
+            ClassroomItem.user_id == user_id,
+            ClassroomItem.classroom_id == classroom_id,
+            ClassroomItem.snapshot_id.is_(None),
+        )
+        .all()
+    )
+    if not active:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "error": {
+                    "code": "CONFLICT",
+                    "message_key": "errors.snapshot.empty",
+                    "message": "Cannot archive an empty class — activate at least one item first.",
+                }
+            },
+        )
+
+    from datetime import datetime as _dt
+    snap = GradeSnapshot(
+        user_id=user_id,
+        classroom_id=classroom_id,
+        name=f"{_dt.now():%Y-%m-%d %H:%M} 結算",
+    )
+    db.add(snap)
+    db.flush()
+    for ci in active:
+        ci.snapshot_id = snap.id
+    db.commit()
+    db.refresh(snap)
+    return _snapshot_to_out(db, snap)
+
+
+@router.get(
+    "/api/snapshots",
+    response_model=SnapshotList,
+)
+def list_snapshots(
+    user_id: Annotated[UUID, Depends(require_user_id)],
+    db: Annotated[Session, Depends(get_db)],
+    classroom_id: UUID | None = None,
+    from_date: date | None = None,
+    to_date: date | None = None,
+    semester_id: UUID | None = None,
+) -> SnapshotList:
+    """List the user's snapshots, newest first. Supports filtering by
+    classroom, by archive date range, and by semester (the semester of
+    any item inside the snapshot — useful for scoping with the global
+    semester picker)."""
+    q = db.query(GradeSnapshot).filter(GradeSnapshot.user_id == user_id)
+    if classroom_id is not None:
+        q = q.filter(GradeSnapshot.classroom_id == classroom_id)
+    if from_date is not None:
+        q = q.filter(GradeSnapshot.created_at >= from_date)
+    if to_date is not None:
+        # Inclusive upper bound: anything strictly before the next day.
+        from datetime import timedelta as _td
+        q = q.filter(GradeSnapshot.created_at < to_date + _td(days=1))
+    if semester_id is not None:
+        # A snapshot "belongs to" a semester if any of its activated items
+        # is in that semester. Subquery via classroom_item → item.
+        snap_ids_in_sem = (
+            db.query(ClassroomItem.snapshot_id)
+            .join(Item, Item.id == ClassroomItem.item_id)
+            .filter(
+                ClassroomItem.snapshot_id.is_not(None),
+                Item.semester_id == semester_id,
+            )
+            .distinct()
+        )
+        q = q.filter(GradeSnapshot.id.in_(snap_ids_in_sem))
+    rows = q.order_by(GradeSnapshot.created_at.desc()).all()
+    return SnapshotList(
+        data=[_snapshot_to_out(db, s) for s in rows],
+        meta=ListMeta(total=len(rows)),
+    )
+
+
+@router.get(
+    "/api/snapshots/{snapshot_id}/grades",
+    response_model=ClassroomGradesView,
+)
+def get_snapshot_grades(
+    snapshot_id: UUID,
+    user_id: Annotated[UUID, Depends(require_user_id)],
+    db: Annotated[Session, Depends(get_db)],
+) -> ClassroomGradesView:
+    """Same shape as GET /api/classrooms/{cid}/grades but filters items by
+    classroom_item.snapshot_id = snapshot_id instead of IS NULL.
+
+    The semester field is derived from the first item in the snapshot
+    (snapshots within one semester are the common case; cross-semester
+    bundles still pick one). Frontend uses semester only for labelling."""
+    snap = (
+        db.query(GradeSnapshot)
+        .filter(
+            GradeSnapshot.id == snapshot_id,
+            GradeSnapshot.user_id == user_id,
+        )
+        .one_or_none()
+    )
+    if snap is None:
+        raise _not_found("snapshot")
+
+    classroom = _get_owned_classroom(db, user_id, snap.classroom_id)
+
+    items = (
+        db.query(Item)
+        .join(
+            ClassroomItem,
+            (ClassroomItem.item_id == Item.id)
+            & (ClassroomItem.snapshot_id == snap.id),
+        )
+        .filter(Item.user_id == user_id)
+        .all()
+    )
+
+    # Pick a semester to label the view with. If there are no items yet
+    # (teacher could deactivate them all out), fall back to current.
+    if items:
+        semester_id = items[0].semester_id
+    else:
+        cur = (
+            db.query(Semester)
+            .filter(Semester.user_id == user_id, Semester.is_current.is_(True))
+            .one_or_none()
+        )
+        semester_id = cur.id if cur else None
+    semester = (
+        db.query(Semester).filter(Semester.id == semester_id).one_or_none()
+        if semester_id
+        else None
+    )
+
+    cats = db.query(Category).filter(Category.user_id == user_id).all()
+    cat_id_to_key: dict[UUID, str] = {c.id: c.system_key for c in cats}
+
+    subjects = (
+        db.query(Subject)
+        .filter((Subject.user_id.is_(None)) | (Subject.user_id == user_id))
+        .all()
+    )
+    subj_by_id = {s.id: s for s in subjects}
+
+    scw_rows = (
+        db.query(SubjectCategoryWeight)
+        .filter(SubjectCategoryWeight.user_id == user_id)
+        .all()
+    )
+    subject_category_weights = [
+        SubjectCategoryWeightOut(
+            subject_id=r.subject_id,
+            subject_system_key=(
+                subj_by_id[r.subject_id].system_key
+                if r.subject_id in subj_by_id
+                else None
+            ),
+            subject_display_name=(
+                subj_by_id[r.subject_id].display_name
+                if r.subject_id in subj_by_id
+                else None
+            ),
+            category_system_key=cat_id_to_key.get(r.category_id, ""),
+            weight=r.weight,
+        )
+        for r in scw_rows
+    ]
+
+    students = (
+        db.query(Student)
+        .filter(
+            Student.classroom_id == classroom.id, Student.user_id == user_id
+        )
+        .order_by(Student.seat_number.asc())
+        .all()
+    )
+    student_ids = {s.id for s in students}
+
+    item_outs = [
+        ItemOut(
+            id=i.id,
+            name=i.name,
+            subject_id=i.subject_id,
+            subject_system_key=(
+                subj_by_id[i.subject_id].system_key
+                if i.subject_id in subj_by_id
+                else None
+            ),
+            subject_display_name=(
+                subj_by_id[i.subject_id].display_name
+                if i.subject_id in subj_by_id
+                else None
+            ),
+            category_system_key=cat_id_to_key.get(i.category_id, ""),
+        )
+        for i in items
+    ]
+
+    item_ids = [i.id for i in items]
+    grades: list[Grade] = []
+    if item_ids and student_ids:
+        grades = (
+            db.query(Grade)
+            .filter(
+                Grade.item_id.in_(item_ids),
+                Grade.student_id.in_(student_ids),
+            )
+            .all()
+        )
+
+    return ClassroomGradesView(
+        semester=SemesterOut.model_validate(semester) if semester else None,
+        classroom_id=classroom.id,
+        classroom_grade=classroom.grade,
+        classroom_name=classroom.name,
         subject_category_weights=subject_category_weights,
         students=[StudentBriefOut.model_validate(s) for s in students],
         items=item_outs,

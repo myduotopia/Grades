@@ -319,6 +319,7 @@ export interface GradeBulkEntry {
 export interface GradeBulkUpsertBody {
   item_id: string
   classroom_id: string
+  snapshot_id?: string
   entries: GradeBulkEntry[]
 }
 
@@ -476,11 +477,30 @@ export interface GradeEntry {
 }
 
 export interface ClassroomGradesView {
-  semester: Semester
+  // Nullable only in the snapshot-view edge case (an emptied snapshot
+  // with no current semester to fall back to).
+  semester: Semester | null
+  classroom_id: string
+  classroom_grade: number
+  classroom_name: string
   subject_category_weights: SubjectCategoryWeightView[]
   students: StudentBrief[]
   items: GradeItem[]
   grades: GradeEntry[]
+}
+
+export interface Snapshot {
+  id: string
+  classroom_id: string
+  classroom_grade: number
+  classroom_name: string
+  name: string
+  created_at: string
+}
+
+export interface SnapshotList {
+  data: Snapshot[]
+  meta: { total: number }
 }
 
 export interface GradeImportResult {
@@ -599,16 +619,28 @@ export const api = {
       }),
     remove: (id: string) =>
       request<void>(`/api/classrooms/${id}`, { method: 'DELETE' }),
-    activateItem: (classroomId: string, itemId: string) =>
-      request<void>(
-        `/api/classrooms/${classroomId}/items/${itemId}/activation`,
+    activateItem: (
+      classroomId: string,
+      itemId: string,
+      snapshotId?: string | null,
+    ) => {
+      const qs = snapshotId ? `?snapshot_id=${snapshotId}` : ''
+      return request<void>(
+        `/api/classrooms/${classroomId}/items/${itemId}/activation${qs}`,
         { method: 'POST' },
-      ),
-    deactivateItem: (classroomId: string, itemId: string) =>
-      request<void>(
-        `/api/classrooms/${classroomId}/items/${itemId}/activation`,
+      )
+    },
+    deactivateItem: (
+      classroomId: string,
+      itemId: string,
+      snapshotId?: string | null,
+    ) => {
+      const qs = snapshotId ? `?snapshot_id=${snapshotId}` : ''
+      return request<void>(
+        `/api/classrooms/${classroomId}/items/${itemId}/activation${qs}`,
         { method: 'DELETE' },
-      ),
+      )
+    },
   },
   categories: {
     list: () => request<CategoryList>('/api/categories'),
@@ -827,5 +859,27 @@ export const api = {
         fd,
       )
     },
+  },
+  snapshots: {
+    list: (params?: {
+      classroom_id?: string
+      from_date?: string
+      to_date?: string
+      semester_id?: string
+    }) => {
+      const qs = new URLSearchParams()
+      if (params?.classroom_id) qs.set('classroom_id', params.classroom_id)
+      if (params?.from_date) qs.set('from_date', params.from_date)
+      if (params?.to_date) qs.set('to_date', params.to_date)
+      if (params?.semester_id) qs.set('semester_id', params.semester_id)
+      const tail = qs.toString() ? `?${qs.toString()}` : ''
+      return request<SnapshotList>(`/api/snapshots${tail}`)
+    },
+    create: (classroomId: string) =>
+      request<Snapshot>(`/api/classrooms/${classroomId}/snapshots`, {
+        method: 'POST',
+      }),
+    viewGrades: (snapshotId: string) =>
+      request<ClassroomGradesView>(`/api/snapshots/${snapshotId}/grades`),
   },
 }

@@ -308,12 +308,48 @@ class Item(Base, UserScopedMixin, TimestampMixin):
     )
 
 
+class GradeSnapshot(Base, UserScopedMixin, TimestampMixin):
+    """A point-in-time bundle of a classroom's activated items, taken by
+    the teacher via the "封存目前成績" (archive) button on the classroom
+    grades page. After archiving, the bundled items move out of the main
+    classroom view (their classroom_item rows get snapshot_id = this row's
+    id), so the teacher can start a fresh round on the main page. Items
+    added inside the snapshot afterwards stay scoped to the snapshot.
+
+    Not reversible: there's no "unarchive" endpoint. Snapshots accumulate.
+    Items / grades are shared across main + all snapshots through the
+    Item + Grade tables; only the (classroom, item) activation belongs to
+    one bucket at a time."""
+    __tablename__ = "grade_snapshot"
+
+    id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        primary_key=True,
+        server_default=text("gen_random_uuid()"),
+    )
+    classroom_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("classroom.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    # Auto-generated at archive time ("2026-05-21 14:30 結算"); not editable
+    # in v1 — open future issue if teachers ask for custom labels.
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+
+
 class ClassroomItem(Base, UserScopedMixin, TimestampMixin):
     """Records that a (classroom, item) pair has been "activated" for a class
     by the teacher — either via the online grade-entry flow (bulk save) or
     by importing an Excel column. The classroom grades view filters its
     item columns through this table so newly-created Items don't auto-
     appear in every classroom of the matching subject.
+
+    `snapshot_id` is NULL for the classroom's live working view, and points
+    at a `grade_snapshot` row for items that have been archived into a
+    snapshot bundle. A single Item can have multiple ClassroomItem rows
+    (one per bucket it appears in across snapshots) but at most one with
+    snapshot_id=NULL.
 
     Items themselves remain cross-classroom (see `Item` docstring); this
     table is purely about *which classes have started using which item*.
@@ -336,10 +372,27 @@ class ClassroomItem(Base, UserScopedMixin, TimestampMixin):
         ForeignKey("item.id", ondelete="CASCADE"),
         nullable=False,
     )
+    snapshot_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("grade_snapshot.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
 
+    # Partial unique indexes (rather than a single UniqueConstraint) so a
+    # classroom can have the same item in both main + multiple snapshots.
     __table_args__ = (
-        UniqueConstraint(
-            "classroom_id", "item_id", name="uq_classroom_item"
+        Index(
+            "uq_classroom_item_main",
+            "classroom_id", "item_id",
+            unique=True,
+            postgresql_where=text("snapshot_id IS NULL"),
+        ),
+        Index(
+            "uq_classroom_item_snapshot",
+            "classroom_id", "snapshot_id", "item_id",
+            unique=True,
+            postgresql_where=text("snapshot_id IS NOT NULL"),
         ),
         Index("ix_classroom_item_classroom", "classroom_id"),
     )
