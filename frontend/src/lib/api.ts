@@ -33,6 +33,7 @@ export interface PointReason {
   id: string
   name: string
   default_points: number
+  system_key?: string | null
 }
 
 export interface ClassPointsSummary {

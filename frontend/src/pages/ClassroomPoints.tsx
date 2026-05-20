@@ -42,7 +42,9 @@ export function ClassroomPoints() {
     enabled: !!classroomId,
   })
 
-  const reasons: PointReason[] = meQ.data?.point_reasons ?? []
+  const reasons: PointReason[] = (meQ.data?.point_reasons ?? []).filter(
+    (r) => !r.system_key,
+  )
   const students = studentsQ.data?.data ?? []
   const view = studentsQ.data
 
