@@ -318,6 +318,7 @@ export interface GradeBulkEntry {
 
 export interface GradeBulkUpsertBody {
   item_id: string
+  classroom_id: string
   entries: GradeBulkEntry[]
 }
 
@@ -598,6 +599,11 @@ export const api = {
       }),
     remove: (id: string) =>
       request<void>(`/api/classrooms/${id}`, { method: 'DELETE' }),
+    deactivateItem: (classroomId: string, itemId: string) =>
+      request<void>(
+        `/api/classrooms/${classroomId}/items/${itemId}/activation`,
+        { method: 'DELETE' },
+      ),
   },
   categories: {
     list: () => request<CategoryList>('/api/categories'),

@@ -467,6 +467,8 @@
     "title": "Grades overview",
     "title_with_class": "{{name}} — Grades",
     "edit_scores": "Enter scores for this item",
+    "deactivate_tooltip": "Hide this item from this class",
+    "deactivate_confirm": "Hide 「{{name}}」 from this class? The column will no longer appear here, but any scores already entered are kept and the column comes back if you re-enter scores later.",
     "search_placeholder": "Search students (seat or name)…",
     "no_match": "No matching students.",
     "subtitle": "Per-subject weighted totals by category weight, computed live.",

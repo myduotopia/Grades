@@ -306,3 +306,40 @@ class Item(Base, UserScopedMixin, TimestampMixin):
             name="uq_item_subject_category_semester_name",
         ),
     )
+
+
+class ClassroomItem(Base, UserScopedMixin, TimestampMixin):
+    """Records that a (classroom, item) pair has been "activated" for a class
+    by the teacher — either via the online grade-entry flow (bulk save) or
+    by importing an Excel column. The classroom grades view filters its
+    item columns through this table so newly-created Items don't auto-
+    appear in every classroom of the matching subject.
+
+    Items themselves remain cross-classroom (see `Item` docstring); this
+    table is purely about *which classes have started using which item*.
+    Deactivation removes the row but never touches the Grade rows — they
+    survive in case the teacher re-activates later."""
+    __tablename__ = "classroom_item"
+
+    id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        primary_key=True,
+        server_default=text("gen_random_uuid()"),
+    )
+    classroom_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("classroom.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    item_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("item.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "classroom_id", "item_id", name="uq_classroom_item"
+        ),
+        Index("ix_classroom_item_classroom", "classroom_id"),
+    )
