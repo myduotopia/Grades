@@ -45,7 +45,6 @@ from schemas import (
     GradeImportResult,
     GradeImportStudentRow,
     ItemOut,
-    SemesterList,
     SemesterOut,
     StudentBriefOut,
     SubjectCategoryWeightOut,
@@ -657,25 +656,6 @@ def apply_auto_award(
         else:
             if rec is not None:
                 db.delete(rec)
-
-
-# ---------- view: list semesters ----------
-
-@router.get("/api/semesters", response_model=SemesterList)
-def list_semesters(
-    user_id: Annotated[UUID, Depends(require_user_id)],
-    db: Annotated[Session, Depends(get_db)],
-) -> SemesterList:
-    rows = (
-        db.query(Semester)
-        .filter(Semester.user_id == user_id)
-        .order_by(
-            Semester.academic_year.desc(),
-            Semester.term.desc(),
-        )
-        .all()
-    )
-    return SemesterList(data=[SemesterOut.model_validate(r) for r in rows])
 
 
 # ---------- view: classroom grades bundle ----------
