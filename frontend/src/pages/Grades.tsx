@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import {
+  Link,
+  useNavigate,
+  useParams,
+  useSearchParams,
+} from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { ArchivedSemesterBanner } from '../components/ArchivedSemesterBanner'
@@ -23,6 +28,18 @@ import {
 
 type View = 'by-student' | 'by-subject' | 'standards'
 const VIEW_KEY = 'grades.view'
+
+/** Parse a raw input/clipboard value into a DB-storable score.
+ *  Rounds to 1 decimal (DB column is Numeric(4, 1)) and clamps to [0, 100].
+ *  Returns null for blank / non-numeric — equivalent to "clear this cell". */
+function normaliseScore(raw: string): number | null {
+  const trimmed = raw.trim()
+  if (trimmed === '') return null
+  const n = Number(trimmed)
+  if (!Number.isFinite(n)) return null
+  const rounded = Math.round(n * 10) / 10
+  return Math.max(0, Math.min(100, rounded))
+}
 
 const SECONDARY_BTN =
   'inline-flex items-center px-4 py-2 rounded-lg bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-medium shadow-sm transition-colors disabled:opacity-60'
@@ -97,6 +114,14 @@ export function Grades() {
         subtitle={t('grades.subtitle')}
         actions={
           <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+            {!isArchived && (
+              <Link
+                to={`/classes/${classroomId}/grades/entry`}
+                className={SECONDARY_BTN}
+              >
+                {t('classes.actions.grade_entry')}
+              </Link>
+            )}
             <button
               onClick={() => navigate('/classes')}
               className={SECONDARY_BTN}
@@ -172,6 +197,7 @@ export function Grades() {
       {view_data && view === 'by-subject' && (
         <BySubjectView
           view={view_data}
+          classroomId={classroomId}
           subjects={subjectsPresent}
           editTarget={editParam}
           readOnly={isArchived}
@@ -388,11 +414,13 @@ function ByStudentTable({
 
 function BySubjectView({
   view,
+  classroomId,
   subjects,
   editTarget,
   readOnly,
 }: {
   view: import('../lib/api').ClassroomGradesView
+  classroomId: string
   subjects: SubjectRef[]
   editTarget: string | null
   readOnly: boolean
@@ -501,13 +529,46 @@ function BySubjectView({
     setSaveErr(null)
   }
 
+  // Items where ≥1 student still has a real score (>0) for this class.
+  // Server enforces the same rule; this is the UX preview so the ✕ button
+  // is disabled before the click rather than failing with a 409.
+  const itemsWithRealScores = useMemo(() => {
+    const s = new Set<string>()
+    for (const g of view.grades) {
+      if (g.score > 0) s.add(g.item_id)
+    }
+    return s
+  }, [view.grades])
+
+  const deactivateMut = useMutation({
+    mutationFn: (itemId: string) =>
+      api.classrooms.deactivateItem(classroomId, itemId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['grades'] })
+    },
+    onError: (err) => {
+      if (err instanceof ApiError && err.body?.message_key) {
+        setSaveErr(err.body.message_key)
+      } else {
+        setSaveErr('common.error_generic')
+      }
+    },
+  })
+
   const saveMut = useMutation({
     mutationFn: async (itemId: string) => {
-      const entries: GradeBulkEntry[] = view.students.map((s) => ({
-        student_id: s.id,
-        score: drafts[s.id] ?? null,
-      }))
-      return api.gradeEntry.bulk({ item_id: itemId, entries })
+      const entries: GradeBulkEntry[] = view.students.map((s) => {
+        const v = drafts[s.id]
+        // Normalise unrounded typed values (e.g. 78.46) before send.
+        const score =
+          v == null ? null : normaliseScore(String(v))
+        return { student_id: s.id, score }
+      })
+      return api.gradeEntry.bulk({
+        item_id: itemId,
+        classroom_id: classroomId,
+        entries,
+      })
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['grades'] })
@@ -527,6 +588,10 @@ function BySubjectView({
   })
 
   function setDraft(studentId: string, raw: string) {
+    // Allow blank → null; reject mid-typing non-numeric (don't clobber what
+    // the user has so far). Final rounding happens on save via
+    // normaliseScore; here we just store the parsed number so the user can
+    // keep typing "78.4" without it snapping mid-keystroke.
     if (raw === '') {
       setDrafts((d) => ({ ...d, [studentId]: null }))
       return
@@ -537,6 +602,30 @@ function BySubjectView({
       ...d,
       [studentId]: Math.max(0, Math.min(100, n)),
     }))
+  }
+
+  function handlePaste(
+    e: React.ClipboardEvent<HTMLInputElement>,
+    startIndex: number,
+  ) {
+    const text = e.clipboardData.getData('text')
+    // Excel column copy is newline-separated; normalise CRLF / CR.
+    const lines = text.replace(/\r\n?/g, '\n').split('\n')
+    // Excel appends a trailing newline → strip empty tail.
+    while (lines.length && lines[lines.length - 1] === '') lines.pop()
+    // Single-cell paste → let the native browser handler run.
+    if (lines.length <= 1) return
+
+    e.preventDefault()
+    setDrafts((d) => {
+      const next = { ...d }
+      for (let k = 0; k < lines.length; k++) {
+        const target = view.students[startIndex + k]
+        if (!target) break // pasted more rows than students
+        next[target.id] = normaliseScore(lines[k])
+      }
+      return next
+    })
   }
 
   return (
@@ -590,15 +679,48 @@ function BySubjectView({
                           <div className="text-slate-700">{i.name}</div>
                         </div>
                         {!isEditing && !readOnly && (
-                          <button
-                            onClick={() => startEdit(i.id)}
-                            disabled={otherEditing}
-                            title={t('grades.edit_scores')}
-                            aria-label={t('grades.edit_scores')}
-                            className="ml-1 text-slate-400 hover:text-amber-700 disabled:opacity-30 disabled:cursor-not-allowed"
-                          >
-                            ✎
-                          </button>
+                          <>
+                            <button
+                              onClick={() => startEdit(i.id)}
+                              disabled={otherEditing}
+                              title={t('grades.edit_scores')}
+                              aria-label={t('grades.edit_scores')}
+                              className="ml-1 text-slate-400 hover:text-amber-700 disabled:opacity-30 disabled:cursor-not-allowed"
+                            >
+                              ✎
+                            </button>
+                            <button
+                              onClick={() => {
+                                if (
+                                  window.confirm(
+                                    t('grades.deactivate_confirm', {
+                                      name: i.name,
+                                    }),
+                                  )
+                                ) {
+                                  deactivateMut.mutate(i.id)
+                                }
+                              }}
+                              disabled={
+                                otherEditing ||
+                                deactivateMut.isPending ||
+                                itemsWithRealScores.has(i.id)
+                              }
+                              title={
+                                itemsWithRealScores.has(i.id)
+                                  ? t('grades.deactivate_blocked_tooltip')
+                                  : t('grades.deactivate_tooltip')
+                              }
+                              aria-label={
+                                itemsWithRealScores.has(i.id)
+                                  ? t('grades.deactivate_blocked_tooltip')
+                                  : t('grades.deactivate_tooltip')
+                              }
+                              className="ml-0.5 text-slate-300 hover:text-rose-600 disabled:opacity-30 disabled:cursor-not-allowed"
+                            >
+                              ✕
+                            </button>
+                          </>
                         )}
                         {isEditing && (
                           <div className="ml-2 flex items-center gap-1">
@@ -664,6 +786,7 @@ function BySubjectView({
                           max={100}
                           value={v === null || v === undefined ? '' : String(v)}
                           onChange={(e) => setDraft(s.id, e.target.value)}
+                          onPaste={(e) => handlePaste(e, si)}
                           onKeyDown={(e) => onCellKeyDown(e, si)}
                           placeholder="—"
                           className="w-16 border border-slate-300 rounded-md px-2 py-1 text-sm text-right focus:outline-none focus:ring-2 focus:ring-amber-500"

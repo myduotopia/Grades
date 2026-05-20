@@ -35,7 +35,15 @@ from sqlalchemy.orm import Session
 from auth import require_user_id
 from database import get_db
 from models.classroom import Classroom, Student
-from models.curriculum import Category, Item, Semester, Subject, SubjectCategoryWeight
+from models.curriculum import (
+    Category,
+    ClassroomItem,
+    Item,
+    Semester,
+    Subject,
+    SubjectCategoryWeight,
+)
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from models.grading import Grade, PointRecord, StudentStandard, SubjectPointRule
 from schemas import (
     ClassroomGradesView,
@@ -530,6 +538,18 @@ def _commit_grades(
         col_to_item[col.column_index] = item
     db.flush()
 
+    # Activate every imported item for this classroom (idempotent).
+    for item in col_to_item.values():
+        db.execute(
+            pg_insert(ClassroomItem)
+            .values(
+                user_id=user_id,
+                classroom_id=classroom_id,
+                item_id=item.id,
+            )
+            .on_conflict_do_nothing(constraint="uq_classroom_item")
+        )
+
     # Upsert grades.
     written_grades: list[Grade] = []
     for r in student_rows:
@@ -671,6 +691,97 @@ def apply_auto_award(
                 db.delete(rec)
 
 
+# ---------- activate / deactivate an item for a classroom ----------
+
+@router.post(
+    "/api/classrooms/{classroom_id}/items/{item_id}/activation",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def activate_classroom_item(
+    classroom_id: UUID,
+    item_id: UUID,
+    user_id: Annotated[UUID, Depends(require_user_id)],
+    db: Annotated[Session, Depends(get_db)],
+) -> None:
+    """Idempotently mark an item as 'in use' for this classroom so it appears
+    as a column in the grades overview. Called by the online-entry modal
+    right after the teacher picks/creates an item, so the destination page
+    can show the item even before any score is saved."""
+    _get_owned_classroom(db, user_id, classroom_id)
+    item = (
+        db.query(Item)
+        .filter(Item.id == item_id, Item.user_id == user_id)
+        .first()
+    )
+    if item is None:
+        raise _not_found("item")
+    db.execute(
+        pg_insert(ClassroomItem)
+        .values(
+            user_id=user_id,
+            classroom_id=classroom_id,
+            item_id=item_id,
+        )
+        .on_conflict_do_nothing(constraint="uq_classroom_item")
+    )
+    db.commit()
+    return None
+
+
+@router.delete(
+    "/api/classrooms/{classroom_id}/items/{item_id}/activation",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def deactivate_classroom_item(
+    classroom_id: UUID,
+    item_id: UUID,
+    user_id: Annotated[UUID, Depends(require_user_id)],
+    db: Annotated[Session, Depends(get_db)],
+) -> None:
+    """Hide an item from the classroom's grade view. Historical Grade rows
+    (and the underlying Item) are preserved — re-activating later via the
+    online grade-entry save flow brings the column back with old grades
+    intact.
+
+    Guard: rejects 409 if any student in this classroom still has a
+    score > 0 for this item. Forces the teacher to explicitly clear /
+    zero-out scores via the entry page before they can hide the column —
+    prevents accidentally orphaning a class's worth of real grades.
+    Grades with score = 0 don't block (they're "no real result")."""
+    _get_owned_classroom(db, user_id, classroom_id)
+
+    has_real_score = (
+        db.query(Grade.id)
+        .join(Student, Student.id == Grade.student_id)
+        .filter(
+            Student.classroom_id == classroom_id,
+            Grade.item_id == item_id,
+            Grade.score > 0,
+        )
+        .first()
+        is not None
+    )
+    if has_real_score:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "error": {
+                    "code": "CONFLICT",
+                    "message_key": "errors.classroom_item.has_scores",
+                    "message": "Cannot deactivate: some students still have scores > 0. Clear them first.",
+                }
+            },
+        )
+
+    db.query(ClassroomItem).filter(
+        ClassroomItem.user_id == user_id,
+        ClassroomItem.classroom_id == classroom_id,
+        ClassroomItem.item_id == item_id,
+    ).delete()
+    db.commit()
+    return None
+
+
 # ---------- view: classroom grades bundle ----------
 
 @router.get(
@@ -759,12 +870,18 @@ def get_classroom_grades(
     )
     student_ids = {s.id for s in students}
 
-    # Items are cross-classroom — show every item in the current semester
-    # so the by-subject view can serve as a single place to view existing
-    # grades AND enter scores for items the class hasn't taken yet. Empty
-    # cells mean "no grade yet"; the teacher can click the pencil to enter.
+    # Items are cross-classroom (one Item row per quiz across all classes),
+    # but each classroom's view only includes items it has "activated" —
+    # via the online grade-entry save flow or by importing grades. See the
+    # ClassroomItem model. Teachers can deactivate a column from the column
+    # header; the underlying Item and historical Grade rows are preserved.
     items = (
         db.query(Item)
+        .join(
+            ClassroomItem,
+            (ClassroomItem.item_id == Item.id)
+            & (ClassroomItem.classroom_id == classroom_id),
+        )
         .filter(
             Item.user_id == user_id,
             Item.semester_id == semester.id,

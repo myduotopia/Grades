@@ -1,7 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from 'react-router-dom'
-import { useMutation, useQueries, useQuery } from '@tanstack/react-query'
+import {
+  useMutation,
+  useQueries,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query'
 
 import { ItemNameCombobox } from '../components/ItemNameCombobox'
 import { useSemesters } from '../hooks/useSemesters'
@@ -43,11 +48,23 @@ const SELECT_CLS =
  */
 export function GradeEntry() {
   const navigate = useNavigate()
+  const qc = useQueryClient()
   const { classroomId } = useParams<{ classroomId: string }>()
 
   if (!classroomId) return null
 
-  function gotoEdit(itemId: string) {
+  async function gotoEdit(itemId: string) {
+    // Activate the (classroom, item) so the destination grades page actually
+    // shows the column (server filters items by classroom_item — without
+    // this, picking an item via the modal would land on a page that hides
+    // the column and the ?edit=<id> deep-link would no-op).
+    try {
+      await api.classrooms.activateItem(classroomId as string, itemId)
+      qc.invalidateQueries({ queryKey: ['grades'] })
+    } catch {
+      // Surface failure indirectly — the destination page will simply not
+      // show the column. Better to navigate anyway than to dead-end.
+    }
     navigate(`/classes/${classroomId}/grades?edit=${itemId}`, {
       replace: true,
     })
@@ -69,6 +86,7 @@ function AddItemModal({
   onPicked: (itemId: string) => void
 }) {
   const { t } = useTranslation()
+  const qc = useQueryClient()
   const semestersQ = useSemesters()
   const subjectsQ = useQueriesSubjects()
   const categoriesQ = useQueriesCategories()
@@ -158,6 +176,11 @@ function AddItemModal({
     mutationFn: (body: ItemCreatePayload) => api.items.create(body),
     onSuccess: (item) => {
       rememberPicks()
+      // Drop cached grades/items so the destination page (/classes/:id/grades)
+      // refetches and includes the newly-created item column without forcing
+      // the teacher to refresh manually.
+      qc.invalidateQueries({ queryKey: ['grades'] })
+      qc.invalidateQueries({ queryKey: ['items'] })
       onPicked(item.id)
     },
     onError: (err) => {
