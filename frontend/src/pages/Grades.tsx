@@ -47,7 +47,12 @@ const SECONDARY_BTN =
 export function Grades() {
   const { t, i18n } = useTranslation()
   const navigate = useNavigate()
-  const { classroomId } = useParams<{ classroomId: string }>()
+  const qc = useQueryClient()
+  const { classroomId: cidFromUrl, snapshotId: sidFromUrl } = useParams<{
+    classroomId?: string
+    snapshotId?: string
+  }>()
+  const isSnapshotMode = !!sidFromUrl
 
   // `?edit=<item_id>` lets another page deep-link straight into inline-edit
   // for one column (e.g. /grades/entry redirects here when the picked item
@@ -61,25 +66,40 @@ export function Grades() {
       ? 'by-subject'
       : ((localStorage.getItem(VIEW_KEY) as View) || 'by-student'),
   )
-  const classroomQ = useQuery({
-    queryKey: ['classroom', classroomId],
-    queryFn: () => api.classrooms.get(classroomId as string),
-    enabled: !!classroomId,
-  })
   // Follow the top-bar's "viewed" semester (a pure view filter — see
-  // state/SemesterView). If the viewed one isn't is_current, the page is
-  // read-only and shows the archived banner.
-  const { viewed, isArchived } = useSemesterView()
+  // state/SemesterView). Only relevant in main classroom mode; snapshots
+  // own their own semester from the items they contain.
+  const { viewed, isArchived: semesterArchived } = useSemesterView()
   const gradesQ = useQuery({
-    queryKey: ['grades', classroomId, viewed?.id],
-    queryFn: () => api.grades.view(classroomId as string, viewed?.id),
-    enabled: !!classroomId,
+    queryKey: isSnapshotMode
+      ? ['snapshot-grades', sidFromUrl]
+      : ['grades', cidFromUrl, viewed?.id],
+    queryFn: () =>
+      isSnapshotMode
+        ? api.snapshots.viewGrades(sidFromUrl as string)
+        : api.grades.view(cidFromUrl as string, viewed?.id),
+    enabled: isSnapshotMode ? !!sidFromUrl : !!cidFromUrl,
   })
 
-  if (!classroomId) return null
+  if (!isSnapshotMode && !cidFromUrl) return null
 
-  const classroom = classroomQ.data
   const view_data = gradesQ.data
+  // In snapshot mode, classroomId comes from the response. In main mode,
+  // it's the URL param (and matches the response too).
+  const classroomId = view_data?.classroom_id ?? cidFromUrl ?? ''
+  // Snapshots have no concept of "archived semester" — their semester is
+  // pinned at archive time. Inside a snapshot, the page is always writeable.
+  const isArchived = isSnapshotMode ? false : semesterArchived
+  const snapshotId = sidFromUrl ?? null
+
+  const archiveMut = useMutation({
+    mutationFn: () => api.snapshots.create(classroomId),
+    onSuccess: (snap) => {
+      qc.invalidateQueries({ queryKey: ['grades'] })
+      qc.invalidateQueries({ queryKey: ['snapshots'] })
+      navigate(`/snapshots/${snap.id}/grades`, { replace: true })
+    },
+  })
   const matrix = useMemo(
     () => (view_data ? buildMatrix(view_data) : {}),
     [view_data],
@@ -101,32 +121,68 @@ export function Grades() {
     <PageContainer>
       <PageHeader
         title={
-          classroom
-            ? t('grades.title_with_class', {
-                name: classroomDisplayName(
-                  classroom.grade,
-                  classroom.name,
-                  i18n.language,
-                ),
-              })
+          view_data
+            ? isSnapshotMode
+              ? t('grades.snapshot_title_with_class', {
+                  name: classroomDisplayName(
+                    view_data.classroom_grade,
+                    view_data.classroom_name,
+                    i18n.language,
+                  ),
+                })
+              : t('grades.title_with_class', {
+                  name: classroomDisplayName(
+                    view_data.classroom_grade,
+                    view_data.classroom_name,
+                    i18n.language,
+                  ),
+                })
             : t('grades.title')
         }
         subtitle={t('grades.subtitle')}
         actions={
           <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-            {!isArchived && (
+            {!isArchived && classroomId && (
               <Link
-                to={`/classes/${classroomId}/grades/entry`}
+                to={
+                  isSnapshotMode
+                    ? `/classes/${classroomId}/grades/entry?snapshot_id=${snapshotId}`
+                    : `/classes/${classroomId}/grades/entry`
+                }
                 className={SECONDARY_BTN}
               >
                 {t('classes.actions.grade_entry')}
               </Link>
             )}
+            {!isArchived && !isSnapshotMode && (
+              <button
+                onClick={() => {
+                  if (window.confirm(t('grades.archive_confirm'))) {
+                    archiveMut.mutate()
+                  }
+                }}
+                disabled={archiveMut.isPending || !view_data || view_data.items.length === 0}
+                className={SECONDARY_BTN}
+                title={
+                  view_data && view_data.items.length === 0
+                    ? t('grades.archive_empty_tooltip')
+                    : undefined
+                }
+              >
+                {archiveMut.isPending
+                  ? t('common.saving')
+                  : t('grades.archive_now')}
+              </button>
+            )}
             <button
-              onClick={() => navigate('/classes')}
+              onClick={() =>
+                navigate(isSnapshotMode ? '/snapshots' : '/classes')
+              }
               className={SECONDARY_BTN}
             >
-              {t('students.back_to_classes')}
+              {isSnapshotMode
+                ? t('snapshots.back_to_list')
+                : t('students.back_to_classes')}
             </button>
           </div>
         }
@@ -198,12 +254,13 @@ export function Grades() {
         <BySubjectView
           view={view_data}
           classroomId={classroomId}
+          snapshotId={snapshotId}
           subjects={subjectsPresent}
           editTarget={editParam}
           readOnly={isArchived}
         />
       )}
-      {view === 'standards' && classroomId && (
+      {view === 'standards' && classroomId && !isSnapshotMode && (
         <StandardsMatrix
           classroomId={classroomId}
           readOnly={isArchived}
@@ -415,12 +472,16 @@ function ByStudentTable({
 function BySubjectView({
   view,
   classroomId,
+  snapshotId,
   subjects,
   editTarget,
   readOnly,
 }: {
   view: import('../lib/api').ClassroomGradesView
   classroomId: string
+  // When set, all activate/deactivate/bulk-save calls target this snapshot
+  // bucket instead of the classroom's main bucket.
+  snapshotId: string | null
   subjects: SubjectRef[]
   editTarget: string | null
   readOnly: boolean
@@ -542,9 +603,10 @@ function BySubjectView({
 
   const deactivateMut = useMutation({
     mutationFn: (itemId: string) =>
-      api.classrooms.deactivateItem(classroomId, itemId),
+      api.classrooms.deactivateItem(classroomId, itemId, snapshotId),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['grades'] })
+      qc.invalidateQueries({ queryKey: ['snapshot-grades'] })
     },
     onError: (err) => {
       if (err instanceof ApiError && err.body?.message_key) {
@@ -567,11 +629,13 @@ function BySubjectView({
       return api.gradeEntry.bulk({
         item_id: itemId,
         classroom_id: classroomId,
+        snapshot_id: snapshotId ?? undefined,
         entries,
       })
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['grades'] })
+      qc.invalidateQueries({ queryKey: ['snapshot-grades'] })
       qc.invalidateQueries({ queryKey: ['item-grades', editingItemId] })
       setDrafts({})
       setEditingItemId(null)

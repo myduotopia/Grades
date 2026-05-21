@@ -32,6 +32,7 @@
     "points": "Points",
     "admin_reasons": "Point reasons",
     "admin_semesters": "Semesters",
+    "snapshots": "Archived grades",
     "settings": "Settings",
     "open_menu": "Open menu",
     "collapse_sidebar": "Collapse sidebar",
@@ -473,6 +474,10 @@
     "deactivate_tooltip": "Hide this item from this class",
     "deactivate_blocked_tooltip": "Some students still have scores > 0 for this item. Clear (zero-out / delete) all scores via online entry first to enable hide.",
     "deactivate_confirm": "Hide 「{{name}}」 from this class? The column will no longer appear here.",
+    "snapshot_title_with_class": "{{name}} — archived",
+    "archive_now": "Archive grades",
+    "archive_confirm": "Archive all currently-active items for this class into the snapshot store? This cannot be undone.",
+    "archive_empty_tooltip": "Nothing to archive — no items are active for this class right now.",
     "search_placeholder": "Search students (seat or name)…",
     "no_match": "No matching students.",
     "subtitle": "Per-subject weighted totals by category weight, computed live.",
@@ -541,5 +546,23 @@
   "archived_banner": {
     "body": "This semester is archived — view only. Switch to the current semester via the top-right picker to edit.",
     "body_with_label": "{{label}} is archived — view only. Switch to the current semester via the top-right picker to edit."
+  },
+  "snapshots": {
+    "title": "Archived grades",
+    "subtitle": "Snapshots of past-archived class grade bundles. Open any to browse, add items, edit scores — none of it affects the live classroom page.",
+    "empty": "No archives yet. From a class's grades page, hit 「Archive grades」 in the top right.",
+    "open": "Open",
+    "back_to_list": "← Back to archives",
+    "filter": {
+      "classroom": "Class",
+      "all_classes": "All classes",
+      "from_date": "From",
+      "to_date": "To"
+    },
+    "col": {
+      "archived_at": "Archived at",
+      "class": "Class",
+      "label": "Name"
+    }
   }
 }
