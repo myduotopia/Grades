@@ -185,6 +185,9 @@
     "start_date_label": "Start date",
     "end_date_label": "End date",
     "bad_date_range": "Start date cannot be after end date",
+    "date_mismatch": "The entered dates do not match the academic year / term",
+    "computed_range_label": "Computed date range",
+    "computed_range_invalid": "Enter a valid academic year and term first",
     "duplicate_slot": "This academic year / term already exists"
   },
   "admin_subjects": {
@@ -540,6 +543,7 @@
       "delete_has_items": "This semester has tests/grades and cannot be deleted. Move them to another semester first.",
       "not_found": "Semester not found",
       "bad_date_range": "Start date cannot be after end date",
+      "date_mismatch": "The entered dates do not match the academic year / term",
       "archived": "This semester is archived and read-only"
     }
   },

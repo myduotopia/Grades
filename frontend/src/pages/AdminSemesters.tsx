@@ -13,6 +13,8 @@ import { useMe, useUpdateMeSettings } from '../hooks/useMe'
 import { PageContainer } from '../layout/PageContainer'
 import { PageHeader } from '../layout/PageHeader'
 import { ApiError, type Semester } from '../lib/api'
+import { defaultSemesterDates } from '../lib/semesterDates'
+import { formatDateRange } from '../lib/semesterFormat'
 
 const PRIMARY_BTN =
   'inline-flex items-center px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white text-sm font-medium shadow-sm transition-colors disabled:bg-slate-300 disabled:shadow-none disabled:cursor-not-allowed'
@@ -25,7 +27,8 @@ type ModalState =
   | { kind: 'edit'; semester: Semester }
 
 /** Suggest defaults for a new semester based on today's date.
- *  Taiwan academic year starts Aug 1 and is split evenly by `termsPerYear`. */
+ *  Taiwan 學年度 starts Aug 1; the Minguo year of a (Feb–Jul) date is LAST
+ *  August's Minguo number, not today.year - 1911 (see issue #142). */
 function suggestedDefaults(termsPerYear: 2 | 3 | 4): {
   academic_year: number
   term: 1 | 2 | 3 | 4
@@ -40,21 +43,8 @@ function suggestedDefaults(termsPerYear: 2 | 3 | 4): {
   const monthsPerTerm = 12 / termsPerYear
   const monthsFromAug = m >= 8 ? m - 8 : m + 4 // 0..11
   const term = (Math.floor(monthsFromAug / monthsPerTerm) + 1) as 1 | 2 | 3 | 4
-
-  const startIdx = (term - 1) * monthsPerTerm
-  const endIdx = startIdx + monthsPerTerm - 1
-
-  function resolve(idx: number): [number, number] {
-    const month = ((idx + 7) % 12) + 1
-    const yr = academicGregYear + (idx >= 5 ? 1 : 0)
-    return [yr, month]
-  }
-  const [sy, sm] = resolve(startIdx)
-  const [ey, em] = resolve(endIdx)
-  const start = `${sy}-${String(sm).padStart(2, '0')}-01`
-  const lastDay = new Date(em === 12 ? ey + 1 : ey, em === 12 ? 0 : em, 0).getDate()
-  const end = `${ey}-${String(em).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
-  return { academic_year: taiwanYear, term, start_date: start, end_date: end }
+  const { start_date, end_date } = defaultSemesterDates(taiwanYear, term, termsPerYear)
+  return { academic_year: taiwanYear, term, start_date, end_date }
 }
 
 export function AdminSemesters() {
@@ -239,6 +229,7 @@ export function AdminSemesters() {
           defaults={
             modal.kind === 'add' ? suggestedDefaults(termsPerYear) : undefined
           }
+          termsPerYear={termsPerYear}
           onClose={() => setModal({ kind: 'closed' })}
         />
       )}
@@ -250,6 +241,7 @@ function SemesterModal({
   mode,
   semester,
   defaults,
+  termsPerYear,
   onClose,
 }: {
   mode: 'add' | 'edit'
@@ -260,6 +252,7 @@ function SemesterModal({
     start_date: string
     end_date: string
   }
+  termsPerYear: 2 | 3 | 4
   onClose: () => void
 }) {
   const { t } = useTranslation()
@@ -268,11 +261,21 @@ function SemesterModal({
   const init = semester ?? defaults!
   const [year, setYear] = useState(init.academic_year)
   const [term, setTerm] = useState<1 | 2 | 3 | 4>(init.term as 1 | 2 | 3 | 4)
-  const [startDate, setStartDate] = useState(init.start_date)
-  const [endDate, setEndDate] = useState(init.end_date)
   const [errKey, setErrKey] = useState<string | null>(null)
 
-  const dateOrderOk = startDate <= endDate
+  // Dates are derived from (year, term, termsPerYear) — not user-editable.
+  // Backend enforces the same formula (#142), so an out-of-range or typo'd
+  // year can no longer silently create a semester pointing into the future.
+  const computed = (() => {
+    try {
+      return defaultSemesterDates(year, term, termsPerYear)
+    } catch {
+      return null
+    }
+  })()
+  const startDate = computed?.start_date ?? ''
+  const endDate = computed?.end_date ?? ''
+
   const pending = mode === 'edit' ? update.isPending : create.isPending
 
   function onSubmit(e: React.FormEvent) {
@@ -343,42 +346,23 @@ function SemesterModal({
           onChange={(e) => setTerm(Number(e.target.value) as 1 | 2 | 3 | 4)}
           className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
         >
-          {[1, 2, 3, 4].map((n) => (
+          {Array.from({ length: termsPerYear }, (_, i) => i + 1).map((n) => (
             <option key={n} value={n}>
               {t('admin_semesters.term_option', { n })}
             </option>
           ))}
         </select>
 
-        <div className="mt-4 grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1.5">
-              {t('admin_semesters.start_date_label')}
-            </label>
-            <input
-              type="date"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-              className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
-            />
+        <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
+          <div className="text-xs text-slate-500 mb-0.5">
+            {t('admin_semesters.computed_range_label')}
           </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1.5">
-              {t('admin_semesters.end_date_label')}
-            </label>
-            <input
-              type="date"
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-              className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
-            />
+          <div className="text-sm font-medium text-slate-800">
+            {computed
+              ? formatDateRange(startDate, endDate)
+              : t('admin_semesters.computed_range_invalid')}
           </div>
         </div>
-        {!dateOrderOk && (
-          <p className="mt-2 text-sm text-rose-600">
-            {t('admin_semesters.bad_date_range')}
-          </p>
-        )}
 
         {errKey && (
           <p className="mt-3 text-sm text-rose-600">{t(errKey)}</p>
@@ -394,7 +378,7 @@ function SemesterModal({
           </button>
           <button
             type="submit"
-            disabled={pending || year < 1 || year > 999 || !dateOrderOk}
+            disabled={pending || year < 1 || year > 999 || !computed}
             className="inline-flex items-center px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-sm font-medium shadow-sm disabled:bg-slate-300 disabled:cursor-not-allowed"
           >
             {pending ? t('common.saving') : t('common.save')}
