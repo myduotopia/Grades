@@ -6,7 +6,13 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     # Database
+    # `database_url` is the app runtime URL — point at Supabase's transaction
+    # pooler (port 6543) in serverless deployments.
+    # `alembic_database_url` is used by migrations only; leave it on the direct
+    # connection (port 5432) so DDL / advisory locks / transactional DDL work.
+    # If unset, alembic falls back to database_url.
     database_url: str
+    alembic_database_url: str = ""
 
     # Supabase
     supabase_url: str
