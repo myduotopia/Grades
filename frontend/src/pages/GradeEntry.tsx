@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
   useMutation,
   useQueries,
@@ -50,24 +50,36 @@ export function GradeEntry() {
   const navigate = useNavigate()
   const qc = useQueryClient()
   const { classroomId } = useParams<{ classroomId: string }>()
+  const [params] = useSearchParams()
+  // Optional `?snapshot_id=<id>` makes the modal activate the picked item
+  // into a snapshot's bucket instead of the classroom's main bucket. Used
+  // when the teacher opens "線上輸入成績" from inside a snapshot page.
+  const snapshotId = params.get('snapshot_id')
 
   if (!classroomId) return null
 
   async function gotoEdit(itemId: string) {
-    // Activate the (classroom, item) so the destination grades page actually
-    // shows the column (server filters items by classroom_item — without
-    // this, picking an item via the modal would land on a page that hides
-    // the column and the ?edit=<id> deep-link would no-op).
+    // Activate the (classroom, item, snapshot?) so the destination grades
+    // page actually shows the column (server filters items by
+    // classroom_item — without this, picking an item via the modal would
+    // land on a page that hides the column and the ?edit=<id> deep-link
+    // would no-op).
     try {
-      await api.classrooms.activateItem(classroomId as string, itemId)
+      await api.classrooms.activateItem(
+        classroomId as string,
+        itemId,
+        snapshotId,
+      )
       qc.invalidateQueries({ queryKey: ['grades'] })
+      qc.invalidateQueries({ queryKey: ['snapshot-grades'] })
     } catch {
       // Surface failure indirectly — the destination page will simply not
       // show the column. Better to navigate anyway than to dead-end.
     }
-    navigate(`/classes/${classroomId}/grades?edit=${itemId}`, {
-      replace: true,
-    })
+    const dest = snapshotId
+      ? `/snapshots/${snapshotId}/grades?edit=${itemId}`
+      : `/classes/${classroomId}/grades?edit=${itemId}`
+    navigate(dest, { replace: true })
   }
 
   return (
