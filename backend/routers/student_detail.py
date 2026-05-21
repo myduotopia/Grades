@@ -87,16 +87,19 @@ def _points_in_window(
     user_id: UUID,
     student_id: UUID,
     start: date,
-    end: date,
 ) -> int:
-    """Sum points for a student within an inclusive date window."""
+    """Sum a student's points from `start` onward.
+
+    No upper bound: if the current semester's end_date has passed but no new
+    semester exists yet, points entered today still count for the current
+    semester. Mirrors the same choice in points.py (see #97 / #93 / #95).
+    """
     total = (
         db.query(func.coalesce(func.sum(PointRecord.points), 0))
         .filter(
             PointRecord.user_id == user_id,
             PointRecord.student_id == student_id,
             func.date(PointRecord.created_at) >= start,
-            func.date(PointRecord.created_at) <= end,
         )
         .scalar()
     )
@@ -117,7 +120,7 @@ def get_student_detail(
     semester_points = 0
     if sem is not None:
         semester_points = _points_in_window(
-            db, user_id, student.id, sem.start_date, sem.end_date
+            db, user_id, student.id, sem.start_date
         )
 
     return StudentDetailOut(
@@ -280,13 +283,12 @@ def get_student_points(
             PointRecord.user_id == user_id,
             PointRecord.student_id == student.id,
             func.date(PointRecord.created_at) >= sem.start_date,
-            func.date(PointRecord.created_at) <= sem.end_date,
         )
         .order_by(PointRecord.created_at.desc())
         .limit(limit)
         .all()
     )
-    total = _points_in_window(db, user_id, student.id, sem.start_date, sem.end_date)
+    total = _points_in_window(db, user_id, student.id, sem.start_date)
     return StudentPointsView(
         semester_id=sem.id,
         total=total,
