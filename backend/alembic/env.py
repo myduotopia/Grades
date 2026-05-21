@@ -18,7 +18,10 @@ config = context.config
 
 # Override the URL in alembic.ini with the one from .env
 # (so we don't have to keep secrets in alembic.ini).
-config.set_main_option("sqlalchemy.url", settings.database_url)
+config.set_main_option(
+    "sqlalchemy.url",
+    settings.alembic_database_url or settings.database_url,
+)
 
 # Configure Python logging from alembic.ini
 if config.config_file_name is not None:

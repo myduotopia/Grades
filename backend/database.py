@@ -3,15 +3,14 @@ from collections.abc import Generator
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import NullPool
 
 from config import settings
 
-engine = create_engine(
-    settings.database_url,
-    pool_pre_ping=True,  # detect dead connections before reusing
-    pool_size=5,
-    max_overflow=10,
-)
+# Serverless (Vercel) note: each invocation may run in a fresh container, so a
+# process-local SQLAlchemy pool can't be reused across requests. Hand pooling
+# to Supabase PgBouncer (transaction mode, port 6543) and keep no local pool.
+engine = create_engine(settings.database_url, poolclass=NullPool)
 
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
