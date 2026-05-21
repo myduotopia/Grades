@@ -77,18 +77,44 @@ def _new_default_reasons() -> list[dict]:
 router = APIRouter()
 
 
-def _default_semester_for(today: date) -> tuple[int, int]:
+def _default_semester_for(today: date, terms_per_year: int) -> tuple[int, int]:
     """Return (academic_year_minguo, term) for the seed default.
 
-    - Aug–Jan: 上學期 (term=1). Jan still belongs to the previous Aug's school year.
-    - Feb–Jul: 下學期 (term=2).
+    Taiwan 學年度 starts on Aug 1 and ends on Jul 31 of the FOLLOWING calendar
+    year. The 學年度's Minguo number is the Minguo of the August that started
+    it — so Feb–Jul of any calendar year belongs to LAST August's 學年度.
+
+    ⚠️ DO NOT simplify to `today.year - 1911` for every branch.
+       Feb–Jul belongs to the PREVIOUS Minguo year. This bug shipped twice
+       already (issue #97-era + #142) — comment is here so it does not ship
+       a third time.
+
+    Reference table (terms_per_year=2):
+
+        Gregorian date          → (minguo_year, term)
+        ─────────────────────────────────────────────
+        2026-01-15 (Jan)        → (114, 1)
+        2026-02-01 (Feb start)  → (114, 2)
+        2026-05-21 (May)        → (114, 2)
+        2026-07-31 (Jul end)    → (114, 2)
+        2026-08-01 (Aug start)  → (115, 1)
+        2026-12-31 (Dec)        → (115, 1)
+        2027-01-15 (Jan)        → (115, 1)
+        2027-02-01 (Feb start)  → (115, 2)
+
+    For terms_per_year=3 (4-month terms) on 2026-05-21 → (114, 3).
+    For terms_per_year=4 (3-month terms) on 2026-05-21 → (114, 4).
     """
-    minguo_year = today.year - 1911
-    if today.month >= 8:
-        return minguo_year, 1
-    if today.month == 1:
-        return minguo_year - 1, 1
-    return minguo_year, 2
+    # Which 學年度 (Minguo) is `today` inside?
+    academic_gregorian = today.year if today.month >= 8 else today.year - 1
+    minguo_year = academic_gregorian - 1911
+
+    # Which term within that 學年度?
+    # Months elapsed since Aug 1 (Aug=0, Sep=1, ..., Jul=11).
+    months_since_start = (today.month - 8) % 12
+    months_per_term = 12 // terms_per_year
+    term = months_since_start // months_per_term + 1
+    return minguo_year, term
 
 
 @router.post("/seed", response_model=SeedResult)
@@ -136,7 +162,7 @@ def seed(
             .scalar()
         )
         terms_per_year = existing_terms_per_year or 2
-        academic_year, term = _default_semester_for(today)
+        academic_year, term = _default_semester_for(today, terms_per_year)
         start_date, end_date = default_semester_dates(
             academic_year, term, terms_per_year
         )
@@ -373,7 +399,7 @@ def reset(
     for key, weight in SYSTEM_CATEGORY_DEFAULTS:
         db.add(Category(user_id=user_id, system_key=key, weight=weight))
         categories_created += 1
-    academic_year, term = _default_semester_for(date.today())
+    academic_year, term = _default_semester_for(date.today(), 2)
     start_date, end_date = default_semester_dates(academic_year, term, 2)
     db.add(
         Semester(

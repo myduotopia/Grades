@@ -3,10 +3,13 @@ import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 
 import { useSemesterView } from '../state/SemesterView'
+import { formatSemesterLabel, formatSemesterShort } from '../lib/semesterFormat'
 import type { Semester } from '../lib/api'
 
+// Kept for callers that only have (academic_year, term) without dates.
+// Prefer formatSemesterLabel for full display (民國 / 學年度 / 日期區間).
 export function formatSemester(s: Pick<Semester, 'academic_year' | 'term'>): string {
-  return `${s.academic_year} 學年 第 ${s.term} 學期`
+  return formatSemesterShort(s)
 }
 
 /**
@@ -100,7 +103,7 @@ export function SemesterSwitcher() {
                     }`}
                   >
                     <span className="flex items-center gap-2">
-                      {formatSemester(s)}
+                      {formatSemesterLabel(s)}
                       {isCurrent && (
                         <span className="text-[10px] uppercase tracking-wider text-emerald-700 bg-emerald-50 rounded px-1 py-0.5">
                           {t('semester.current_tag')}
