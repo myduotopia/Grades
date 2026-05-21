@@ -35,6 +35,48 @@ from schemas import (
 router = APIRouter()
 
 
+def _enforce_date_consistency(
+    db: Session,
+    user_id: UUID,
+    academic_year: int,
+    term: int,
+    start_date: date,
+    end_date: date,
+) -> None:
+    """Reject the request if dates don't match (year, term, terms_per_year).
+
+    Defense-in-depth for issue #142 — without this a typo in the academic year
+    silently produces a semester pointing years into the future, and queries
+    that filter by `created_at >= start_date` hide every record. The UI keeps
+    these fields read-only and auto-computes them; this check catches direct
+    API hits or future UI bugs.
+    """
+    terms_per_year = (
+        db.query(UserSettings.terms_per_year)
+        .filter(UserSettings.user_id == user_id)
+        .scalar()
+    ) or 2
+    expected_start, expected_end = default_semester_dates(
+        academic_year, term, terms_per_year
+    )
+    if (start_date, end_date) != (expected_start, expected_end):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error": {
+                    "code": "SEMESTER_DATE_MISMATCH",
+                    "message_key": "errors.semester.date_mismatch",
+                    "message": (
+                        f"民國 {academic_year} 學年度第 {term} 學期的日期應為 "
+                        f"{expected_start} ~ {expected_end}"
+                    ),
+                    "expected_start_date": str(expected_start),
+                    "expected_end_date": str(expected_end),
+                }
+            },
+        )
+
+
 def _not_found_error() -> HTTPException:
     return HTTPException(
         status_code=status.HTTP_404_NOT_FOUND,
@@ -156,6 +198,9 @@ def create_semester(
                 }
             },
         )
+    _enforce_date_consistency(
+        db, user_id, body.academic_year, body.term, body.start_date, body.end_date
+    )
     semester = Semester(
         user_id=user_id,
         academic_year=body.academic_year,
@@ -231,6 +276,9 @@ def update_semester(
                 }
             },
         )
+    _enforce_date_consistency(
+        db, user_id, body.academic_year, body.term, body.start_date, body.end_date
+    )
     target.academic_year = body.academic_year
     target.term = body.term
     target.start_date = body.start_date

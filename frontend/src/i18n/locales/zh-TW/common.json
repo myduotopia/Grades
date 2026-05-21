@@ -185,6 +185,9 @@
     "start_date_label": "開始日期",
     "end_date_label": "結束日期",
     "bad_date_range": "開始日期不能晚於結束日期",
+    "date_mismatch": "輸入的日期跟學年 / 學期算出來的不一致",
+    "computed_range_label": "對應日期區間",
+    "computed_range_invalid": "請先填入有效的學年與學期",
     "duplicate_slot": "這個學年 / 學期已經存在了"
   },
   "admin_subjects": {
@@ -540,6 +543,7 @@
       "delete_has_items": "這個學期下還有考試 / 成績，不能刪除。請先把考試移到其他學期。",
       "not_found": "找不到這個學期",
       "bad_date_range": "開始日期不能晚於結束日期",
+      "date_mismatch": "輸入的日期跟學年 / 學期算出來的不一致",
       "archived": "此學期已封存，無法修改"
     }
   },
