@@ -8,18 +8,15 @@
  *   cats_with_grades = non-extra categories with any score for this student×subject
  *   if none: subject_score = null
  *   else:
- *     weight_sum = sum(weight[subject, cat] for cat in cats_with_grades)
- *     weighted   = sum(avg(student×cat scores) × weight[subject, cat]) / weight_sum
+ *     weighted = Σ avg(student×cat scores) × weight[subject, cat] / 100
  *   extra_bonus = avg(student's `extra` scores in this subject) × weight[subject, extra] / 100
- *                 (weight is stored as an integer percent, 5 means 5%)
  *   final = min(100, weighted + extra_bonus)
  *
- * Note: `extra` is the one category whose weight is NOT renormalised — it acts
- * as a bonus on top of the (already 100%-normalised) weighted total. A teacher
- * setting `extra = 5%` means "an extra-score of 80 adds 4 points".
- *
- * Weights are re-normalised among categories with grades; missing categories
- * don't pull the average down.
+ * Weights are stored as integer percents (5 means 5%). Categories with no
+ * items contribute 0 — the weighted total is NOT renormalised. If a teacher
+ * sets 出席率 10% but never enters attendance scores, students simply lose
+ * those 10 points; the system does not silently redistribute. Teachers who
+ * care will enter the scores themselves.
  *
  * The matrix is keyed by `subject_id` (UUID) so custom subjects are first-class.
  */
@@ -89,15 +86,15 @@ function computeSubjectBreakdown(
   const nonExtra = Object.keys(byCategoryAvg).filter((c) => c !== EXTRA_KEY)
   let weightedTotal: number | null = null
   if (nonExtra.length > 0) {
-    let weightSum = 0
     let acc = 0
+    let hasAny = false
     for (const c of nonExtra) {
       const w = weights[c] ?? 0
       if (w <= 0) continue
-      weightSum += w
-      acc += byCategoryAvg[c] * w
+      hasAny = true
+      acc += (byCategoryAvg[c] * w) / 100
     }
-    if (weightSum > 0) weightedTotal = acc / weightSum
+    if (hasAny) weightedTotal = acc
   }
   const extraAvg = byCategoryAvg[EXTRA_KEY] ?? 0
   const extraWeight = weights[EXTRA_KEY] ?? 0
