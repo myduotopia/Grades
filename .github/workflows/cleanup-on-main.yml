@@ -1,9 +1,17 @@
 name: Cleanup merged issue branches
 
 # Runs after every push to main (typically a staging -> main merge). Finds
-# every remote claude/issue-* branch whose tip is now reachable from main,
-# deletes it (which also tears down its Vercel preview), and closes the
-# matching issue with a cleanup comment.
+# every remote claude/issue-* branch whose PR has been merged, deletes it
+# (which also tears down its Vercel preview), and closes the matching
+# issue with a cleanup comment.
+#
+# Why we check "PR merged" instead of "tip is ancestor of main": the repo
+# uses squash-merge, so the branch's original tip commit never lands in
+# main's history — `git merge-base --is-ancestor` would always return false
+# and the cleanup would silently no-op. A merged PR is the strategy-agnostic
+# signal that the work is done. Because this workflow only fires on push to
+# main, by the time we run any "merged into staging" PR has already been
+# promoted to main via the staging -> main merge, so deletion is safe.
 #
 # Intentionally does NOT touch local worktrees or local branches — that
 # stays manual per the user's "deferred cleanup" rule.
@@ -20,37 +28,38 @@ jobs:
   cleanup:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0   # need full history for ancestor checks
-
       - name: Delete merged issue branches and close issues
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          git fetch origin --prune
 
-          # List remote claude/issue-* branches
-          branches=$(git for-each-ref --format='%(refname:short)' refs/remotes/origin \
-                     | grep -E '^origin/claude/issue-[0-9]+$' || true)
+          # List remote claude/issue-* branches via the API (no checkout needed)
+          mapfile -t branches < <(
+            gh api "repos/$REPO/branches?per_page=100" --paginate \
+              --jq '.[].name | select(test("^claude/issue-[0-9]+$"))'
+          )
 
-          if [[ -z "$branches" ]]; then
+          if [[ ${#branches[@]} -eq 0 ]]; then
             echo "No claude/issue-* branches on origin. Nothing to do."
             exit 0
           fi
 
-          for ref in $branches; do
-            branch="${ref#origin/}"                       # claude/issue-N
+          for branch in "${branches[@]}"; do
             issue_num="${branch##*-}"                     # N
-            tip=$(git rev-parse "$ref")
 
-            if git merge-base --is-ancestor "$tip" origin/main; then
-              echo "MERGED: $branch (tip $tip) is in main — cleaning up"
+            # Strategy-agnostic merge check: did this branch have a PR merged?
+            # Works for squash, merge-commit, and rebase strategies.
+            merged_count=$(gh pr list --repo "$REPO" --head "$branch" \
+                            --state merged --json number --jq 'length')
+
+            if [[ "$merged_count" -gt 0 ]]; then
+              echo "MERGED: $branch (had merged PR) — cleaning up"
 
               # Delete remote branch (Vercel auto-tears-down its preview)
-              git push origin --delete "$branch" || echo "  (branch already gone)"
+              gh api -X DELETE "repos/$REPO/git/refs/heads/$branch" \
+                || echo "  (branch already gone)"
 
               # Comment + close the issue if still open
               state=$(gh issue view "$issue_num" --repo "$REPO" --json state --jq '.state' 2>/dev/null || echo "MISSING")
@@ -68,6 +77,6 @@ jobs:
                 gh issue close "$issue_num" --repo "$REPO" --reason completed || true
               fi
             else
-              echo "skip: $branch not yet in main"
+              echo "skip: $branch has no merged PR"
             fi
           done
