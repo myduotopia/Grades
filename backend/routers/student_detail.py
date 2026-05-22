@@ -357,6 +357,7 @@ def get_student_points(
                 reason=r.reason,
                 source_grade_id=r.source_grade_id,
                 created_at=r.created_at,
+                balance_after=int(r.balance_after or 0),
             )
             for r in rows
         ],
