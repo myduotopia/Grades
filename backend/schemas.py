@@ -101,6 +101,25 @@ class ClassPointsBatchResult(BaseModel):
     written: int
 
 
+class PointResetRequest(BaseModel):
+    # Optional override. Defaults to "歸零" inside the router so the field
+    # stays free-text for future-proofing (e.g. "期末歸零").
+    reason: str = Field(default="", max_length=200)
+
+
+class PointResetResult(BaseModel):
+    # When the student's semester sum is already 0 we don't write a record;
+    # `skipped` is True in that case and `record` is None.
+    skipped: bool
+    current: int
+    record: ManualPointOut | None = None
+
+
+class ClassPointsResetResult(BaseModel):
+    written: int
+    skipped: int
+
+
 class ClassPointsSummary(BaseModel):
     """Per-classroom rollup for /points top page."""
     classroom_id: UUID
@@ -354,11 +373,26 @@ class StudentPointRow(BaseModel):
     reason: str
     source_grade_id: UUID | None
     created_at: datetime
+    # Running balance at the moment this record was written, computed within
+    # the current filter scope (so filtering by reason gives a "this-reason
+    # only" passbook). The last row in date order equals the filter's total.
+    balance_after: int = 0
 
 
 class StudentPointsView(BaseModel):
     semester_id: UUID | None
+    # `total` = sum of all point records in the semester window, NOT affected
+    # by the current `reason` filter. `record_count` = number of rows that
+    # match the active filter; that's what drives pagination.
     total: int
+    record_count: int = 0
+    page: int = 1
+    page_size: int = 20
+    total_pages: int = 0
+    # Distinct reasons within the semester window (unfiltered) — drives the
+    # frontend filter dropdown so it sees every option, not just the current
+    # page's reasons.
+    reasons: list[str] = []
     data: list[StudentPointRow]
 
 

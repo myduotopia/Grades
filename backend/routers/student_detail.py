@@ -9,7 +9,7 @@ The "weighted total" math mirrors what the by-student view on
 from __future__ import annotations
 
 from datetime import date
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -270,28 +270,86 @@ def get_student_points(
     user_id: Annotated[UUID, Depends(require_user_id)],
     db: Annotated[Session, Depends(get_db)],
     semester_id: Annotated[UUID | None, Query()] = None,
-    limit: Annotated[int, Query(ge=1, le=500)] = 100,
+    page: Annotated[int, Query(ge=1)] = 1,
+    page_size: Annotated[int, Query(ge=1, le=100)] = 20,
+    reason: Annotated[str | None, Query()] = None,
+    sort: Annotated[Literal["newest", "oldest"], Query()] = "newest",
 ) -> StudentPointsView:
     student = _get_student(db, user_id, student_id)
     sem = _resolve_semester(db, user_id, semester_id)
     if sem is None:
-        return StudentPointsView(semester_id=None, total=0, data=[])
-
-    rows = (
-        db.query(PointRecord)
-        .filter(
-            PointRecord.user_id == user_id,
-            PointRecord.student_id == student.id,
-            func.date(PointRecord.created_at) >= sem.start_date,
+        return StudentPointsView(
+            semester_id=None,
+            total=0,
+            record_count=0,
+            page=page,
+            page_size=page_size,
+            total_pages=0,
+            reasons=[],
+            data=[],
         )
-        .order_by(PointRecord.created_at.desc())
-        .limit(limit)
+
+    base = db.query(PointRecord).filter(
+        PointRecord.user_id == user_id,
+        PointRecord.student_id == student.id,
+        func.date(PointRecord.created_at) >= sem.start_date,
+    )
+    filtered = base if reason is None else base.filter(PointRecord.reason == reason)
+
+    record_count = filtered.count()
+    total_pages = (record_count + page_size - 1) // page_size if record_count else 0
+
+    # Running balance per row: cumulative sum of `points` over the filtered
+    # set in date-ascending order (id breaks ties for same-timestamp writes).
+    # We build it as a subquery so we can paginate / sort the *outer* query
+    # however we want without affecting the cumulative calculation.
+    balance_after = (
+        func.sum(PointRecord.points)
+        .over(
+            order_by=[PointRecord.created_at.asc(), PointRecord.id.asc()],
+            rows=(None, 0),  # unbounded preceding → current row
+        )
+        .label("balance_after")
+    )
+    sub = (
+        filtered.with_entities(
+            PointRecord.id.label("id"),
+            PointRecord.points.label("points"),
+            PointRecord.reason.label("reason"),
+            PointRecord.source_grade_id.label("source_grade_id"),
+            PointRecord.created_at.label("created_at"),
+            balance_after,
+        )
+        .subquery()
+    )
+    outer_order = sub.c.created_at.asc() if sort == "oldest" else sub.c.created_at.desc()
+    rows = (
+        db.query(sub)
+        .order_by(outer_order, sub.c.id.asc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
         .all()
     )
+
+    # Distinct reasons across the unfiltered window so the dropdown stays
+    # stable as the user filters.
+    reason_rows = (
+        base.with_entities(PointRecord.reason)
+        .distinct()
+        .order_by(PointRecord.reason.asc())
+        .all()
+    )
+    reasons = [r[0] for r in reason_rows]
+
     total = _points_in_window(db, user_id, student.id, sem.start_date)
     return StudentPointsView(
         semester_id=sem.id,
         total=total,
+        record_count=record_count,
+        page=page,
+        page_size=page_size,
+        total_pages=total_pages,
+        reasons=reasons,
         data=[
             StudentPointRow(
                 id=r.id,
@@ -299,6 +357,7 @@ def get_student_points(
                 reason=r.reason,
                 source_grade_id=r.source_grade_id,
                 created_at=r.created_at,
+                balance_after=int(r.balance_after or 0),
             )
             for r in rows
         ],
