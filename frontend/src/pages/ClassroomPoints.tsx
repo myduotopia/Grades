@@ -136,6 +136,114 @@ export function ClassroomPoints() {
     })
   }
 
+  // Confirm dialog state for the two reset flows (single student / whole class).
+  const [confirm, setConfirm] = useState<
+    | { kind: 'student'; studentId: string; label: string; current: number }
+    | { kind: 'class' }
+    | null
+  >(null)
+
+  const resetStudentMut = useMutation({
+    mutationFn: (studentId: string) => api.points.resetStudent(studentId),
+    onSuccess: (data, studentId) => {
+      qc.setQueryData<StudentPointsSummaryList | undefined>(
+        ['points-students', classroomId],
+        (old) =>
+          old
+            ? {
+                ...old,
+                data: old.data.map((s) =>
+                  s.student_id === studentId
+                    ? { ...s, semester_points: 0 }
+                    : s,
+                ),
+              }
+            : old,
+      )
+      if (data.skipped) {
+        setToast(t('points.toast.reset_skipped_zero'))
+      } else {
+        const delta = data.record?.points ?? 0
+        qc.setQueryData<{ data: ClassPointsSummary[] } | undefined>(
+          ['points-classrooms'],
+          (old) =>
+            old
+              ? {
+                  data: old.data.map((c) =>
+                    c.classroom_id === classroomId
+                      ? {
+                          ...c,
+                          semester_points: c.semester_points + delta,
+                        }
+                      : c,
+                  ),
+                }
+              : old,
+        )
+        setToast(t('points.toast.reset_done'))
+      }
+      setTimeout(() => setToast(null), 3000)
+      qc.invalidateQueries({ queryKey: ['points-students', classroomId] })
+      qc.invalidateQueries({ queryKey: ['points-classrooms'] })
+      setConfirm(null)
+    },
+    onError: (err) => {
+      setToast(
+        err instanceof ApiError && err.body?.message
+          ? err.body.message
+          : t('common.error_generic'),
+      )
+      setTimeout(() => setToast(null), 4000)
+    },
+  })
+
+  const resetClassMut = useMutation({
+    mutationFn: () => api.points.resetClassroom(classroomId as string),
+    onSuccess: (data) => {
+      qc.setQueryData<StudentPointsSummaryList | undefined>(
+        ['points-students', classroomId],
+        (old) =>
+          old
+            ? {
+                ...old,
+                data: old.data.map((s) => ({ ...s, semester_points: 0 })),
+              }
+            : old,
+      )
+      qc.setQueryData<{ data: ClassPointsSummary[] } | undefined>(
+        ['points-classrooms'],
+        (old) =>
+          old
+            ? {
+                data: old.data.map((c) =>
+                  c.classroom_id === classroomId
+                    ? { ...c, semester_points: 0 }
+                    : c,
+                ),
+              }
+            : old,
+      )
+      setToast(
+        t('points.toast.reset_class_done', {
+          written: data.written,
+          skipped: data.skipped,
+        }),
+      )
+      setTimeout(() => setToast(null), 3000)
+      qc.invalidateQueries({ queryKey: ['points-students', classroomId] })
+      qc.invalidateQueries({ queryKey: ['points-classrooms'] })
+      setConfirm(null)
+    },
+    onError: (err) => {
+      setToast(
+        err instanceof ApiError && err.body?.message
+          ? err.body.message
+          : t('common.error_generic'),
+      )
+      setTimeout(() => setToast(null), 4000)
+    },
+  })
+
   if (!classroomId) return null
 
   const headerTitle = view
@@ -148,9 +256,21 @@ export function ClassroomPoints() {
         title={headerTitle}
         subtitle={t('points.classroom_subtitle')}
         actions={
-          <Link to="/points" className="text-sm text-slate-600 hover:text-slate-900">
-            ← {t('points.back')}
-          </Link>
+          <div className="flex items-center gap-3">
+            {students.length > 0 && (
+              <button
+                type="button"
+                disabled={isArchived || resetClassMut.isPending}
+                onClick={() => setConfirm({ kind: 'class' })}
+                className="text-sm font-medium px-3 py-1.5 rounded-md border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {t('points.reset_class')}
+              </button>
+            )}
+            <Link to="/points" className="text-sm text-slate-600 hover:text-slate-900">
+              ← {t('points.back')}
+            </Link>
+          </div>
         }
       />
 
@@ -271,6 +391,24 @@ export function ClassroomPoints() {
                       >
                         + {t('points.custom')}
                       </button>
+                      <button
+                        disabled={
+                          isArchived ||
+                          s.semester_points === 0 ||
+                          resetStudentMut.isPending
+                        }
+                        onClick={() =>
+                          setConfirm({
+                            kind: 'student',
+                            studentId: s.student_id,
+                            label,
+                            current: s.semester_points,
+                          })
+                        }
+                        className="inline-flex items-center text-sm font-medium px-3.5 py-2 rounded-full bg-white border border-rose-200 text-rose-700 hover:bg-rose-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        {t('points.reset_student')}
+                      </button>
                     </div>
                   </li>
                 )
@@ -359,6 +497,24 @@ export function ClassroomPoints() {
                             >
                               + {t('points.custom')}
                             </button>
+                            <button
+                              disabled={
+                                isArchived ||
+                                s.semester_points === 0 ||
+                                resetStudentMut.isPending
+                              }
+                              onClick={() =>
+                                setConfirm({
+                                  kind: 'student',
+                                  studentId: s.student_id,
+                                  label,
+                                  current: s.semester_points,
+                                })
+                              }
+                              className="text-sm font-medium px-3 py-1.5 rounded-lg border border-rose-200 text-rose-700 hover:bg-rose-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                            >
+                              {t('points.reset_student')}
+                            </button>
                           </div>
                         </td>
                       </tr>
@@ -405,6 +561,69 @@ export function ClassroomPoints() {
             })
           }
         />
+      )}
+
+      {confirm && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 px-4"
+          onClick={() => {
+            if (!resetStudentMut.isPending && !resetClassMut.isPending) {
+              setConfirm(null)
+            }
+          }}
+        >
+          <div
+            className="bg-white rounded-xl shadow-xl max-w-md w-full p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="text-lg font-semibold text-slate-900 mb-2">
+              {confirm.kind === 'student'
+                ? t('points.reset_confirm_student_title')
+                : t('points.reset_confirm_class_title')}
+            </h2>
+            <p className="text-sm text-slate-600 mb-5 leading-relaxed">
+              {confirm.kind === 'student'
+                ? t('points.reset_confirm_student', {
+                    label: confirm.label,
+                    current:
+                      confirm.current >= 0
+                        ? `+${confirm.current}`
+                        : String(confirm.current),
+                  })
+                : t('points.reset_confirm_class', {
+                    count: students.length,
+                  })}
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                disabled={
+                  resetStudentMut.isPending || resetClassMut.isPending
+                }
+                onClick={() => setConfirm(null)}
+                className="px-4 py-2 text-sm font-medium rounded-md border border-slate-200 text-slate-700 hover:bg-slate-50 disabled:opacity-40"
+              >
+                {t('common.cancel')}
+              </button>
+              <button
+                type="button"
+                disabled={
+                  resetStudentMut.isPending || resetClassMut.isPending
+                }
+                onClick={() => {
+                  if (confirm.kind === 'student') {
+                    resetStudentMut.mutate(confirm.studentId)
+                  } else {
+                    resetClassMut.mutate()
+                  }
+                }}
+                className="px-4 py-2 text-sm font-medium rounded-md bg-rose-600 text-white hover:bg-rose-700 disabled:opacity-40"
+              >
+                {t('points.reset_confirm_action')}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </PageContainer>
   )

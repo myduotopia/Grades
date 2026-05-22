@@ -26,10 +26,13 @@ from models.grading import PointRecord
 from schemas import (
     ClassPointsBatch,
     ClassPointsBatchResult,
+    ClassPointsResetResult,
     ClassPointsSummary,
     ClassPointsSummaryList,
     ManualPointCreate,
     ManualPointOut,
+    PointResetRequest,
+    PointResetResult,
     StudentPointsSummary,
     StudentPointsSummaryList,
 )
@@ -330,3 +333,119 @@ def add_classroom_points_batch(
         )
     db.commit()
     return ClassPointsBatchResult(written=len(students))
+
+
+# ---------- Reset to zero (#146) ----------
+
+_DEFAULT_RESET_REASON = "歸零"
+
+
+@router.post(
+    "/api/students/{student_id}/points/reset",
+    response_model=PointResetResult,
+)
+def reset_student_points(
+    student_id: UUID,
+    body: PointResetRequest,
+    user_id: Annotated[UUID, Depends(require_user_id)],
+    db: Annotated[Session, Depends(get_db)],
+) -> PointResetResult:
+    student = (
+        db.query(Student)
+        .filter(Student.id == student_id, Student.user_id == user_id)
+        .one_or_none()
+    )
+    if student is None:
+        raise _not_found("student")
+    sem = _get_current_semester(db, user_id)
+    current = _semester_points_for_student(db, user_id, student.id, sem)
+    if current == 0:
+        return PointResetResult(skipped=True, current=0, record=None)
+    reason = body.reason.strip() or _DEFAULT_RESET_REASON
+    record = PointRecord(
+        user_id=user_id,
+        student_id=student.id,
+        points=-current,
+        reason=reason,
+        source_grade_id=None,
+    )
+    db.add(record)
+    db.commit()
+    db.refresh(record)
+    return PointResetResult(
+        skipped=False,
+        current=current,
+        record=ManualPointOut(
+            id=record.id,
+            student_id=record.student_id,
+            points=record.points,
+            reason=record.reason,
+            created_at=record.created_at,
+        ),
+    )
+
+
+@router.post(
+    "/api/classrooms/{classroom_id}/points/reset",
+    response_model=ClassPointsResetResult,
+)
+def reset_classroom_points(
+    classroom_id: UUID,
+    body: PointResetRequest,
+    user_id: Annotated[UUID, Depends(require_user_id)],
+    db: Annotated[Session, Depends(get_db)],
+) -> ClassPointsResetResult:
+    classroom = (
+        db.query(Classroom)
+        .filter(Classroom.id == classroom_id, Classroom.user_id == user_id)
+        .one_or_none()
+    )
+    if classroom is None:
+        raise _not_found("classroom")
+    sem = _get_current_semester(db, user_id)
+
+    # Per-student current sum in one query: group by student_id, sum points
+    # over the semester window. Students with no records won't appear; they're
+    # implicitly at 0 and skipped.
+    sums = dict(
+        db.query(PointRecord.student_id, func.sum(PointRecord.points))
+        .join(Student, PointRecord.student_id == Student.id)
+        .filter(
+            PointRecord.user_id == user_id,
+            Student.classroom_id == classroom_id,
+            Student.user_id == user_id,
+            func.date(PointRecord.created_at) >= sem.start_date,
+        )
+        .group_by(PointRecord.student_id)
+        .all()
+    )
+
+    students = (
+        db.query(Student)
+        .filter(
+            Student.classroom_id == classroom_id,
+            Student.user_id == user_id,
+        )
+        .all()
+    )
+
+    reason = body.reason.strip() or _DEFAULT_RESET_REASON
+    written = 0
+    skipped = 0
+    for s in students:
+        current = int(sums.get(s.id, 0) or 0)
+        if current == 0:
+            skipped += 1
+            continue
+        db.add(
+            PointRecord(
+                user_id=user_id,
+                student_id=s.id,
+                points=-current,
+                reason=reason,
+                source_grade_id=None,
+            )
+        )
+        written += 1
+    db.commit()
+    return ClassPointsResetResult(written=written, skipped=skipped)
