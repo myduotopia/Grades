@@ -299,11 +299,33 @@ def get_student_points(
     record_count = filtered.count()
     total_pages = (record_count + page_size - 1) // page_size if record_count else 0
 
-    order = (
-        PointRecord.created_at.asc() if sort == "oldest" else PointRecord.created_at.desc()
+    # Running balance per row: cumulative sum of `points` over the filtered
+    # set in date-ascending order (id breaks ties for same-timestamp writes).
+    # We build it as a subquery so we can paginate / sort the *outer* query
+    # however we want without affecting the cumulative calculation.
+    balance_after = (
+        func.sum(PointRecord.points)
+        .over(
+            order_by=[PointRecord.created_at.asc(), PointRecord.id.asc()],
+            rows=(None, 0),  # unbounded preceding → current row
+        )
+        .label("balance_after")
     )
+    sub = (
+        filtered.with_entities(
+            PointRecord.id.label("id"),
+            PointRecord.points.label("points"),
+            PointRecord.reason.label("reason"),
+            PointRecord.source_grade_id.label("source_grade_id"),
+            PointRecord.created_at.label("created_at"),
+            balance_after,
+        )
+        .subquery()
+    )
+    outer_order = sub.c.created_at.asc() if sort == "oldest" else sub.c.created_at.desc()
     rows = (
-        filtered.order_by(order)
+        db.query(sub)
+        .order_by(outer_order, sub.c.id.asc())
         .offset((page - 1) * page_size)
         .limit(page_size)
         .all()

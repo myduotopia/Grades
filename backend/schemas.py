@@ -373,6 +373,10 @@ class StudentPointRow(BaseModel):
     reason: str
     source_grade_id: UUID | None
     created_at: datetime
+    # Running balance at the moment this record was written, computed within
+    # the current filter scope (so filtering by reason gives a "this-reason
+    # only" passbook). The last row in date order equals the filter's total.
+    balance_after: int = 0
 
 
 class StudentPointsView(BaseModel):

@@ -240,6 +240,9 @@ export interface StudentPointRow {
   reason: string
   source_grade_id: string | null
   created_at: string
+  // Running balance at the moment this record was written (within the
+  // current filter scope). Last row in date order equals the filter's total.
+  balance_after: number
 }
 
 export interface StudentPointsView {

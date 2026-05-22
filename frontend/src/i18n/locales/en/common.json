@@ -470,6 +470,7 @@
       "score": "Score",
       "threshold": "Standard",
       "delta": "Δ",
+      "balance": "Balance",
       "reason": "Reason"
     }
   },

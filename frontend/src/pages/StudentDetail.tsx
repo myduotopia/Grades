@@ -336,6 +336,9 @@ function PointHistorySection({
                   <th className="px-4 py-3 text-right font-medium">
                     {t('student_detail.col.delta')}
                   </th>
+                  <th className="px-4 py-3 text-right font-medium">
+                    {t('student_detail.col.balance')}
+                  </th>
                   <th className="px-4 py-3 text-left font-medium">
                     {t('student_detail.col.reason')}
                   </th>
@@ -356,6 +359,11 @@ function PointHistorySection({
                       }`}
                     >
                       {p.points >= 0 ? `+${p.points}` : p.points}
+                    </td>
+                    <td className="px-4 py-2 text-right font-mono tabular-nums text-slate-500">
+                      {p.balance_after >= 0
+                        ? `+${p.balance_after}`
+                        : p.balance_after}
                     </td>
                     <td className="px-4 py-2 text-slate-700">
                       {p.reason || <span className="text-slate-400">—</span>}
