@@ -245,7 +245,29 @@ export interface StudentPointRow {
 export interface StudentPointsView {
   semester_id: string | null
   total: number
+  record_count: number
+  page: number
+  page_size: number
+  total_pages: number
+  reasons: string[]
   data: StudentPointRow[]
+}
+
+export interface PointResetResult {
+  skipped: boolean
+  current: number
+  record: {
+    id: string
+    student_id: string
+    points: number
+    reason: string
+    created_at: string
+  } | null
+}
+
+export interface ClassPointsResetResult {
+  written: number
+  skipped: number
 }
 
 export interface ImportRowPreview {
@@ -603,6 +625,16 @@ export const api = {
         `/api/students/${studentId}/points`,
         { method: 'POST', body: JSON.stringify(body) },
       ),
+    resetStudent: (studentId: string, body: { reason?: string } = {}) =>
+      request<PointResetResult>(
+        `/api/students/${studentId}/points/reset`,
+        { method: 'POST', body: JSON.stringify({ reason: body.reason ?? '' }) },
+      ),
+    resetClassroom: (classroomId: string, body: { reason?: string } = {}) =>
+      request<ClassPointsResetResult>(
+        `/api/classrooms/${classroomId}/points/reset`,
+        { method: 'POST', body: JSON.stringify({ reason: body.reason ?? '' }) },
+      ),
   },
   classrooms: {
     list: () => request<ClassroomList>('/api/classrooms'),
@@ -704,10 +736,26 @@ export const api = {
         `/api/students/${studentId}/grades${qs}`,
       )
     },
-    points: (studentId: string, semesterId?: string) => {
-      const qs = semesterId ? `?semester_id=${semesterId}` : ''
+    points: (
+      studentId: string,
+      params: {
+        semesterId?: string
+        page?: number
+        pageSize?: number
+        reason?: string | null
+        sort?: 'newest' | 'oldest'
+      } = {},
+    ) => {
+      const qs = new URLSearchParams()
+      if (params.semesterId) qs.set('semester_id', params.semesterId)
+      if (params.page) qs.set('page', String(params.page))
+      if (params.pageSize) qs.set('page_size', String(params.pageSize))
+      if (params.reason !== undefined && params.reason !== null && params.reason !== '')
+        qs.set('reason', params.reason)
+      if (params.sort) qs.set('sort', params.sort)
+      const suffix = qs.toString() ? `?${qs.toString()}` : ''
       return request<StudentPointsView>(
-        `/api/students/${studentId}/points${qs}`,
+        `/api/students/${studentId}/points${suffix}`,
       )
     },
     import: (classroomId: string, file: File, dryRun: boolean) => {

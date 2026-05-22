@@ -69,8 +69,18 @@
     },
     "toast": {
       "applied_class": "{{count}} students {{delta}} pts, reason \"{{reason}}\"",
-      "applied_student": "{{delta}} pts applied, reason \"{{reason}}\""
-    }
+      "applied_student": "{{delta}} pts applied, reason \"{{reason}}\"",
+      "reset_done": "Reset done — a reverse record was written",
+      "reset_skipped_zero": "Student is already at 0; nothing to reset",
+      "reset_class_done": "Class reset: {{written}} written, {{skipped}} already at 0"
+    },
+    "reset_student": "Reset",
+    "reset_class": "Reset class",
+    "reset_confirm_student_title": "Reset this student's points to 0",
+    "reset_confirm_class_title": "Reset all students' points to 0",
+    "reset_confirm_student": "A reverse record will be added for {{label}} (currently {{current}}), bringing this semester's points to 0. History is preserved.",
+    "reset_confirm_class": "A reverse record will be added for each of the {{count}} students, bringing this semester's points to 0. History is preserved.",
+    "reset_confirm_action": "Confirm reset"
   },
   "admin_reasons": {
     "title": "Point reasons",
@@ -445,6 +455,12 @@
     "sort_oldest": "Oldest first",
     "filter_reason_label": "Reason:",
     "filter_reason_all": "All reasons",
+    "pagination": {
+      "prev": "← Prev",
+      "next": "Next →",
+      "page_of": "Page {{page}} of {{total}}",
+      "total_count": "{{count}} records"
+    },
     "met": "met",
     "col": {
       "date": "Date",

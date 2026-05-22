@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useParams, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
@@ -7,7 +7,14 @@ import { ArchivedSemesterBanner } from '../components/ArchivedSemesterBanner'
 import { useSemesters } from '../hooks/useSemesters'
 import { PageContainer } from '../layout/PageContainer'
 import { PageHeader } from '../layout/PageHeader'
-import { api, type StudentGradeRow, type StudentPointRow, type StudentSubjectSummary } from '../lib/api'
+import {
+  api,
+  type StudentGradeRow,
+  type StudentPointsView,
+  type StudentSubjectSummary,
+} from '../lib/api'
+
+const POINTS_PAGE_SIZE = 20
 
 const SELECT_CLS =
   'border border-slate-300 rounded-lg px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-amber-500'
@@ -29,10 +36,28 @@ export function StudentDetail() {
     queryFn: () => api.students.grades(studentId as string, semesterId),
     enabled: !!studentId,
   })
+  const [pointsPage, setPointsPage] = useState(1)
+  const [pointsSort, setPointsSort] = useState<'newest' | 'oldest'>('newest')
+  const [pointsReason, setPointsReason] = useState<string>('')
   const pointsQ = useQuery({
-    queryKey: ['student-points', studentId, semesterId],
-    queryFn: () => api.students.points(studentId as string, semesterId),
+    queryKey: [
+      'student-points',
+      studentId,
+      semesterId,
+      pointsPage,
+      pointsSort,
+      pointsReason,
+    ],
+    queryFn: () =>
+      api.students.points(studentId as string, {
+        semesterId,
+        page: pointsPage,
+        pageSize: POINTS_PAGE_SIZE,
+        sort: pointsSort,
+        reason: pointsReason || undefined,
+      }),
     enabled: !!studentId,
+    placeholderData: (prev) => prev,
   })
 
   if (!studentId) return null
@@ -119,12 +144,27 @@ export function StudentDetail() {
               ({t('student_detail.points_total', { total: pointsView.total })})
             </span>
           </h2>
-          {pointsView.data.length === 0 ? (
+          <PointHistorySection
+            view={pointsView}
+            sort={pointsSort}
+            reason={pointsReason}
+            onSortChange={(v) => {
+              setPointsSort(v)
+              setPointsPage(1)
+            }}
+            onReasonChange={(v) => {
+              setPointsReason(v)
+              setPointsPage(1)
+            }}
+            page={pointsPage}
+            onPageChange={setPointsPage}
+          />
+          {pointsView.record_count === 0 && (
             <div className="bg-white border border-slate-200 rounded-xl p-6 text-sm text-slate-500 text-center">
-              {t('student_detail.no_points')}
+              {pointsReason
+                ? t('student_detail.no_points_filtered')
+                : t('student_detail.no_points')}
             </div>
-          ) : (
-            <PointHistoryTable rows={pointsView.data} />
           )}
         </section>
       )}
@@ -225,49 +265,40 @@ function GradeHistoryTable({ rows }: { rows: StudentGradeRow[] }) {
   )
 }
 
-function PointHistoryTable({ rows }: { rows: StudentPointRow[] }) {
+interface PointHistorySectionProps {
+  view: StudentPointsView
+  sort: 'newest' | 'oldest'
+  reason: string
+  page: number
+  onSortChange: (v: 'newest' | 'oldest') => void
+  onReasonChange: (v: string) => void
+  onPageChange: (page: number) => void
+}
+
+function PointHistorySection({
+  view,
+  sort,
+  reason,
+  page,
+  onSortChange,
+  onReasonChange,
+  onPageChange,
+}: PointHistorySectionProps) {
   const { t } = useTranslation()
-  const [sort, setSort] = useState<'newest' | 'oldest'>('newest')
-  const [reasonFilter, setReasonFilter] = useState<string>('')
-
-  // Distinct reasons (preserve the order they appear; treat empty reason as
-  // its own bucket so teachers can find "no-reason" entries).
-  const reasons = useMemo(() => {
-    const seen = new Set<string>()
-    const out: string[] = []
-    for (const r of rows) {
-      if (!seen.has(r.reason)) {
-        seen.add(r.reason)
-        out.push(r.reason)
-      }
-    }
-    return out
-  }, [rows])
-
-  const filteredSorted = useMemo(() => {
-    const filtered = reasonFilter
-      ? rows.filter((r) => r.reason === reasonFilter)
-      : rows
-    const sorted = [...filtered].sort((a, b) =>
-      sort === 'newest'
-        ? b.created_at.localeCompare(a.created_at)
-        : a.created_at.localeCompare(b.created_at),
-    )
-    return sorted
-  }, [rows, sort, reasonFilter])
-
+  const totalPages = view.total_pages
+  const hasRows = view.data.length > 0
   return (
     <>
       <div className="flex flex-wrap items-center gap-3 mb-3 text-sm text-slate-600">
         <label className="inline-flex items-center gap-2">
           {t('student_detail.filter_reason_label')}
           <select
-            value={reasonFilter}
-            onChange={(e) => setReasonFilter(e.target.value)}
+            value={reason}
+            onChange={(e) => onReasonChange(e.target.value)}
             className={SELECT_CLS}
           >
             <option value="">{t('student_detail.filter_reason_all')}</option>
-            {reasons.map((r) => (
+            {view.reasons.map((r) => (
               <option key={r} value={r}>
                 {r || '—'}
               </option>
@@ -278,19 +309,22 @@ function PointHistoryTable({ rows }: { rows: StudentPointRow[] }) {
           {t('student_detail.sort_label')}
           <select
             value={sort}
-            onChange={(e) => setSort(e.target.value as 'newest' | 'oldest')}
+            onChange={(e) =>
+              onSortChange(e.target.value as 'newest' | 'oldest')
+            }
             className={SELECT_CLS}
           >
             <option value="newest">{t('student_detail.sort_newest')}</option>
             <option value="oldest">{t('student_detail.sort_oldest')}</option>
           </select>
         </label>
+        <span className="ml-auto text-xs text-slate-500">
+          {t('student_detail.pagination.total_count', {
+            count: view.record_count,
+          })}
+        </span>
       </div>
-      {filteredSorted.length === 0 ? (
-        <div className="bg-white border border-slate-200 rounded-xl p-6 text-sm text-slate-500 text-center">
-          {t('student_detail.no_points_filtered')}
-        </div>
-      ) : (
+      {hasRows && (
         <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
@@ -308,7 +342,7 @@ function PointHistoryTable({ rows }: { rows: StudentPointRow[] }) {
                 </tr>
               </thead>
               <tbody>
-                {filteredSorted.map((p) => (
+                {view.data.map((p) => (
                   <tr
                     key={p.id}
                     className="border-b border-slate-100 last:border-b-0"
@@ -331,6 +365,32 @@ function PointHistoryTable({ rows }: { rows: StudentPointRow[] }) {
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-center gap-3 mt-3 text-sm text-slate-600">
+          <button
+            type="button"
+            disabled={page <= 1}
+            onClick={() => onPageChange(page - 1)}
+            className="px-3 py-1.5 rounded-md border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {t('student_detail.pagination.prev')}
+          </button>
+          <span className="font-mono tabular-nums">
+            {t('student_detail.pagination.page_of', {
+              page,
+              total: totalPages,
+            })}
+          </span>
+          <button
+            type="button"
+            disabled={page >= totalPages}
+            onClick={() => onPageChange(page + 1)}
+            className="px-3 py-1.5 rounded-md border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {t('student_detail.pagination.next')}
+          </button>
         </div>
       )}
     </>

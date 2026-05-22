@@ -9,7 +9,7 @@ The "weighted total" math mirrors what the by-student view on
 from __future__ import annotations
 
 from datetime import date
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -270,28 +270,64 @@ def get_student_points(
     user_id: Annotated[UUID, Depends(require_user_id)],
     db: Annotated[Session, Depends(get_db)],
     semester_id: Annotated[UUID | None, Query()] = None,
-    limit: Annotated[int, Query(ge=1, le=500)] = 100,
+    page: Annotated[int, Query(ge=1)] = 1,
+    page_size: Annotated[int, Query(ge=1, le=100)] = 20,
+    reason: Annotated[str | None, Query()] = None,
+    sort: Annotated[Literal["newest", "oldest"], Query()] = "newest",
 ) -> StudentPointsView:
     student = _get_student(db, user_id, student_id)
     sem = _resolve_semester(db, user_id, semester_id)
     if sem is None:
-        return StudentPointsView(semester_id=None, total=0, data=[])
-
-    rows = (
-        db.query(PointRecord)
-        .filter(
-            PointRecord.user_id == user_id,
-            PointRecord.student_id == student.id,
-            func.date(PointRecord.created_at) >= sem.start_date,
+        return StudentPointsView(
+            semester_id=None,
+            total=0,
+            record_count=0,
+            page=page,
+            page_size=page_size,
+            total_pages=0,
+            reasons=[],
+            data=[],
         )
-        .order_by(PointRecord.created_at.desc())
-        .limit(limit)
+
+    base = db.query(PointRecord).filter(
+        PointRecord.user_id == user_id,
+        PointRecord.student_id == student.id,
+        func.date(PointRecord.created_at) >= sem.start_date,
+    )
+    filtered = base if reason is None else base.filter(PointRecord.reason == reason)
+
+    record_count = filtered.count()
+    total_pages = (record_count + page_size - 1) // page_size if record_count else 0
+
+    order = (
+        PointRecord.created_at.asc() if sort == "oldest" else PointRecord.created_at.desc()
+    )
+    rows = (
+        filtered.order_by(order)
+        .offset((page - 1) * page_size)
+        .limit(page_size)
         .all()
     )
+
+    # Distinct reasons across the unfiltered window so the dropdown stays
+    # stable as the user filters.
+    reason_rows = (
+        base.with_entities(PointRecord.reason)
+        .distinct()
+        .order_by(PointRecord.reason.asc())
+        .all()
+    )
+    reasons = [r[0] for r in reason_rows]
+
     total = _points_in_window(db, user_id, student.id, sem.start_date)
     return StudentPointsView(
         semester_id=sem.id,
         total=total,
+        record_count=record_count,
+        page=page,
+        page_size=page_size,
+        total_pages=total_pages,
+        reasons=reasons,
         data=[
             StudentPointRow(
                 id=r.id,
