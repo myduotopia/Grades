@@ -849,7 +849,7 @@ function BySubjectView({
                     <th
                       key={i.id}
                       className={`px-3 py-3 text-left font-medium max-w-[8rem] ${
-                        isEditing ? 'bg-amber-50' : catBg
+                        isEditing ? 'bg-violet-50' : catBg
                       }`}
                       title={`${t(`category.${i.category_system_key}`)} · ${i.name}`}
                     >
@@ -960,7 +960,7 @@ function BySubjectView({
                     }
                     const v = drafts[s.id]
                     return (
-                      <td key={i.id} className="px-2 py-1 bg-amber-50/40">
+                      <td key={i.id} className="px-2 py-1 bg-violet-50">
                         <input
                           ref={(el) => {
                             if (el) inputRefs.current.set(s.id, el)
