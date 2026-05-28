@@ -309,6 +309,7 @@
     "tab_all": "All classes",
     "filter_name_label": "Name:",
     "filter_name_all": "All names",
+    "filter_name_clear": "Clear name filter",
     "total_count": "{{count}} missing in total",
     "empty": "All clear — nothing missing.",
     "col": {

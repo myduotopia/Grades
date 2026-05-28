@@ -309,6 +309,7 @@
     "tab_all": "全部班級",
     "filter_name_label": "姓名：",
     "filter_name_all": "全部姓名",
+    "filter_name_clear": "清除姓名篩選",
     "total_count": "共 {{count}} 筆缺交",
     "empty": "太好了，目前沒有缺交。",
     "col": {

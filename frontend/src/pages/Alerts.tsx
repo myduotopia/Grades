@@ -85,8 +85,9 @@ export function Alerts() {
   }, [allRows])
 
   const filtered = useMemo(() => {
-    const f = nameFilter
-      ? allRows.filter((r) => (r.name || '') === nameFilter)
+    const needle = nameFilter.trim().toLowerCase()
+    const f = needle
+      ? allRows.filter((r) => (r.name || '').toLowerCase().includes(needle))
       : allRows
     const catLabel = (k: string) => t(`category.${k}`)
     const cmp = (a: MissingRow, b: MissingRow) => {
@@ -156,18 +157,29 @@ export function Alerts() {
       <div className="flex flex-wrap items-center gap-3 mb-3 text-sm text-slate-600">
         <label className="inline-flex items-center gap-2">
           {t('alerts.filter_name_label')}
-          <select
+          <input
+            type="search"
+            list="alerts-name-options"
             value={nameFilter}
             onChange={(e) => setNameFilter(e.target.value)}
-            className="border border-slate-300 rounded-md px-2 py-1 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-amber-500"
-          >
-            <option value="">{t('alerts.filter_name_all')}</option>
+            placeholder={t('alerts.filter_name_all')}
+            className="border border-slate-300 rounded-md px-2 py-1 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-amber-500 min-w-[10rem]"
+          />
+          <datalist id="alerts-name-options">
             {names.map((n) => (
-              <option key={n} value={n}>
-                {n || '—'}
-              </option>
+              <option key={n} value={n} />
             ))}
-          </select>
+          </datalist>
+          {nameFilter && (
+            <button
+              type="button"
+              onClick={() => setNameFilter('')}
+              className="text-xs text-slate-500 hover:text-slate-700"
+              aria-label={t('alerts.filter_name_clear')}
+            >
+              ✕
+            </button>
+          )}
         </label>
         <span className="ml-auto text-xs text-slate-500">
           {t('alerts.total_count', { count: filtered.length })}
