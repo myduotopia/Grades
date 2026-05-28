@@ -598,11 +598,25 @@ class SnapshotOut(BaseModel):
     classroom_name: str
     name: str
     created_at: datetime
+    # Names of items frozen inside this snapshot (issue #160). Surfaces the
+    # 段考 / 小考 names on the /snapshots list so teachers can tell snapshots
+    # apart at a glance without opening them.
+    item_names: list[str] = []
 
 
 class SnapshotList(BaseModel):
     data: list[SnapshotOut]
     meta: ListMeta
+
+
+class SnapshotRecomputeResult(BaseModel):
+    """Outcome of POST /api/snapshots/{id}/points/recompute (issue #160).
+    Tells the teacher how the snapshot's point ledger changed so they can
+    sanity-check the threshold edits."""
+    grades_evaluated: int
+    awarded: int       # new auto-award PointRecord rows created
+    revoked: int       # existing auto-award rows removed because no longer meets standard
+    unchanged: int     # met before, still meets, same points — left alone
 
 
 class GradeBulkResult(BaseModel):

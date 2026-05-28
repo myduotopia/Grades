@@ -46,7 +46,13 @@ from models.curriculum import (
     SubjectCategoryWeight,
 )
 from sqlalchemy.dialects.postgresql import insert as pg_insert
-from models.grading import Grade, PointRecord, StudentStandard, SubjectPointRule
+from models.grading import (
+    Grade,
+    PointRecord,
+    SnapshotStandard,
+    StudentStandard,
+    SubjectPointRule,
+)
 from schemas import (
     ClassroomGradesView,
     GradeEntryOut,
@@ -59,7 +65,11 @@ from schemas import (
     SemesterOut,
     SnapshotList,
     SnapshotOut,
+    SnapshotRecomputeResult,
+    StandardUpsert,
+    StandardsView,
     StudentBriefOut,
+    StudentStandardOut,
     SubjectCategoryWeightOut,
 )
 
@@ -993,12 +1003,22 @@ def get_classroom_grades(
 
 
 def _snapshot_to_out(
-    db: Session, snap: GradeSnapshot
+    db: Session,
+    snap: GradeSnapshot,
+    item_names: list[str] | None = None,
 ) -> SnapshotOut:
     # Read grade + name from the snapshot itself (frozen at archive time),
     # NOT via the classroom FK — the classroom row may have been promoted
     # to a different grade since the archive happened.
-    del db  # kept in signature for forward compat
+    if item_names is None:
+        item_names = [
+            n
+            for (n,) in db.query(Item.name)
+            .join(ClassroomItem, ClassroomItem.item_id == Item.id)
+            .filter(ClassroomItem.snapshot_id == snap.id)
+            .order_by(Item.name.asc())
+            .all()
+        ]
     return SnapshotOut(
         id=snap.id,
         classroom_id=snap.classroom_id,
@@ -1006,6 +1026,7 @@ def _snapshot_to_out(
         classroom_name=snap.classroom_name,
         name=snap.name,
         created_at=snap.created_at,
+        item_names=item_names,
     )
 
 
@@ -1084,6 +1105,31 @@ def create_snapshot(
             )
         )
 
+    # Freeze the thresholds: copy each roster student's current
+    # student_standard rows into snapshot_standard so later live edits don't
+    # mutate the snapshot's record of "what counted as meeting standard at
+    # archive time" (issue #160).
+    if current_students:
+        roster_ids = [s.id for s in current_students]
+        live_standards = (
+            db.query(StudentStandard)
+            .filter(
+                StudentStandard.user_id == user_id,
+                StudentStandard.student_id.in_(roster_ids),
+            )
+            .all()
+        )
+        for st in live_standards:
+            db.add(
+                SnapshotStandard(
+                    user_id=user_id,
+                    snapshot_id=snap.id,
+                    student_id=st.student_id,
+                    subject_id=st.subject_id,
+                    threshold=st.threshold,
+                )
+            )
+
     for ci in active:
         ci.snapshot_id = snap.id
     db.commit()
@@ -1130,8 +1176,24 @@ def list_snapshots(
         )
         q = q.filter(GradeSnapshot.id.in_(snap_ids_in_sem))
     rows = q.order_by(GradeSnapshot.created_at.desc()).all()
+    # Single-query fetch of item names per snapshot so we don't N+1 inside
+    # _snapshot_to_out for each row.
+    names_by_snap: dict[UUID, list[str]] = {}
+    if rows:
+        name_rows = (
+            db.query(ClassroomItem.snapshot_id, Item.name)
+            .join(Item, Item.id == ClassroomItem.item_id)
+            .filter(ClassroomItem.snapshot_id.in_([s.id for s in rows]))
+            .order_by(Item.name.asc())
+            .all()
+        )
+        for snap_id, name in name_rows:
+            names_by_snap.setdefault(snap_id, []).append(name)
     return SnapshotList(
-        data=[_snapshot_to_out(db, s) for s in rows],
+        data=[
+            _snapshot_to_out(db, s, item_names=names_by_snap.get(s.id, []))
+            for s in rows
+        ],
         meta=ListMeta(total=len(rows)),
     )
 
@@ -1296,4 +1358,313 @@ def get_snapshot_grades(
             )
             for g in grades
         ],
+    )
+
+
+# ---------- snapshot standards (#160) ----------
+
+def _get_owned_snapshot(
+    db: Session, user_id: UUID, snapshot_id: UUID
+) -> GradeSnapshot:
+    snap = (
+        db.query(GradeSnapshot)
+        .filter(
+            GradeSnapshot.id == snapshot_id,
+            GradeSnapshot.user_id == user_id,
+        )
+        .one_or_none()
+    )
+    if snap is None:
+        raise _not_found("snapshot")
+    return snap
+
+
+def _valid_subject_id_for_user(
+    db: Session, user_id: UUID, subject_id: UUID
+) -> bool:
+    return (
+        db.query(Subject.id)
+        .filter(
+            Subject.id == subject_id,
+            (Subject.user_id.is_(None)) | (Subject.user_id == user_id),
+        )
+        .first()
+        is not None
+    )
+
+
+@router.get(
+    "/api/snapshots/{snapshot_id}/standards",
+    response_model=StandardsView,
+)
+def list_snapshot_standards(
+    snapshot_id: UUID,
+    user_id: Annotated[UUID, Depends(require_user_id)],
+    db: Annotated[Session, Depends(get_db)],
+) -> StandardsView:
+    """Frozen thresholds for the snapshot's roster (issue #160).
+
+    Mirrors the live list_standards shape so the existing StandardsMatrix
+    component can be reused with a different data source.
+    """
+    _get_owned_snapshot(db, user_id, snapshot_id)
+    rows = (
+        db.query(SnapshotStandard)
+        .filter(
+            SnapshotStandard.snapshot_id == snapshot_id,
+            SnapshotStandard.user_id == user_id,
+        )
+        .all()
+    )
+    return StandardsView(
+        data=[
+            StudentStandardOut(
+                student_id=r.student_id,
+                subject_id=r.subject_id,
+                threshold=float(r.threshold),
+            )
+            for r in rows
+        ]
+    )
+
+
+@router.put(
+    "/api/snapshots/{snapshot_id}/standards/{student_id}/{subject_id}",
+    response_model=StudentStandardOut,
+)
+def upsert_snapshot_standard(
+    snapshot_id: UUID,
+    student_id: UUID,
+    subject_id: UUID,
+    body: StandardUpsert,
+    user_id: Annotated[UUID, Depends(require_user_id)],
+    db: Annotated[Session, Depends(get_db)],
+) -> StudentStandardOut:
+    snap = _get_owned_snapshot(db, user_id, snapshot_id)
+    in_roster = (
+        db.query(SnapshotStudent.id)
+        .filter(
+            SnapshotStudent.snapshot_id == snap.id,
+            SnapshotStudent.student_id == student_id,
+        )
+        .first()
+        is not None
+    )
+    if not in_roster:
+        raise _not_found("student")
+    if not _valid_subject_id_for_user(db, user_id, subject_id):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error": {
+                    "code": "BAD_REQUEST",
+                    "message_key": "errors.item.subject_invalid",
+                    "message": "Unknown subject.",
+                }
+            },
+        )
+    existing = (
+        db.query(SnapshotStandard)
+        .filter(
+            SnapshotStandard.snapshot_id == snap.id,
+            SnapshotStandard.student_id == student_id,
+            SnapshotStandard.subject_id == subject_id,
+        )
+        .one_or_none()
+    )
+    if existing is None:
+        row = SnapshotStandard(
+            user_id=user_id,
+            snapshot_id=snap.id,
+            student_id=student_id,
+            subject_id=subject_id,
+            threshold=Decimal(str(body.threshold)),
+        )
+        db.add(row)
+    else:
+        existing.threshold = Decimal(str(body.threshold))
+        row = existing
+    db.commit()
+    db.refresh(row)
+    return StudentStandardOut(
+        student_id=row.student_id,
+        subject_id=row.subject_id,
+        threshold=float(row.threshold),
+    )
+
+
+@router.delete(
+    "/api/snapshots/{snapshot_id}/standards/{student_id}/{subject_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_snapshot_standard(
+    snapshot_id: UUID,
+    student_id: UUID,
+    subject_id: UUID,
+    user_id: Annotated[UUID, Depends(require_user_id)],
+    db: Annotated[Session, Depends(get_db)],
+) -> None:
+    snap = _get_owned_snapshot(db, user_id, snapshot_id)
+    row = (
+        db.query(SnapshotStandard)
+        .filter(
+            SnapshotStandard.snapshot_id == snap.id,
+            SnapshotStandard.student_id == student_id,
+            SnapshotStandard.subject_id == subject_id,
+            SnapshotStandard.user_id == user_id,
+        )
+        .one_or_none()
+    )
+    if row is None:
+        return
+    db.delete(row)
+    db.commit()
+
+
+# ---------- snapshot point recompute (#160) ----------
+
+@router.post(
+    "/api/snapshots/{snapshot_id}/points/recompute",
+    response_model=SnapshotRecomputeResult,
+)
+def recompute_snapshot_points(
+    snapshot_id: UUID,
+    user_id: Annotated[UUID, Depends(require_user_id)],
+    db: Annotated[Session, Depends(get_db)],
+) -> SnapshotRecomputeResult:
+    """Re-evaluate auto-award points for every grade inside this snapshot
+    against the snapshot's frozen thresholds (issue #160).
+
+    Scope: only point_records whose source_grade_id belongs to a grade in
+    this snapshot's items are touched. Records from the live view or other
+    snapshots are left alone. Manual records (source_grade_id IS NULL) are
+    never affected.
+    """
+    snap = _get_owned_snapshot(db, user_id, snapshot_id)
+
+    items = (
+        db.query(Item)
+        .join(
+            ClassroomItem,
+            (ClassroomItem.item_id == Item.id)
+            & (ClassroomItem.snapshot_id == snap.id),
+        )
+        .filter(Item.user_id == user_id)
+        .all()
+    )
+    if not items:
+        return SnapshotRecomputeResult(
+            grades_evaluated=0, awarded=0, revoked=0, unchanged=0
+        )
+    items_by_id = {i.id: i for i in items}
+    item_ids = list(items_by_id.keys())
+
+    cat_ids = {it.category_id for it in items}
+    cat_keys: dict[UUID, str] = {
+        c.id: c.system_key
+        for c in db.query(Category).filter(Category.id.in_(cat_ids)).all()
+    }
+
+    thresholds = {
+        (r.student_id, r.subject_id): r.threshold
+        for r in db.query(SnapshotStandard)
+        .filter(SnapshotStandard.snapshot_id == snap.id)
+        .all()
+    }
+
+    subj_ids = {it.subject_id for it in items}
+    points_by_subject: dict[UUID, int] = {
+        r.subject_id: r.points_awarded
+        for r in db.query(SubjectPointRule)
+        .filter(
+            SubjectPointRule.user_id == user_id,
+            SubjectPointRule.subject_id.in_(subj_ids),
+        )
+        .all()
+    }
+
+    roster_ids = {
+        sid
+        for (sid,) in db.query(SnapshotStudent.student_id).filter(
+            SnapshotStudent.snapshot_id == snap.id
+        ).all()
+    }
+    if not roster_ids:
+        return SnapshotRecomputeResult(
+            grades_evaluated=0, awarded=0, revoked=0, unchanged=0
+        )
+
+    grades = (
+        db.query(Grade)
+        .filter(
+            Grade.item_id.in_(item_ids),
+            Grade.student_id.in_(roster_ids),
+        )
+        .all()
+    )
+    if not grades:
+        return SnapshotRecomputeResult(
+            grades_evaluated=0, awarded=0, revoked=0, unchanged=0
+        )
+
+    existing_records = {
+        r.source_grade_id: r
+        for r in db.query(PointRecord)
+        .filter(PointRecord.source_grade_id.in_([g.id for g in grades]))
+        .all()
+        if r.source_grade_id is not None
+    }
+
+    awarded = 0
+    revoked = 0
+    unchanged = 0
+    for g in grades:
+        item = items_by_id.get(g.item_id)
+        if item is None:
+            continue
+        cat_key = cat_keys.get(item.category_id, "")
+        threshold = thresholds.get((g.student_id, item.subject_id))
+        pts = points_by_subject.get(item.subject_id)
+        rec = existing_records.get(g.id)
+
+        eligible = (
+            cat_key in AUTO_AWARD_CATEGORY_KEYS
+            and threshold is not None
+            and pts is not None
+            and pts > 0
+            and g.score >= threshold
+        )
+
+        if eligible:
+            assert pts is not None
+            cat_label = _CATEGORY_KEY_TO_NAME_ZH.get(cat_key, cat_key)
+            item_label = (item.name or "").strip() or cat_label
+            reason = f"{MEETING_STANDARD_REASON} - {cat_label}: {item_label}"
+            if rec is None:
+                db.add(
+                    PointRecord(
+                        user_id=user_id,
+                        student_id=g.student_id,
+                        points=pts,
+                        reason=reason,
+                        source_grade_id=g.id,
+                    )
+                )
+                awarded += 1
+            else:
+                if rec.points != pts or rec.reason != reason:
+                    rec.points = pts
+                    rec.reason = reason
+                unchanged += 1
+        else:
+            if rec is not None:
+                db.delete(rec)
+                revoked += 1
+
+    db.commit()
+    return SnapshotRecomputeResult(
+        grades_evaluated=len(grades),
+        awarded=awarded,
+        revoked=revoked,
+        unchanged=unchanged,
     )
