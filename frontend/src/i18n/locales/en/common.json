@@ -33,6 +33,8 @@
     "admin_reasons": "Point reasons",
     "admin_semesters": "Semesters",
     "snapshots": "Archived grades",
+    "alerts": "Alerts",
+    "alerts_badge": "{{count}} new alerts",
     "settings": "Settings",
     "open_menu": "Open menu",
     "collapse_sidebar": "Collapse sidebar",
@@ -267,15 +269,54 @@
     "quick_actions": "Quick actions",
     "action": {
       "add_classroom": "Add / manage classes",
+      "points": "Manage points",
+      "alerts": "Student alerts",
       "add_assessment": "Add exam or assignment",
       "import_grades": "Import grades",
       "coming_soon": "Coming soon"
+    },
+    "class_ranking": {
+      "title": "Class point rankings",
+      "subject_label": "Subject:",
+      "all_subjects": "All (any subject)",
+      "sort_label": "Sort:",
+      "sort_desc": "High to low",
+      "sort_asc": "Low to high",
+      "empty": "No point records for the current semester."
+    },
+    "top_students": {
+      "title": "Top 10 students this semester",
+      "tab_all": "All classes",
+      "empty": "No student data yet.",
+      "col": {
+        "classroom": "Class",
+        "seat": "Seat",
+        "name": "Name",
+        "points": "Total pts",
+        "met": "Met standard"
+      }
     },
     "workflow": {
       "heading": "Suggested workflow",
       "step1": "Create classes and add students",
       "step2": "Under each subject, add exams or assignments (midterm, quiz, homework…)",
       "step3": "Enter scores; the system auto-awards points when a student meets their standard"
+    }
+  },
+  "alerts": {
+    "title": "Student alerts",
+    "subtitle": "Students currently sitting at 0 on a live grade. Click a name to handle it.",
+    "tab_all": "All classes",
+    "filter_name_label": "Name:",
+    "filter_name_all": "All names",
+    "empty": "All clear — no alerts right now.",
+    "col": {
+      "classroom": "Class",
+      "seat": "Seat",
+      "name": "Name",
+      "points": "Total pts",
+      "met": "Met standard",
+      "zeros": "0-score count"
     }
   },
   "category": {

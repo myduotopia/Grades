@@ -3,9 +3,10 @@
 Lives in `public` schema. The user identity itself is owned by Supabase
 (`auth.users`); this table stores app-level preferences keyed by that UUID.
 """
+from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import CheckConstraint, text
+from sqlalchemy import CheckConstraint, DateTime, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -42,6 +43,13 @@ class UserSettings(Base, TimestampMixin):
     # still stores the human name at write time.
     point_reasons: Mapped[list] = mapped_column(
         JSONB, nullable=False, server_default=text("'[]'::jsonb")
+    )
+    # Last time the teacher opened the home Alerts page (issue #161). The
+    # alert badge counts only 0-score grades updated after this moment so
+    # already-acknowledged 0s don't keep flashing — newly-entered or
+    # newly-flipped-to-0 grades do. NULL = never visited.
+    alerts_last_viewed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
 
     __table_args__ = (

@@ -686,3 +686,55 @@ class ClassroomGradesView(BaseModel):
     students: list[StudentBriefOut]
     items: list[ItemOut]
     grades: list[GradeEntryOut]
+
+
+# ---------- Home page (#161) ----------
+
+class HomeClassRankingItem(BaseModel):
+    classroom_id: UUID
+    classroom_grade: int
+    classroom_name: str
+    points: int
+
+
+class HomeClassRankingList(BaseModel):
+    data: list[HomeClassRankingItem]
+
+
+class HomeTopStudentItem(BaseModel):
+    student_id: UUID
+    classroom_id: UUID
+    classroom_grade: int
+    classroom_name: str
+    seat_number: int
+    name: str | None
+    total_points: int
+    met_count: int
+
+
+class HomeTopStudentList(BaseModel):
+    data: list[HomeTopStudentItem]
+
+
+class HomeAlertSummary(BaseModel):
+    new_count: int
+
+
+class HomeAlertListItem(BaseModel):
+    student_id: UUID
+    classroom_id: UUID
+    classroom_grade: int
+    classroom_name: str
+    seat_number: int
+    name: str | None
+    total_points: int
+    met_count: int
+    zero_score_count: int
+
+
+class HomeAlertList(BaseModel):
+    data: list[HomeAlertListItem]
+
+
+class HomeAlertViewedOut(BaseModel):
+    viewed_at: datetime
