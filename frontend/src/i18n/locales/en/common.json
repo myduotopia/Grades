@@ -450,6 +450,7 @@
     "no_grades": "No grades for this semester yet.",
     "no_points": "No points for this semester yet.",
     "no_points_filtered": "No records match the current filter.",
+    "reset_divider": "Reset (zeroed out {{amount}} pts; running total restarts)",
     "sort_label": "Sort:",
     "sort_newest": "Newest first",
     "sort_oldest": "Oldest first",

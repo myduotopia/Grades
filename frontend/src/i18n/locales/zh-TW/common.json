@@ -450,6 +450,7 @@
     "no_grades": "本學期還沒有成績紀錄。",
     "no_points": "本學期還沒有點數紀錄。",
     "no_points_filtered": "目前篩選條件下沒有紀錄。",
+    "reset_divider": "歸零（已抵銷 {{amount}} 點，之後重新計算）",
     "sort_label": "排序：",
     "sort_newest": "最新到最舊",
     "sort_oldest": "最舊到最新",
