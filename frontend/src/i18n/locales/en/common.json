@@ -471,7 +471,15 @@
       "threshold": "Standard",
       "delta": "Δ",
       "balance": "Balance",
-      "reason": "Reason"
+      "reason": "Reason",
+      "actions": "Actions"
+    },
+    "delete_auto_tooltip": "Auto-awarded records can't be deleted here — edit the underlying grade.",
+    "delete_modal": {
+      "title": "Delete point record?",
+      "body": "About to delete \"{{reason}}\" ({{delta}} pts) from {{date}}.",
+      "warning": "This cannot be undone.",
+      "confirm": "Delete"
     }
   },
   "standards": {

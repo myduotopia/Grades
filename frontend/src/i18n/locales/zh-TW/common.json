@@ -471,7 +471,15 @@
       "threshold": "標準分",
       "delta": "點數",
       "balance": "結餘",
-      "reason": "原因"
+      "reason": "原因",
+      "actions": "操作"
+    },
+    "delete_auto_tooltip": "自動換算的紀錄不能刪，請改成績",
+    "delete_modal": {
+      "title": "確認刪除點數紀錄",
+      "body": "即將刪除 {{date}} 的「{{reason}}」({{delta}} 點)。",
+      "warning": "刪除後無法復原。",
+      "confirm": "確定刪除"
     }
   },
   "standards": {
