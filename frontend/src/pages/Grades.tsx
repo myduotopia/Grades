@@ -29,6 +29,41 @@ import {
 type View = 'by-student' | 'by-subject' | 'standards'
 const VIEW_KEY = 'grades.view'
 
+// Issue #159: category sort priority + background tint for the by-subject
+// column header / cells. Categories not listed fall to the end with no tint.
+const CATEGORY_ORDER: readonly string[] = [
+  'major_exam',
+  'quiz',
+  'homework',
+  'attendance',
+  'extra',
+]
+const CATEGORY_HEADER_BG: Record<string, string> = {
+  major_exam: 'bg-amber-50',
+  quiz: 'bg-sky-50',
+}
+const CATEGORY_CELL_BG: Record<string, string> = {
+  major_exam: 'bg-amber-50/40',
+  quiz: 'bg-sky-50/40',
+}
+
+function orderItemsForBySubject<
+  T extends { category_system_key: string; activated_at?: string | null; name: string },
+>(items: T[]): T[] {
+  return [...items].sort((a, b) => {
+    const ai = CATEGORY_ORDER.indexOf(a.category_system_key)
+    const bi = CATEGORY_ORDER.indexOf(b.category_system_key)
+    const aRank = ai === -1 ? CATEGORY_ORDER.length : ai
+    const bRank = bi === -1 ? CATEGORY_ORDER.length : bi
+    if (aRank !== bRank) return aRank - bRank
+    // Within a category: newest activation first; nulls go last.
+    const at = a.activated_at ?? ''
+    const bt = b.activated_at ?? ''
+    if (at !== bt) return bt.localeCompare(at)
+    return a.name.localeCompare(b.name)
+  })
+}
+
 /** Parse a raw input/clipboard value into a DB-storable score.
  *  Rounds to 1 decimal (DB column is Numeric(4, 1)) and clamps to [0, 100].
  *  Returns null for blank / non-numeric — equivalent to "clear this cell". */
@@ -157,6 +192,37 @@ export function Grades() {
             {!isArchived && !isSnapshotMode && (
               <button
                 onClick={() => {
+                  // Issue #159: if the class has any subject whose 段考
+                  // (major_exam) weight > 0 but no actual 段考 items, the
+                  // weighted total math will treat missing entries as 0.
+                  // Warn first so the teacher can cancel and add the exam
+                  // before locking the snapshot.
+                  if (view_data) {
+                    const hasMajorExam = view_data.items.some(
+                      (i) => i.category_system_key === 'major_exam',
+                    )
+                    if (!hasMajorExam) {
+                      const maxWeight = Math.max(
+                        0,
+                        ...view_data.subject_category_weights
+                          .filter(
+                            (w) => w.category_system_key === 'major_exam',
+                          )
+                          .map((w) => w.weight),
+                      )
+                      if (maxWeight > 0) {
+                        if (
+                          !window.confirm(
+                            t('errors.major_exam.no_grades_with_weight', {
+                              percent: maxWeight,
+                            }),
+                          )
+                        ) {
+                          return
+                        }
+                      }
+                    }
+                  }
                   if (window.confirm(t('grades.archive_confirm'))) {
                     archiveMut.mutate()
                   }
@@ -571,7 +637,12 @@ function BySubjectView({
 
   if (view.items.length === 0) return <EmptyHint />
 
-  const items = view.items.filter((i) => i.subject_id === pickedId)
+  // Issue #159: column order = category group (段考 → 小考 → 作業 →
+  // 出席率 → 加分), and within each group newest activation first.
+  // Categories with no items just don't appear.
+  const items = orderItemsForBySubject(
+    view.items.filter((i) => i.subject_id === pickedId),
+  )
   const grades = view.grades
   const lookup: Record<string, Record<string, number>> = {}
   for (const g of grades) {
@@ -648,6 +719,36 @@ function BySubjectView({
       setEditingItemId(null)
     },
     onError: (err) => {
+      // Issue #159: a second 段考 (major_exam) item triggers a 409 with
+      // existing_item_id. Cancel the in-progress edit, deep-link to the
+      // existing item via ?edit=<id> so the existing column opens, and
+      // surface a toast-style message telling the teacher what happened.
+      if (
+        err instanceof ApiError &&
+        err.body?.message_key === 'errors.major_exam.already_exists' &&
+        typeof err.body?.details?.existing_item_id === 'string'
+      ) {
+        const existingId = err.body.details.existing_item_id as string
+        const existingName =
+          (err.body.details.existing_item_name as string) || ''
+        setDrafts({})
+        setEditingItemId(null)
+        setParams(
+          (p) => {
+            const c = new URLSearchParams(p)
+            c.set('edit', existingId)
+            return c
+          },
+          { replace: true },
+        )
+        setSaveErr(
+          t('errors.major_exam.already_exists_redirect', {
+            name: existingName,
+          }),
+        )
+        editAppliedRef.current = false
+        return
+      }
       setSaveErr(
         err instanceof ApiError && err.body?.message
           ? err.body.message
@@ -741,11 +842,13 @@ function BySubjectView({
                   const isEditing = editingItemId === i.id
                   const otherEditing =
                     editingItemId !== null && editingItemId !== i.id
+                  const catBg =
+                    CATEGORY_HEADER_BG[i.category_system_key] ?? ''
                   return (
                     <th
                       key={i.id}
                       className={`px-3 py-3 text-left font-medium ${
-                        isEditing ? 'bg-amber-50' : ''
+                        isEditing ? 'bg-amber-50' : catBg
                       }`}
                       title={`${t(`category.${i.category_system_key}`)} · ${i.name}`}
                     >
@@ -842,9 +945,14 @@ function BySubjectView({
                   </td>
                   {items.map((i) => {
                     const isEditing = editingItemId === i.id
+                    const catBg =
+                      CATEGORY_CELL_BG[i.category_system_key] ?? ''
                     if (!isEditing) {
                       return (
-                        <td key={i.id} className="px-3 py-2.5 text-slate-700">
+                        <td
+                          key={i.id}
+                          className={`px-3 py-2.5 text-slate-700 ${catBg}`}
+                        >
                           {formatScore(lookup[s.id]?.[i.id])}
                         </td>
                       )

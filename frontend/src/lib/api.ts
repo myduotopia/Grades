@@ -504,6 +504,9 @@ export interface GradeItem {
   subject_display_name: string | null
   category_system_key: string
   exam_date: string | null
+  // Issue #159: when this item was activated for the current classroom.
+  // Drives newest-first column order within each category group.
+  activated_at: string | null
 }
 
 export interface GradeEntry {
