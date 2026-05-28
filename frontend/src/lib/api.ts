@@ -521,6 +521,14 @@ export interface Snapshot {
   classroom_name: string
   name: string
   created_at: string
+  item_names: string[]
+}
+
+export interface SnapshotRecomputeResult {
+  grades_evaluated: number
+  awarded: number
+  revoked: number
+  unchanged: number
 }
 
 export interface SnapshotList {
@@ -937,5 +945,34 @@ export const api = {
       }),
     viewGrades: (snapshotId: string) =>
       request<ClassroomGradesView>(`/api/snapshots/${snapshotId}/grades`),
+    listStandards: (snapshotId: string) =>
+      request<StandardsView>(`/api/snapshots/${snapshotId}/standards`),
+    upsertStandard: (
+      snapshotId: string,
+      studentId: string,
+      subjectId: string,
+      threshold: number,
+    ) =>
+      request<StudentStandard>(
+        `/api/snapshots/${snapshotId}/standards/${studentId}/${subjectId}`,
+        {
+          method: 'PUT',
+          body: JSON.stringify({ threshold }),
+        },
+      ),
+    deleteStandard: (
+      snapshotId: string,
+      studentId: string,
+      subjectId: string,
+    ) =>
+      request<void>(
+        `/api/snapshots/${snapshotId}/standards/${studentId}/${subjectId}`,
+        { method: 'DELETE' },
+      ),
+    recomputePoints: (snapshotId: string) =>
+      request<SnapshotRecomputeResult>(
+        `/api/snapshots/${snapshotId}/points/recompute`,
+        { method: 'POST' },
+      ),
   },
 }

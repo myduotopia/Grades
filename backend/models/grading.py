@@ -110,6 +110,59 @@ class StudentStandard(Base, UserScopedMixin, TimestampMixin):
     )
 
 
+class SnapshotStandard(Base, UserScopedMixin, TimestampMixin):
+    """Frozen per-student × per-subject threshold for an archived snapshot
+    (issue #160).
+
+    `StudentStandard` is the live, mutable threshold the teacher edits day-
+    to-day. When a snapshot is taken, the current thresholds for every
+    student in the classroom × every subject are copied into this table so
+    later edits to the live thresholds don't change what an archived
+    snapshot says was the standard at archive time.
+
+    The snapshot's recompute-points action reads thresholds from here, not
+    from `StudentStandard`, and the snapshot's standards-tab UI edits these
+    rows independently of the live ones.
+    """
+    __tablename__ = "snapshot_standard"
+
+    id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        primary_key=True,
+        server_default=text("gen_random_uuid()"),
+    )
+    snapshot_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("grade_snapshot.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    student_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("student.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    subject_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("subject.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    threshold: Mapped[Decimal] = mapped_column(Numeric(4, 1), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "snapshot_id", "student_id", "subject_id",
+            name="uq_snapshot_standard",
+        ),
+        CheckConstraint(
+            "threshold >= 0 AND threshold <= 100",
+            name="ck_snapshot_standard_threshold_range",
+        ),
+    )
+
+
 class PointRule(Base, UserScopedMixin, TimestampMixin):
     """How many points to award per category when a student meets standard."""
     __tablename__ = "point_rule"

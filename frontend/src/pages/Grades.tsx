@@ -260,6 +260,13 @@ export function Grades() {
           readOnly={isArchived}
         />
       )}
+      {view === 'standards' && isSnapshotMode && view_data && (
+        <StandardsMatrix
+          snapshotId={snapshotId as string}
+          snapshotStudents={view_data.students}
+          readOnly={false}
+        />
+      )}
       {view === 'standards' && classroomId && !isSnapshotMode && (
         <StandardsMatrix
           classroomId={classroomId}
@@ -694,23 +701,30 @@ function BySubjectView({
 
   return (
     <div className="space-y-4">
-      <label className="text-sm text-slate-600 inline-flex items-center gap-2">
-        {t('grades.pick_subject')}
-        <select
-          value={pickedId}
-          onChange={(e) => {
-            setPickedId(e.target.value)
-            cancelEdit()
-          }}
-          className="border border-slate-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 bg-white"
-        >
-          {subjects.map((sub) => (
-            <option key={sub.id} value={sub.id}>
-              {subjectLabel(sub, t)}
-            </option>
-          ))}
-        </select>
-      </label>
+      <div className="flex flex-wrap items-center gap-3">
+        <label className="text-sm text-slate-600 inline-flex items-center gap-2">
+          {t('grades.pick_subject')}
+          <select
+            value={pickedId}
+            onChange={(e) => {
+              setPickedId(e.target.value)
+              cancelEdit()
+            }}
+            className="border border-slate-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 bg-white"
+          >
+            {subjects.map((sub) => (
+              <option key={sub.id} value={sub.id}>
+                {subjectLabel(sub, t)}
+              </option>
+            ))}
+          </select>
+        </label>
+        {snapshotId && (
+          <div className="ml-auto">
+            <RecomputeButton snapshotId={snapshotId} />
+          </div>
+        )}
+      </div>
 
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
         <div className="overflow-x-auto">
@@ -869,6 +883,103 @@ function BySubjectView({
         <p className="text-sm text-rose-600">{saveErr}</p>
       )}
     </div>
+  )
+}
+
+function RecomputeButton({ snapshotId }: { snapshotId: string }) {
+  const { t } = useTranslation()
+  const qc = useQueryClient()
+  const [confirming, setConfirming] = useState(false)
+  const [result, setResult] = useState<
+    import('../lib/api').SnapshotRecomputeResult | null
+  >(null)
+
+  const standardsQ = useQuery({
+    queryKey: ['snapshot-standards', snapshotId],
+    queryFn: () => api.snapshots.listStandards(snapshotId),
+  })
+  const hasAny = (standardsQ.data?.data.length ?? 0) > 0
+
+  const mut = useMutation({
+    mutationFn: () => api.snapshots.recomputePoints(snapshotId),
+    onSuccess: (res) => {
+      setResult(res)
+      setConfirming(false)
+      qc.invalidateQueries({ queryKey: ['snapshot-grades', snapshotId] })
+      qc.invalidateQueries({ queryKey: ['student-points'] })
+      qc.invalidateQueries({ queryKey: ['student-detail'] })
+    },
+  })
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => {
+          setResult(null)
+          setConfirming(true)
+        }}
+        disabled={!hasAny || mut.isPending}
+        title={
+          !hasAny
+            ? t('snapshots.standards.recompute_btn_disabled_tooltip')
+            : undefined
+        }
+        className="inline-flex items-center px-3 py-1.5 rounded-md bg-amber-500 hover:bg-amber-600 text-white text-sm font-medium shadow-sm disabled:bg-slate-300 disabled:cursor-not-allowed"
+      >
+        {mut.isPending
+          ? t('snapshots.standards.recompute_running')
+          : t('snapshots.standards.recompute_btn')}
+      </button>
+      {result && (
+        <p className="mt-2 text-xs text-emerald-700">
+          {t('snapshots.standards.recompute_result', {
+            awarded: result.awarded,
+            revoked: result.revoked,
+            unchanged: result.unchanged,
+            total: result.grades_evaluated,
+          })}
+        </p>
+      )}
+      {confirming && (
+        <div
+          className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50"
+          onClick={() => !mut.isPending && setConfirming(false)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-2xl shadow-xl border border-slate-200 p-6 w-full max-w-sm"
+          >
+            <h2 className="text-lg font-semibold tracking-tight mb-3 text-slate-900">
+              {t('snapshots.standards.recompute_confirm_title')}
+            </h2>
+            <p className="text-sm text-slate-700 mb-5">
+              {t('snapshots.standards.recompute_confirm_body')}
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setConfirming(false)}
+                disabled={mut.isPending}
+                className="inline-flex items-center px-4 py-2 rounded-lg bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-medium shadow-sm disabled:opacity-60"
+              >
+                {t('common.cancel')}
+              </button>
+              <button
+                type="button"
+                onClick={() => mut.mutate()}
+                disabled={mut.isPending}
+                className="inline-flex items-center px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-sm font-medium shadow-sm disabled:bg-slate-300"
+              >
+                {mut.isPending
+                  ? t('snapshots.standards.recompute_running')
+                  : t('snapshots.standards.recompute_btn')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   )
 }
 

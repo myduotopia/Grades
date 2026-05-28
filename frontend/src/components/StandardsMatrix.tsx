@@ -6,6 +6,7 @@ import { useMe } from '../hooks/useMe'
 import {
   api,
   ApiError,
+  type StudentBrief,
   type Subject,
 } from '../lib/api'
 
@@ -38,29 +39,48 @@ const DEFAULT_ACADEMIC_KEYS = [
  */
 export function StandardsMatrix({
   classroomId,
+  snapshotId,
+  snapshotStudents,
   readOnly = false,
 }: {
-  classroomId: string
+  /** Live classroom id. Required in live mode; ignored in snapshot mode. */
+  classroomId?: string
+  /** When set, the matrix operates on snapshot_standard rows instead of
+   *  the live student_standard table (issue #160). */
+  snapshotId?: string
+  /** Frozen roster to render in snapshot mode (live `students.list` would
+   *  return the current class roster, not the snapshot's frozen one). */
+  snapshotStudents?: StudentBrief[]
   readOnly?: boolean
 }) {
   const { t } = useTranslation()
   const qc = useQueryClient()
+  const isSnapshotMode = !!snapshotId
 
   const studentsQ = useQuery({
     queryKey: ['students', classroomId],
-    queryFn: () => api.students.list(classroomId),
+    queryFn: () => api.students.list(classroomId as string),
+    enabled: !isSnapshotMode && !!classroomId,
   })
   const subjectsQ = useQuery({
     queryKey: ['subjects'],
     queryFn: () => api.subjects.list(),
   })
   const standardsQ = useQuery({
-    queryKey: ['standards', classroomId],
-    queryFn: () => api.students.standards(classroomId),
+    queryKey: isSnapshotMode
+      ? ['snapshot-standards', snapshotId]
+      : ['standards', classroomId],
+    queryFn: () =>
+      isSnapshotMode
+        ? api.snapshots.listStandards(snapshotId as string)
+        : api.students.standards(classroomId as string),
+    enabled: isSnapshotMode ? !!snapshotId : !!classroomId,
   })
   const meQ = useMe()
 
-  const students = studentsQ.data?.data ?? []
+  const students: StudentBrief[] = isSnapshotMode
+    ? (snapshotStudents ?? [])
+    : ((studentsQ.data?.data ?? []) as StudentBrief[])
   const subjects = subjectsQ.data?.data ?? []
   const standards = standardsQ.data?.data ?? []
   const subjectOrder = meQ.data?.subject_order ?? []
@@ -119,6 +139,23 @@ export function StandardsMatrix({
       subjectId: string
       value: number | null
     }): Promise<void> => {
+      if (isSnapshotMode) {
+        if (args.value === null) {
+          await api.snapshots.deleteStandard(
+            snapshotId as string,
+            args.studentId,
+            args.subjectId,
+          )
+          return
+        }
+        await api.snapshots.upsertStandard(
+          snapshotId as string,
+          args.studentId,
+          args.subjectId,
+          args.value,
+        )
+        return
+      }
       if (args.value === null) {
         await api.students.deleteStandard(args.studentId, args.subjectId)
         return
@@ -130,7 +167,11 @@ export function StandardsMatrix({
       )
     },
     onSuccess: () =>
-      qc.invalidateQueries({ queryKey: ['standards', classroomId] }),
+      qc.invalidateQueries({
+        queryKey: isSnapshotMode
+          ? ['snapshot-standards', snapshotId]
+          : ['standards', classroomId],
+      }),
     onError: (err) => {
       setSaveErr(
         err instanceof ApiError && err.body?.message
@@ -198,7 +239,7 @@ export function StandardsMatrix({
     <div className="space-y-3">
       <div className="flex items-center gap-2 text-sm text-slate-500">
         <span>{t('standards.hint')}</span>
-        {!readOnly && selected.size > 0 && (
+        {!readOnly && !isSnapshotMode && selected.size > 0 && (
           <button
             onClick={() => setBatchOpen(true)}
             className={PRIMARY_BTN + ' ml-auto'}
@@ -208,19 +249,19 @@ export function StandardsMatrix({
         )}
       </div>
 
-      {studentsQ.isLoading && (
+      {(!isSnapshotMode && studentsQ.isLoading) && (
         <div className="text-center text-slate-400 py-12">
           {t('common.loading')}
         </div>
       )}
 
-      {!studentsQ.isLoading && students.length === 0 && (
+      {!(!isSnapshotMode && studentsQ.isLoading) && students.length === 0 && (
         <div className="bg-white border border-slate-200 rounded-xl p-8 text-center text-sm text-slate-500">
           {t('standards.empty_roster')}
         </div>
       )}
 
-      {!studentsQ.isLoading && students.length > 0 && (
+      {!(!isSnapshotMode && studentsQ.isLoading) && students.length > 0 && (
         <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
@@ -326,7 +367,7 @@ export function StandardsMatrix({
         <p className="text-sm text-rose-600">{saveErr}</p>
       )}
 
-      {batchOpen && (
+      {batchOpen && classroomId && (
         <BatchApplyModal
           classroomId={classroomId}
           selectedStudentIds={Array.from(selected)}

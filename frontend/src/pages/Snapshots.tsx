@@ -122,6 +122,9 @@ export function Snapshots() {
                 <th className="px-4 py-3 text-left font-medium">
                   {t('snapshots.col.label')}
                 </th>
+                <th className="px-4 py-3 text-left font-medium">
+                  {t('snapshots.col.items')}
+                </th>
                 <th className="px-4 py-3 text-right font-medium w-24"></th>
               </tr>
             </thead>
@@ -142,6 +145,13 @@ export function Snapshots() {
                     )}
                   </td>
                   <td className="px-4 py-2.5 text-slate-700">{s.name}</td>
+                  <td className="px-4 py-2.5 text-slate-600 text-xs max-w-md">
+                    {s.item_names.length === 0 ? (
+                      <span className="text-slate-400">—</span>
+                    ) : (
+                      s.item_names.join('、')
+                    )}
+                  </td>
                   <td className="px-4 py-2.5 text-right">
                     <Link
                       to={`/snapshots/${s.id}/grades`}

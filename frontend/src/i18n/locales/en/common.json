@@ -591,7 +591,18 @@
     "col": {
       "archived_at": "Archived at",
       "class": "Class",
-      "label": "Name"
+      "label": "Name",
+      "items": "Items"
+    },
+    "standards": {
+      "title": "Frozen thresholds (editable)",
+      "hint": "These are the thresholds at archive time. Edits here don't change the live classroom's thresholds. Click 「Recompute points」 to re-apply auto-awards within this archive using the updated thresholds.",
+      "recompute_btn": "Recompute points by threshold",
+      "recompute_btn_disabled_tooltip": "This archive has no thresholds to apply",
+      "recompute_confirm_title": "Recompute archived points?",
+      "recompute_confirm_body": "Re-applies auto-awards within this archive using its current thresholds. Manual point records are not affected.",
+      "recompute_result": "Done: +{{awarded}} awarded, -{{revoked}} revoked, {{unchanged}} unchanged ({{total}} grades evaluated).",
+      "recompute_running": "Computing…"
     }
   }
 }

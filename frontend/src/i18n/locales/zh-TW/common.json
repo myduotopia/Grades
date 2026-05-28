@@ -591,7 +591,18 @@
     "col": {
       "archived_at": "封存時間",
       "class": "班級",
-      "label": "名稱"
+      "label": "名稱",
+      "items": "段考項目"
+    },
+    "standards": {
+      "title": "封存時的標準分（可修改）",
+      "hint": "這份標準分是封存當下複製過來的，跟主班級頁的標準分各自獨立。修改後可按「依據標準分重新計算點數」重算這份封存的自動發點。",
+      "recompute_btn": "依據標準分重新計算點數",
+      "recompute_btn_disabled_tooltip": "這份封存沒有任何標準分可以套用",
+      "recompute_confirm_title": "確認重新計算點數",
+      "recompute_confirm_body": "將依據目前的標準分，重新計算這份封存內所有自動發點。手動加減點數不受影響。",
+      "recompute_result": "已重算：發點 {{awarded}}、收回 {{revoked}}、不變 {{unchanged}}（共 {{total}} 筆成績）",
+      "recompute_running": "計算中…"
     }
   }
 }
