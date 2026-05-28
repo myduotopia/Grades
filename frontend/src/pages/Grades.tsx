@@ -833,10 +833,10 @@ function BySubjectView({
           <table className="min-w-full text-sm">
             <thead className="bg-slate-50 border-b border-slate-200 text-slate-600">
               <tr>
-                <th className="px-4 py-3 text-left font-medium">
+                <th className="px-4 py-3 text-left font-medium w-16">
                   {t('students.col.seat')}
                 </th>
-                <th className="px-4 py-3 text-left font-medium">
+                <th className="px-4 py-3 text-left font-medium min-w-[6rem] max-w-[10rem]">
                   {t('students.col.name')}
                 </th>
                 {items.map((i) => {
@@ -848,7 +848,7 @@ function BySubjectView({
                   return (
                     <th
                       key={i.id}
-                      className={`px-3 py-3 text-left font-medium ${
+                      className={`px-3 py-3 text-left font-medium max-w-[8rem] ${
                         isEditing ? 'bg-amber-50' : catBg
                       }`}
                       title={`${t(`category.${i.category_system_key}`)} · ${i.name}`}
@@ -936,10 +936,10 @@ function BySubjectView({
                   key={s.id}
                   className="border-b border-slate-100 last:border-b-0"
                 >
-                  <td className="px-4 py-2.5 text-slate-900 font-medium">
+                  <td className="px-4 py-2.5 text-slate-900 font-medium w-16">
                     {s.seat_number}
                   </td>
-                  <td className="px-4 py-2.5 text-slate-700">
+                  <td className="px-4 py-2.5 text-slate-700 min-w-[6rem] max-w-[10rem] truncate">
                     {s.name || (
                       <span className="text-slate-400">—</span>
                     )}
@@ -952,7 +952,7 @@ function BySubjectView({
                       return (
                         <td
                           key={i.id}
-                          className={`px-3 py-2.5 text-slate-700 ${catBg}`}
+                          className={`px-3 py-2.5 text-slate-700 max-w-[8rem] truncate ${catBg}`}
                         >
                           {formatScore(lookup[s.id]?.[i.id])}
                         </td>
