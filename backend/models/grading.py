@@ -226,6 +226,47 @@ class SubjectPointRule(Base, UserScopedMixin, TimestampMixin):
     )
 
 
+class PointReset(Base, UserScopedMixin):
+    """Per-student "zero out" marker (issue #165).
+
+    Previously, the reset endpoint appended a negative-sum PointRecord to
+    cancel the student's current total. That broke whenever the past
+    PointRecords later changed (grade edits, threshold recompute, manual
+    delete) because the cancellation amount was frozen at reset time.
+
+    A PointReset is instead a marker: point-sum queries treat `reset_at`
+    as the new floor — only PointRecords created strictly after the latest
+    reset (within the semester window) count toward the student's running
+    total. Past records remain visible in the history table but are
+    partitioned visually + numerically by the marker.
+    """
+    __tablename__ = "point_reset"
+
+    id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        primary_key=True,
+        server_default=text("gen_random_uuid()"),
+    )
+    student_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("student.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    reset_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=text("now()"),
+        index=True,
+    )
+    reason: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=text("now()"),
+    )
+
+
 class PointRecord(Base, UserScopedMixin):
     """Awarded points history. Total = SUM(points) per student.
 

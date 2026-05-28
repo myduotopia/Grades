@@ -8,7 +8,7 @@ The "weighted total" math mirrors what the by-student view on
 """
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from typing import Annotated, Literal
 from uuid import UUID
 
@@ -20,12 +20,13 @@ from auth import require_user_id
 from database import get_db
 from models.classroom import Classroom, Student
 from models.curriculum import Category, Item, Semester, Subject, SubjectCategoryWeight
-from models.grading import Grade, PointRecord, StudentStandard
+from models.grading import Grade, PointRecord, PointReset, StudentStandard
 from routers.grades import AUTO_AWARD_CATEGORY_KEYS
 from schemas import (
     StudentDetailOut,
     StudentGradeRow,
     StudentGradesView,
+    StudentPointResetRow,
     StudentPointRow,
     StudentPointsView,
     StudentSubjectSummary,
@@ -82,28 +83,47 @@ def _semester_label(sem: Semester) -> str:
     return f"{sem.academic_year}-{sem.term}"
 
 
+def _latest_reset_at(
+    db: Session, user_id: UUID, student_id: UUID, start: date
+) -> datetime | None:
+    """Most-recent PointReset.reset_at for this student since `start`, or
+    None. Aligns with the same helper in routers/points.py — duplicated
+    here to keep this module independent (#165)."""
+    return (
+        db.query(func.max(PointReset.reset_at))
+        .filter(
+            PointReset.user_id == user_id,
+            PointReset.student_id == student_id,
+            func.date(PointReset.reset_at) >= start,
+        )
+        .scalar()
+    )
+
+
 def _points_in_window(
     db: Session,
     user_id: UUID,
     student_id: UUID,
     start: date,
 ) -> int:
-    """Sum a student's points from `start` onward.
+    """Sum a student's points from `start` onward, with the latest reset
+    (if any) acting as a moving floor. Records at or before the reset
+    moment don't count toward the running total (#165).
 
-    No upper bound: if the current semester's end_date has passed but no new
-    semester exists yet, points entered today still count for the current
-    semester. Mirrors the same choice in points.py (see #97 / #93 / #95).
+    No upper bound: if the current semester's end_date has passed but no
+    new semester exists yet, points entered today still count for the
+    current semester. Mirrors the same choice in points.py (see #97 / #93).
     """
-    total = (
-        db.query(func.coalesce(func.sum(PointRecord.points), 0))
-        .filter(
-            PointRecord.user_id == user_id,
-            PointRecord.student_id == student_id,
-            func.date(PointRecord.created_at) >= start,
-        )
-        .scalar()
+    last_reset = _latest_reset_at(db, user_id, student_id, start)
+    q = db.query(func.coalesce(func.sum(PointRecord.points), 0)).filter(
+        PointRecord.user_id == user_id,
+        PointRecord.student_id == student_id,
     )
-    return int(total or 0)
+    if last_reset is not None:
+        q = q.filter(PointRecord.created_at > last_reset)
+    else:
+        q = q.filter(func.date(PointRecord.created_at) >= start)
+    return int(q.scalar() or 0)
 
 
 @router.get("/api/students/{student_id}", response_model=StudentDetailOut)
@@ -289,57 +309,71 @@ def get_student_points(
             data=[],
         )
 
-    base = db.query(PointRecord).filter(
-        PointRecord.user_id == user_id,
-        PointRecord.student_id == student.id,
-        func.date(PointRecord.created_at) >= sem.start_date,
+    # Pull every record in the semester window once (unfiltered) so we can
+    # compute reset-aware running balances in Python — the SQL window-fn
+    # version can't easily restart partitions at PointReset boundaries.
+    all_records = (
+        db.query(PointRecord)
+        .filter(
+            PointRecord.user_id == user_id,
+            PointRecord.student_id == student.id,
+            func.date(PointRecord.created_at) >= sem.start_date,
+        )
+        .order_by(PointRecord.created_at.asc(), PointRecord.id.asc())
+        .all()
     )
-    filtered = base if reason is None else base.filter(PointRecord.reason == reason)
+    reset_rows = (
+        db.query(PointReset)
+        .filter(
+            PointReset.user_id == user_id,
+            PointReset.student_id == student.id,
+            func.date(PointReset.reset_at) >= sem.start_date,
+        )
+        .order_by(PointReset.reset_at.asc(), PointReset.id.asc())
+        .all()
+    )
 
-    record_count = filtered.count()
+    # Walk records + resets together in chronological order. Maintain a
+    # running balance that snaps back to 0 each time a reset boundary is
+    # crossed. Records share the timestamp ≤ reset_at → still pre-reset.
+    balance_by_record: dict[UUID, int] = {}
+    balance_before_by_reset: dict[UUID, int] = {}
+    running = 0
+    reset_idx = 0
+    for rec in all_records:
+        # Apply any resets whose moment is ≤ this record's timestamp.
+        while (
+            reset_idx < len(reset_rows)
+            and reset_rows[reset_idx].reset_at <= rec.created_at
+        ):
+            balance_before_by_reset[reset_rows[reset_idx].id] = running
+            running = 0
+            reset_idx += 1
+        running += int(rec.points)
+        balance_by_record[rec.id] = running
+    # Resets that come after all records (unusual but possible — e.g.
+    # teacher reset with no awards since) still need a balance_before.
+    while reset_idx < len(reset_rows):
+        balance_before_by_reset[reset_rows[reset_idx].id] = running
+        running = 0
+        reset_idx += 1
+
+    # Filter + sort + paginate the records (resets are returned unfiltered).
+    filtered = all_records if reason is None else [
+        r for r in all_records if r.reason == reason
+    ]
+    record_count = len(filtered)
     total_pages = (record_count + page_size - 1) // page_size if record_count else 0
+    ordered = (
+        sorted(filtered, key=lambda r: (r.created_at, r.id))
+        if sort == "oldest"
+        else sorted(filtered, key=lambda r: (r.created_at, r.id), reverse=True)
+    )
+    start_idx = (page - 1) * page_size
+    page_rows = ordered[start_idx:start_idx + page_size]
 
-    # Running balance per row: cumulative sum of `points` over the filtered
-    # set in date-ascending order (id breaks ties for same-timestamp writes).
-    # We build it as a subquery so we can paginate / sort the *outer* query
-    # however we want without affecting the cumulative calculation.
-    balance_after = (
-        func.sum(PointRecord.points)
-        .over(
-            order_by=[PointRecord.created_at.asc(), PointRecord.id.asc()],
-            rows=(None, 0),  # unbounded preceding → current row
-        )
-        .label("balance_after")
-    )
-    sub = (
-        filtered.with_entities(
-            PointRecord.id.label("id"),
-            PointRecord.points.label("points"),
-            PointRecord.reason.label("reason"),
-            PointRecord.source_grade_id.label("source_grade_id"),
-            PointRecord.created_at.label("created_at"),
-            balance_after,
-        )
-        .subquery()
-    )
-    outer_order = sub.c.created_at.asc() if sort == "oldest" else sub.c.created_at.desc()
-    rows = (
-        db.query(sub)
-        .order_by(outer_order, sub.c.id.asc())
-        .offset((page - 1) * page_size)
-        .limit(page_size)
-        .all()
-    )
-
-    # Distinct reasons across the unfiltered window so the dropdown stays
-    # stable as the user filters.
-    reason_rows = (
-        base.with_entities(PointRecord.reason)
-        .distinct()
-        .order_by(PointRecord.reason.asc())
-        .all()
-    )
-    reasons = [r[0] for r in reason_rows]
+    # Distinct reasons across the unfiltered window.
+    reasons = sorted({r.reason for r in all_records})
 
     total = _points_in_window(db, user_id, student.id, sem.start_date)
     return StudentPointsView(
@@ -357,8 +391,17 @@ def get_student_points(
                 reason=r.reason,
                 source_grade_id=r.source_grade_id,
                 created_at=r.created_at,
-                balance_after=int(r.balance_after or 0),
+                balance_after=balance_by_record.get(r.id, 0),
             )
-            for r in rows
+            for r in page_rows
+        ],
+        resets=[
+            StudentPointResetRow(
+                id=r.id,
+                reset_at=r.reset_at,
+                reason=r.reason,
+                balance_before=balance_before_by_reset.get(r.id, 0),
+            )
+            for r in reset_rows
         ],
     )

@@ -245,6 +245,14 @@ export interface StudentPointRow {
   balance_after: number
 }
 
+export interface StudentPointResetRow {
+  id: string
+  reset_at: string
+  reason: string
+  // Running balance immediately BEFORE the marker — the amount zeroed.
+  balance_before: number
+}
+
 export interface StudentPointsView {
   semester_id: string | null
   total: number
@@ -254,6 +262,9 @@ export interface StudentPointsView {
   total_pages: number
   reasons: string[]
   data: StudentPointRow[]
+  // Reset markers in the semester window (issue #165). Interleave with
+  // `data` by date when rendering.
+  resets: StudentPointResetRow[]
 }
 
 export interface PointResetResult {

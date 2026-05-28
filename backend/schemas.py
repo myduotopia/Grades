@@ -379,11 +379,25 @@ class StudentPointRow(BaseModel):
     balance_after: int = 0
 
 
+class StudentPointResetRow(BaseModel):
+    """Reset marker surfaced in the point-history view (issue #165). The
+    UI renders these as a divider between the records they zero out; the
+    running balance restarts at 0 immediately after the marker."""
+    id: UUID
+    reset_at: datetime
+    reason: str
+    # Running balance immediately BEFORE the marker — i.e. the amount the
+    # reset zeroed out. Surfaces "歸零 X 點" in the UI without the
+    # frontend having to recompute it.
+    balance_before: int
+
+
 class StudentPointsView(BaseModel):
     semester_id: UUID | None
-    # `total` = sum of all point records in the semester window, NOT affected
-    # by the current `reason` filter. `record_count` = number of rows that
-    # match the active filter; that's what drives pagination.
+    # `total` = sum of records AFTER the latest reset within the semester
+    # window (issue #165). Past records pre-reset are still in `data` for
+    # historical context but don't contribute to `total`. NOT affected by
+    # the current `reason` filter.
     total: int
     record_count: int = 0
     page: int = 1
@@ -394,6 +408,9 @@ class StudentPointsView(BaseModel):
     # page's reasons.
     reasons: list[str] = []
     data: list[StudentPointRow]
+    # Reset markers within the semester window (#165). Not paginated —
+    # typically few per semester. Frontend interleaves into `data` by date.
+    resets: list[StudentPointResetRow] = []
 
 
 class StudentCreate(BaseModel):
