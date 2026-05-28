@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useParams, useSearchParams } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { ArchivedSemesterBanner } from '../components/ArchivedSemesterBanner'
 import { useSemesters } from '../hooks/useSemesters'
@@ -10,6 +10,7 @@ import { PageHeader } from '../layout/PageHeader'
 import {
   api,
   type StudentGradeRow,
+  type StudentPointRow,
   type StudentPointsView,
   type StudentSubjectSummary,
 } from '../lib/api'
@@ -145,9 +146,11 @@ export function StudentDetail() {
             </span>
           </h2>
           <PointHistorySection
+            studentId={studentId}
             view={pointsView}
             sort={pointsSort}
             reason={pointsReason}
+            isArchived={isArchived}
             onSortChange={(v) => {
               setPointsSort(v)
               setPointsPage(1)
@@ -266,25 +269,52 @@ function GradeHistoryTable({ rows }: { rows: StudentGradeRow[] }) {
 }
 
 interface PointHistorySectionProps {
+  studentId: string
   view: StudentPointsView
   sort: 'newest' | 'oldest'
   reason: string
   page: number
+  isArchived: boolean
   onSortChange: (v: 'newest' | 'oldest') => void
   onReasonChange: (v: string) => void
   onPageChange: (page: number) => void
 }
 
 function PointHistorySection({
+  studentId,
   view,
   sort,
   reason,
   page,
+  isArchived,
   onSortChange,
   onReasonChange,
   onPageChange,
 }: PointHistorySectionProps) {
   const { t } = useTranslation()
+  const queryClient = useQueryClient()
+  const [pendingDelete, setPendingDelete] = useState<StudentPointRow | null>(
+    null,
+  )
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+  const showActionsCol = !isArchived
+
+  const deleteMut = useMutation({
+    mutationFn: (pointId: string) =>
+      api.points.deleteStudentRecord(studentId, pointId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['student-points', studentId] })
+      queryClient.invalidateQueries({ queryKey: ['student-detail', studentId] })
+      setPendingDelete(null)
+      setDeleteError(null)
+    },
+    onError: (err: unknown) => {
+      const msg =
+        err instanceof Error ? err.message : t('common.error_generic')
+      setDeleteError(msg)
+    },
+  })
+
   const totalPages = view.total_pages
   const hasRows = view.data.length > 0
   return (
@@ -342,6 +372,11 @@ function PointHistorySection({
                   <th className="px-4 py-3 text-left font-medium">
                     {t('student_detail.col.reason')}
                   </th>
+                  {showActionsCol && (
+                    <th className="px-4 py-3 text-right font-medium w-20">
+                      {t('student_detail.col.actions')}
+                    </th>
+                  )}
                 </tr>
               </thead>
               <tbody>
@@ -368,12 +403,49 @@ function PointHistorySection({
                     <td className="px-4 py-2 text-slate-700">
                       {p.reason || <span className="text-slate-400">—</span>}
                     </td>
+                    {showActionsCol && (
+                      <td className="px-4 py-2 text-right">
+                        {p.source_grade_id === null ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDeleteError(null)
+                              setPendingDelete(p)
+                            }}
+                            className="text-xs text-rose-600 hover:text-rose-800 hover:underline"
+                          >
+                            {t('common.delete')}
+                          </button>
+                        ) : (
+                          <span
+                            className="text-xs text-slate-300"
+                            title={t('student_detail.delete_auto_tooltip')}
+                          >
+                            —
+                          </span>
+                        )}
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
         </div>
+      )}
+      {pendingDelete && (
+        <DeletePointConfirm
+          row={pendingDelete}
+          pending={deleteMut.isPending}
+          error={deleteError}
+          onCancel={() => {
+            if (!deleteMut.isPending) {
+              setPendingDelete(null)
+              setDeleteError(null)
+            }
+          }}
+          onConfirm={() => deleteMut.mutate(pendingDelete.id)}
+        />
       )}
       {totalPages > 1 && (
         <div className="flex items-center justify-center gap-3 mt-3 text-sm text-slate-600">
@@ -402,5 +474,72 @@ function PointHistorySection({
         </div>
       )}
     </>
+  )
+}
+
+function DeletePointConfirm({
+  row,
+  pending,
+  error,
+  onCancel,
+  onConfirm,
+}: {
+  row: StudentPointRow
+  pending: boolean
+  error: string | null
+  onCancel: () => void
+  onConfirm: () => void
+}) {
+  const { t } = useTranslation()
+  const delta = row.points >= 0 ? `+${row.points}` : String(row.points)
+  return (
+    <div
+      className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50"
+      onClick={onCancel}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="bg-white rounded-2xl shadow-xl border border-slate-200 p-6 w-full max-w-sm"
+      >
+        <h2 className="text-lg font-semibold tracking-tight mb-3 text-slate-900">
+          {t('student_detail.delete_modal.title')}
+        </h2>
+        <p className="text-sm text-slate-700 mb-2">
+          {t('student_detail.delete_modal.body', {
+            delta,
+            reason: row.reason || '—',
+            date: row.created_at.slice(0, 10),
+          })}
+        </p>
+        <p className="text-xs text-slate-500 mb-4">
+          {t('student_detail.delete_modal.warning')}
+        </p>
+        {error && (
+          <div className="text-xs text-rose-600 bg-rose-50 border border-rose-200 rounded px-3 py-2 mb-3">
+            {error}
+          </div>
+        )}
+        <div className="flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={pending}
+            className="inline-flex items-center px-4 py-2 rounded-lg bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-medium shadow-sm transition-colors disabled:opacity-60"
+          >
+            {t('common.cancel')}
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={pending}
+            className="inline-flex items-center px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white text-sm font-medium shadow-sm transition-colors disabled:bg-slate-300 disabled:cursor-not-allowed"
+          >
+            {pending
+              ? t('common.saving')
+              : t('student_detail.delete_modal.confirm')}
+          </button>
+        </div>
+      </div>
+    </div>
   )
 }
