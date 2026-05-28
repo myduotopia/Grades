@@ -569,7 +569,11 @@ def _commit_grades(
                 continue
             existing_g = (
                 db.query(Grade)
-                .filter(Grade.item_id == item.id, Grade.student_id == r.student_id)
+                .filter(
+                    Grade.item_id == item.id,
+                    Grade.student_id == r.student_id,
+                    Grade.snapshot_id.is_(None),  # import targets live (#169)
+                )
                 .one_or_none()
             )
             if existing_g is not None:
@@ -846,7 +850,7 @@ def deactivate_classroom_item(
     Grades with score = 0 don't block (they're "no real result")."""
     _get_owned_classroom(db, user_id, classroom_id)
 
-    has_real_score = (
+    grade_q = (
         db.query(Grade.id)
         .join(Student, Student.id == Grade.student_id)
         .filter(
@@ -854,9 +858,12 @@ def deactivate_classroom_item(
             Grade.item_id == item_id,
             Grade.score > 0,
         )
-        .first()
-        is not None
     )
+    if snapshot_id is None:
+        grade_q = grade_q.filter(Grade.snapshot_id.is_(None))
+    else:
+        grade_q = grade_q.filter(Grade.snapshot_id == snapshot_id)
+    has_real_score = grade_q.first() is not None
     if has_real_score:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -1014,7 +1021,7 @@ def get_classroom_grades(
         for i, activated_at in item_rows
     ]
 
-    # Grades for those items × this roster
+    # Grades for those items × this roster — live bucket only (#169)
     item_ids = [i.id for i in items]
     grades: list[Grade] = []
     if item_ids and student_ids:
@@ -1023,6 +1030,7 @@ def get_classroom_grades(
             .filter(
                 Grade.item_id.in_(item_ids),
                 Grade.student_id.in_(student_ids),
+                Grade.snapshot_id.is_(None),
             )
             .all()
         )
@@ -1176,6 +1184,29 @@ def create_snapshot(
                     threshold=st.threshold,
                 )
             )
+
+    # Move live grades into the snapshot bucket (issue #169). Without this,
+    # the item's grade rows would stay snapshot_id=NULL after archive; if
+    # the teacher then re-activates the same item for a re-test, the new
+    # live ClassroomItem would surface those old grades. By stamping
+    # snapshot_id=snap.id we leave the live bucket empty for that item ×
+    # student pair, so re-activation starts fresh.
+    archived_item_ids = [ci.item_id for ci in active]
+    roster_ids = [s.id for s in current_students]
+    if archived_item_ids and roster_ids:
+        (
+            db.query(Grade)
+            .filter(
+                Grade.user_id == user_id,
+                Grade.snapshot_id.is_(None),
+                Grade.item_id.in_(archived_item_ids),
+                Grade.student_id.in_(roster_ids),
+            )
+            .update(
+                {Grade.snapshot_id: snap.id},
+                synchronize_session=False,
+            )
+        )
 
     for ci in active:
         ci.snapshot_id = snap.id
@@ -1387,6 +1418,7 @@ def get_snapshot_grades(
             .filter(
                 Grade.item_id.in_(item_ids),
                 Grade.student_id.in_(student_ids),
+                Grade.snapshot_id == snap.id,  # snapshot bucket only (#169)
             )
             .all()
         )
@@ -1648,6 +1680,7 @@ def recompute_snapshot_points(
         .filter(
             Grade.item_id.in_(item_ids),
             Grade.student_id.in_(roster_ids),
+            Grade.snapshot_id == snap.id,  # snapshot bucket only (#169)
         )
         .all()
     )

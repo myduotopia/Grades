@@ -45,6 +45,16 @@ class Grade(Base, UserScopedMixin, TimestampMixin):
         nullable=False,
         index=True,
     )
+    # Snapshot partition (issue #169). NULL = live working row for the
+    # main classroom bucket; non-NULL = frozen copy belonging to that
+    # GradeSnapshot. UNIQUE allows one live row + N snapshot rows per
+    # (item, student) — PG treats NULL as distinct.
+    snapshot_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("grade_snapshot.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
     score: Mapped[Decimal] = mapped_column(Numeric(4, 1), nullable=False)
     source: Mapped[str] = mapped_column(String(32), nullable=False, default="manual")
     source_external_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -58,7 +68,10 @@ class Grade(Base, UserScopedMixin, TimestampMixin):
     )
 
     __table_args__ = (
-        UniqueConstraint("item_id", "student_id", name="uq_grade_item_student"),
+        UniqueConstraint(
+            "item_id", "student_id", "snapshot_id",
+            name="uq_grade_item_student_snapshot",
+        ),
         CheckConstraint("score >= 0 AND score <= 100", name="ck_grade_score_range"),
         CheckConstraint(
             f"source IN {SOURCE_VALUES!r}",

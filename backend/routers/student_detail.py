@@ -179,6 +179,7 @@ def get_student_grades(
         .filter(
             Grade.student_id == student.id,
             Grade.user_id == user_id,
+            Grade.snapshot_id.is_(None),  # live transcript view (#169)
             Item.semester_id == sem.id,
         )
         .order_by(Grade.created_at.desc())
