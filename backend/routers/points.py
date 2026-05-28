@@ -335,6 +335,64 @@ def add_classroom_points_batch(
     return ClassPointsBatchResult(written=len(students))
 
 
+# ---------- Manual delete (#158) ----------
+
+@router.delete(
+    "/api/students/{student_id}/points/{point_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_student_point(
+    student_id: UUID,
+    point_id: UUID,
+    user_id: Annotated[UUID, Depends(require_user_id)],
+    db: Annotated[Session, Depends(get_db)],
+) -> None:
+    """Delete a single manual point record. Auto-award records (those tied to
+    a Grade via source_grade_id) cannot be deleted here — the teacher should
+    fix the grade instead, otherwise the next sync would just re-create them.
+    """
+    student = (
+        db.query(Student)
+        .filter(Student.id == student_id, Student.user_id == user_id)
+        .one_or_none()
+    )
+    if student is None:
+        raise _not_found("student")
+    sem = _get_current_semester(db, user_id)  # 403 if no active semester
+    record = (
+        db.query(PointRecord)
+        .filter(
+            PointRecord.id == point_id,
+            PointRecord.student_id == student_id,
+            PointRecord.user_id == user_id,
+        )
+        .one_or_none()
+    )
+    if record is None:
+        raise _not_found("point_record")
+    if record.source_grade_id is not None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "error": {
+                    "code": "FORBIDDEN",
+                    "message_key": "errors.points.cannot_delete_auto",
+                    "message": (
+                        "Auto-awarded point records cannot be deleted; "
+                        "edit the underlying grade instead."
+                    ),
+                }
+            },
+        )
+    # Block deleting records that belong to an archived semester — the
+    # archived banner already prevents the UI from offering the button, but
+    # enforce it server-side too.
+    if record.created_at.date() < sem.start_date:
+        raise _archived_forbidden()
+    db.delete(record)
+    db.commit()
+
+
 # ---------- Reset to zero (#146) ----------
 
 _DEFAULT_RESET_REASON = "歸零"

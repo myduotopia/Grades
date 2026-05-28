@@ -628,6 +628,11 @@ export const api = {
         `/api/students/${studentId}/points`,
         { method: 'POST', body: JSON.stringify(body) },
       ),
+    deleteStudentRecord: (studentId: string, pointId: string) =>
+      request<void>(
+        `/api/students/${studentId}/points/${pointId}`,
+        { method: 'DELETE' },
+      ),
     resetStudent: (studentId: string, body: { reason?: string } = {}) =>
       request<PointResetResult>(
         `/api/students/${studentId}/points/reset`,
