@@ -6,19 +6,30 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useClassrooms } from '../hooks/useClassrooms'
 import { PageContainer } from '../layout/PageContainer'
 import { PageHeader } from '../layout/PageHeader'
-import { api, type HomeAlertListItem } from '../lib/api'
+import { api } from '../lib/api'
 import { classroomDisplayName } from '../lib/classroomFormat'
 
-type SortKey = 'seat' | 'total_points' | 'met_count' | 'zero_score_count'
+type SortKey = 'seat' | 'category' | 'item'
 type SortDir = 'asc' | 'desc'
+
+interface MissingRow {
+  student_id: string
+  classroom_id: string
+  classroom_grade: number
+  classroom_name: string
+  seat_number: number
+  name: string | null
+  category_system_key: string
+  item_name: string
+}
 
 export function Alerts() {
   const { t, i18n } = useTranslation()
   const qc = useQueryClient()
   const [classroomId, setClassroomId] = useState<string>('')
   const [nameFilter, setNameFilter] = useState<string>('')
-  const [sortKey, setSortKey] = useState<SortKey>('zero_score_count')
-  const [sortDir, setSortDir] = useState<SortDir>('desc')
+  const [sortKey, setSortKey] = useState<SortKey>('seat')
+  const [sortDir, setSortDir] = useState<SortDir>('asc')
 
   const classroomsQ = useClassrooms()
   const listQ = useQuery({
@@ -32,18 +43,38 @@ export function Alerts() {
     },
   })
 
-  // Issue #161: visiting the page clears the badge counter — record the
-  // moment once per mount so future-flipped 0s relight the badge.
+  // Visiting the page clears the badge counter (#161).
   useEffect(() => {
     markViewed.mutate()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const rows = listQ.data?.data ?? []
+  // Flatten: one row per (student, missing item) so the teacher sees every
+  // unsubmitted record. Filtering by name brings up that student's full
+  // set of missing items.
+  const allRows: MissingRow[] = useMemo(() => {
+    const out: MissingRow[] = []
+    for (const s of listQ.data?.data ?? []) {
+      for (const z of s.zero_score_items) {
+        out.push({
+          student_id: s.student_id,
+          classroom_id: s.classroom_id,
+          classroom_grade: s.classroom_grade,
+          classroom_name: s.classroom_name,
+          seat_number: s.seat_number,
+          name: s.name,
+          category_system_key: z.category_system_key,
+          item_name: z.item_name,
+        })
+      }
+    }
+    return out
+  }, [listQ.data])
+
   const names = useMemo(() => {
     const seen = new Set<string>()
     const out: string[] = []
-    for (const r of rows) {
+    for (const r of allRows) {
       const n = r.name || ''
       if (!seen.has(n)) {
         seen.add(n)
@@ -51,13 +82,14 @@ export function Alerts() {
       }
     }
     return out.sort()
-  }, [rows])
+  }, [allRows])
 
   const filtered = useMemo(() => {
     const f = nameFilter
-      ? rows.filter((r) => (r.name || '') === nameFilter)
-      : rows
-    const cmp = (a: HomeAlertListItem, b: HomeAlertListItem) => {
+      ? allRows.filter((r) => (r.name || '') === nameFilter)
+      : allRows
+    const catLabel = (k: string) => t(`category.${k}`)
+    const cmp = (a: MissingRow, b: MissingRow) => {
       if (sortKey === 'seat') {
         if (a.classroom_grade !== b.classroom_grade)
           return a.classroom_grade - b.classroom_grade
@@ -65,19 +97,23 @@ export function Alerts() {
           return a.classroom_name.localeCompare(b.classroom_name)
         return a.seat_number - b.seat_number
       }
-      return a[sortKey] - b[sortKey]
+      if (sortKey === 'category')
+        return catLabel(a.category_system_key).localeCompare(
+          catLabel(b.category_system_key),
+        )
+      return a.item_name.localeCompare(b.item_name)
     }
     const out = [...f].sort(cmp)
     if (sortDir === 'desc') out.reverse()
     return out
-  }, [rows, nameFilter, sortKey, sortDir])
+  }, [allRows, nameFilter, sortKey, sortDir, t])
 
   function toggleSort(key: SortKey) {
     if (sortKey === key) {
       setSortDir((d) => (d === 'desc' ? 'asc' : 'desc'))
     } else {
       setSortKey(key)
-      setSortDir(key === 'seat' ? 'asc' : 'desc')
+      setSortDir('asc')
     }
   }
 
@@ -133,6 +169,9 @@ export function Alerts() {
             ))}
           </select>
         </label>
+        <span className="ml-auto text-xs text-slate-500">
+          {t('alerts.total_count', { count: filtered.length })}
+        </span>
       </div>
 
       {listQ.isLoading ? (
@@ -163,64 +202,49 @@ export function Alerts() {
                     {t('alerts.col.name')}
                   </th>
                   <SortableTh
-                    active={sortKey === 'total_points'}
+                    active={sortKey === 'category'}
                     dir={sortDir}
-                    onClick={() => toggleSort('total_points')}
-                    align="right"
+                    onClick={() => toggleSort('category')}
                   >
-                    {t('alerts.col.points')}
+                    {t('alerts.col.category')}
                   </SortableTh>
                   <SortableTh
-                    active={sortKey === 'met_count'}
+                    active={sortKey === 'item'}
                     dir={sortDir}
-                    onClick={() => toggleSort('met_count')}
-                    align="right"
+                    onClick={() => toggleSort('item')}
                   >
-                    {t('alerts.col.met')}
-                  </SortableTh>
-                  <SortableTh
-                    active={sortKey === 'zero_score_count'}
-                    dir={sortDir}
-                    onClick={() => toggleSort('zero_score_count')}
-                    align="right"
-                  >
-                    {t('alerts.col.zeros')}
+                    {t('alerts.col.item')}
                   </SortableTh>
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((s) => (
+                {filtered.map((r, idx) => (
                   <tr
-                    key={s.student_id}
+                    key={`${r.student_id}-${r.item_name}-${idx}`}
                     className="border-b border-slate-100 last:border-b-0"
                   >
                     <td className="px-3 py-2 text-slate-700">
                       {classroomDisplayName(
-                        s.classroom_grade,
-                        s.classroom_name,
+                        r.classroom_grade,
+                        r.classroom_name,
                         i18n.language,
                       )}
                     </td>
                     <td className="px-3 py-2 text-slate-500 font-mono tabular-nums">
-                      {s.seat_number}
+                      {r.seat_number}
                     </td>
                     <td className="px-3 py-2">
                       <Link
-                        to={`/students/${s.student_id}`}
+                        to={`/students/${r.student_id}`}
                         className="text-slate-900 hover:text-amber-700"
                       >
-                        {s.name || '—'}
+                        {r.name || '—'}
                       </Link>
                     </td>
-                    <td className="px-3 py-2 text-right font-mono tabular-nums text-amber-700 font-semibold">
-                      {s.total_points}
+                    <td className="px-3 py-2 text-slate-700">
+                      {t(`category.${r.category_system_key}`)}
                     </td>
-                    <td className="px-3 py-2 text-right font-mono tabular-nums text-emerald-700">
-                      {s.met_count}
-                    </td>
-                    <td className="px-3 py-2 text-right font-mono tabular-nums text-rose-600 font-semibold">
-                      {s.zero_score_count}
-                    </td>
+                    <td className="px-3 py-2 text-slate-700">{r.item_name}</td>
                   </tr>
                 ))}
               </tbody>
@@ -237,19 +261,15 @@ function SortableTh({
   active,
   dir,
   onClick,
-  align = 'left',
 }: {
   children: React.ReactNode
   active: boolean
   dir: SortDir
   onClick: () => void
-  align?: 'left' | 'right'
 }) {
   return (
     <th
-      className={`px-3 py-2 font-medium cursor-pointer select-none ${
-        align === 'right' ? 'text-right' : 'text-left'
-      }`}
+      className="px-3 py-2 font-medium cursor-pointer select-none text-left"
       onClick={onClick}
     >
       <span className="inline-flex items-center gap-1">

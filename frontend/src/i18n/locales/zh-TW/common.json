@@ -305,18 +305,18 @@
   },
   "alerts": {
     "title": "學生警示",
-    "subtitle": "目前還在班級主成績頁的 0 分項目。點開學生可進一步處理。",
+    "subtitle": "班級主成績頁目前有 0 分（視為缺交）的紀錄。每一筆缺交都是一列，點學生名進入詳情頁。",
     "tab_all": "全部班級",
     "filter_name_label": "姓名：",
     "filter_name_all": "全部姓名",
-    "empty": "太好了，目前沒有警示。",
+    "total_count": "共 {{count}} 筆缺交",
+    "empty": "太好了，目前沒有缺交。",
     "col": {
       "classroom": "班級",
       "seat": "座號",
       "name": "姓名",
-      "points": "總點數",
-      "met": "達標次數",
-      "zeros": "0分筆數"
+      "category": "類別",
+      "item": "缺交項目"
     }
   },
   "category": {

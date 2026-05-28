@@ -1048,6 +1048,11 @@ export interface HomeTopStudentItem {
   met_count: number
 }
 
+export interface HomeAlertZeroItem {
+  item_name: string
+  category_system_key: string
+}
+
 export interface HomeAlertListItem {
   student_id: string
   classroom_id: string
@@ -1058,4 +1063,5 @@ export interface HomeAlertListItem {
   total_points: number
   met_count: number
   zero_score_count: number
+  zero_score_items: HomeAlertZeroItem[]
 }

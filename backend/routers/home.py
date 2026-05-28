@@ -25,7 +25,7 @@ from sqlalchemy.orm import Session
 from auth import require_user_id
 from database import get_db
 from models.classroom import Classroom, Student
-from models.curriculum import Item, Semester, Subject
+from models.curriculum import Category, Item, Semester, Subject
 from models.grading import Grade, PointRecord, PointReset
 from models.settings import UserSettings
 from schemas import (
@@ -33,6 +33,7 @@ from schemas import (
     HomeAlertList,
     HomeAlertSummary,
     HomeAlertViewedOut,
+    HomeAlertZeroItem,
     HomeClassRankingItem,
     HomeClassRankingList,
     HomeTopStudentItem,
@@ -302,20 +303,30 @@ def alerts_list(
     column-sort parity)."""
     sem = _current_semester(db, user_id)
 
-    zero_q = (
-        db.query(
-            Grade.student_id,
-            func.count(Grade.id).label("zero_score_count"),
-        )
+    # Fetch every 0-score live grade with its item + category so we can
+    # build both the per-student count AND the tooltip-friendly item list
+    # in one round-trip (#161).
+    zero_rows = (
+        db.query(Grade.student_id, Item.name, Category.system_key)
+        .join(Item, Item.id == Grade.item_id)
+        .join(Category, Category.id == Item.category_id)
         .filter(
             Grade.user_id == user_id,
             Grade.snapshot_id.is_(None),
             Grade.score == 0,
         )
-        .group_by(Grade.student_id)
+        .order_by(Item.name.asc())
+        .all()
     )
-    zero_rows = zero_q.all()
-    zero_count_by = {sid: int(n) for sid, n in zero_rows}
+    zero_items_by: dict[UUID, list[HomeAlertZeroItem]] = {}
+    for sid, iname, cat_key in zero_rows:
+        zero_items_by.setdefault(sid, []).append(
+            HomeAlertZeroItem(
+                item_name=iname,
+                category_system_key=cat_key,
+            )
+        )
+    zero_count_by = {sid: len(items) for sid, items in zero_items_by.items()}
     if not zero_count_by:
         return HomeAlertList(data=[])
 
@@ -370,6 +381,7 @@ def alerts_list(
             total_points=total_by.get(s.id, 0),
             met_count=met_by.get(s.id, 0),
             zero_score_count=zero_count_by.get(s.id, 0),
+            zero_score_items=zero_items_by.get(s.id, []),
         )
         for s, c in students
     ]

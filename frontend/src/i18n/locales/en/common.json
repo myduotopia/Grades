@@ -305,18 +305,18 @@
   },
   "alerts": {
     "title": "Student alerts",
-    "subtitle": "Students currently sitting at 0 on a live grade. Click a name to handle it.",
+    "subtitle": "Live grade rows currently at 0 (treated as missing). One row per missing item; click a name to drill in.",
     "tab_all": "All classes",
     "filter_name_label": "Name:",
     "filter_name_all": "All names",
-    "empty": "All clear — no alerts right now.",
+    "total_count": "{{count}} missing in total",
+    "empty": "All clear — nothing missing.",
     "col": {
       "classroom": "Class",
       "seat": "Seat",
       "name": "Name",
-      "points": "Total pts",
-      "met": "Met standard",
-      "zeros": "0-score count"
+      "category": "Category",
+      "item": "Missing item"
     }
   },
   "category": {

@@ -720,6 +720,11 @@ class HomeAlertSummary(BaseModel):
     new_count: int
 
 
+class HomeAlertZeroItem(BaseModel):
+    item_name: str
+    category_system_key: str
+
+
 class HomeAlertListItem(BaseModel):
     student_id: UUID
     classroom_id: UUID
@@ -730,6 +735,10 @@ class HomeAlertListItem(BaseModel):
     total_points: int
     met_count: int
     zero_score_count: int
+    # Which live items the student is currently at 0 on (#161). Drives the
+    # tooltip on the 0-score-count column so the teacher can see exactly
+    # what needs revisiting without leaving the page.
+    zero_score_items: list[HomeAlertZeroItem] = []
 
 
 class HomeAlertList(BaseModel):
