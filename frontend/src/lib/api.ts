@@ -131,7 +131,12 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const text = await res.text()
   const json = text ? JSON.parse(text) : null
   if (!res.ok) {
-    const body: ApiErrorBody | null = json?.error ?? null
+    // FastAPI wraps HTTPException detail in `{"detail": ...}`. Routers
+    // shape that detail as `{"error": {code, message_key, message, details}}`,
+    // but some legacy responses or middleware may surface `{"error": ...}`
+    // at the top level — accept either.
+    const body: ApiErrorBody | null =
+      json?.detail?.error ?? json?.error ?? null
     throw new ApiError(res.status, body)
   }
   return json as T
@@ -504,6 +509,9 @@ export interface GradeItem {
   subject_display_name: string | null
   category_system_key: string
   exam_date: string | null
+  // Issue #159: when this item was activated for the current classroom.
+  // Drives newest-first column order within each category group.
+  activated_at: string | null
 }
 
 export interface GradeEntry {
@@ -575,7 +583,12 @@ async function uploadMultipart<T>(
   const text = await res.text()
   const json = text ? JSON.parse(text) : null
   if (!res.ok) {
-    const body: ApiErrorBody | null = json?.error ?? null
+    // FastAPI wraps HTTPException detail in `{"detail": ...}`. Routers
+    // shape that detail as `{"error": {code, message_key, message, details}}`,
+    // but some legacy responses or middleware may surface `{"error": ...}`
+    // at the top level — accept either.
+    const body: ApiErrorBody | null =
+      json?.detail?.error ?? json?.error ?? null
     throw new ApiError(res.status, body)
   }
   return json as T

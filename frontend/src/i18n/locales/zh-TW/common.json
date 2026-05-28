@@ -551,6 +551,11 @@
     }
   },
   "errors": {
+    "major_exam": {
+      "already_exists": "段考成績項目已存在，請直接編輯",
+      "already_exists_redirect": "段考已存在（{{name}}），已切換到該項目，請直接編輯",
+      "no_grades_with_weight": "段考權重為 {{percent}}%，但本班沒有任何段考成績，未輸入將以 0 分計算。要繼續封存嗎？"
+    },
     "import": {
       "bad_file_type": "檔案必須是 .xlsx 格式",
       "unreadable": "Excel 檔案無法解析",

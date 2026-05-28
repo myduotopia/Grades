@@ -534,6 +534,9 @@ class ItemOut(BaseModel):
     subject_display_name: str | None  # set when subject is a custom one
     category_system_key: str
     exam_date: date | None = None  # placeholder; not yet stored
+    # Moment the item was activated for THIS classroom (issue #159). Drives
+    # the "newest column first within category" ordering in the grades view.
+    activated_at: datetime | None = None
 
 
 class ItemDetailOut(BaseModel):

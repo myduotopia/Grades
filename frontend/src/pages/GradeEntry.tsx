@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import toast from 'react-hot-toast'
 import {
   useMutation,
   useQueries,
@@ -47,6 +48,7 @@ const SELECT_CLS =
  * once /grades grew inline editing — there's no need for a second surface.
  */
 export function GradeEntry() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const qc = useQueryClient()
   const { classroomId } = useParams<{ classroomId: string }>()
@@ -64,6 +66,7 @@ export function GradeEntry() {
     // classroom_item — without this, picking an item via the modal would
     // land on a page that hides the column and the ?edit=<id> deep-link
     // would no-op).
+    let targetItemId = itemId
     try {
       await api.classrooms.activateItem(
         classroomId as string,
@@ -72,13 +75,30 @@ export function GradeEntry() {
       )
       qc.invalidateQueries({ queryKey: ['grades'] })
       qc.invalidateQueries({ queryKey: ['snapshot-grades'] })
-    } catch {
-      // Surface failure indirectly — the destination page will simply not
-      // show the column. Better to navigate anyway than to dead-end.
+    } catch (err) {
+      // Issue #159: trying to activate a second 段考 → 409 with the
+      // existing item's id. Toast it + redirect to the existing item
+      // instead so the teacher lands directly in its edit input.
+      if (
+        err instanceof ApiError &&
+        err.body?.message_key === 'errors.major_exam.already_exists' &&
+        typeof err.body?.details?.existing_item_id === 'string'
+      ) {
+        targetItemId = err.body.details.existing_item_id as string
+        const existingName =
+          (err.body.details.existing_item_name as string) || ''
+        toast.error(
+          t('errors.major_exam.already_exists_redirect', {
+            name: existingName,
+          }),
+        )
+      }
+      // Other failures: navigate anyway — destination page just won't
+      // show the column rather than dead-ending here.
     }
     const dest = snapshotId
-      ? `/snapshots/${snapshotId}/grades?edit=${itemId}`
-      : `/classes/${classroomId}/grades?edit=${itemId}`
+      ? `/snapshots/${snapshotId}/grades?edit=${targetItemId}`
+      : `/classes/${classroomId}/grades?edit=${targetItemId}`
     navigate(dest, { replace: true })
   }
 

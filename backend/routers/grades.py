@@ -714,7 +714,14 @@ def _ensure_activation(
     existence rather than using ON CONFLICT because the underlying
     constraints are partial unique indexes — INSERT ... ON CONFLICT against
     a partial index works in PG but composes awkwardly with the SQLAlchemy
-    layer, and this code path is per-modal-pick (not bulk)."""
+    layer, and this code path is per-modal-pick (not bulk).
+
+    Issue #159: at most one 段考 (major_exam) item can be active in a
+    class's main bucket at a time. Reject the second one with a 409 that
+    names the existing item so the UI can deep-link to its edit input.
+    Snapshots are exempt — they're frozen / historical and can hold any
+    number of items.
+    """
     q = db.query(ClassroomItem.id).filter(
         ClassroomItem.classroom_id == classroom_id,
         ClassroomItem.item_id == item_id,
@@ -725,6 +732,44 @@ def _ensure_activation(
         q = q.filter(ClassroomItem.snapshot_id == snapshot_id)
     if q.first() is not None:
         return
+
+    if snapshot_id is None:
+        item_cat = (
+            db.query(Category.system_key)
+            .join(Item, Item.category_id == Category.id)
+            .filter(Item.id == item_id)
+            .scalar()
+        )
+        if item_cat == "major_exam":
+            existing_major = (
+                db.query(ClassroomItem.item_id, Item.name)
+                .join(Item, Item.id == ClassroomItem.item_id)
+                .join(Category, Category.id == Item.category_id)
+                .filter(
+                    ClassroomItem.classroom_id == classroom_id,
+                    ClassroomItem.snapshot_id.is_(None),
+                    Category.system_key == "major_exam",
+                )
+                .first()
+            )
+            if existing_major is not None:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={
+                        "error": {
+                            "code": "CONFLICT",
+                            "message_key": "errors.major_exam.already_exists",
+                            "message": (
+                                "Major exam already exists for this class — "
+                                "edit the existing one."
+                            ),
+                            "details": {
+                                "existing_item_id": str(existing_major[0]),
+                                "existing_item_name": existing_major[1],
+                            },
+                        }
+                    },
+                )
     db.add(
         ClassroomItem(
             user_id=user_id,
@@ -932,8 +977,8 @@ def get_classroom_grades(
     # ClassroomItem model. The main classroom view shows the *current*
     # bucket (snapshot_id IS NULL); items that have been archived into a
     # snapshot don't appear here.
-    items = (
-        db.query(Item)
+    item_rows = (
+        db.query(Item, ClassroomItem.created_at)
         .join(
             ClassroomItem,
             (ClassroomItem.item_id == Item.id)
@@ -946,6 +991,7 @@ def get_classroom_grades(
         )
         .all()
     )
+    items = [row[0] for row in item_rows]
 
     item_outs = [
         ItemOut(
@@ -963,8 +1009,9 @@ def get_classroom_grades(
                 else None
             ),
             category_system_key=cat_id_to_key.get(i.category_id, ""),
+            activated_at=activated_at,
         )
-        for i in items
+        for i, activated_at in item_rows
     ]
 
     # Grades for those items × this roster
@@ -1226,8 +1273,8 @@ def get_snapshot_grades(
 
     classroom = _get_owned_classroom(db, user_id, snap.classroom_id)
 
-    items = (
-        db.query(Item)
+    item_rows = (
+        db.query(Item, ClassroomItem.created_at)
         .join(
             ClassroomItem,
             (ClassroomItem.item_id == Item.id)
@@ -1236,6 +1283,7 @@ def get_snapshot_grades(
         .filter(Item.user_id == user_id)
         .all()
     )
+    items = [row[0] for row in item_rows]
 
     # Pick a semester to label the view with. If there are no items yet
     # (teacher could deactivate them all out), fall back to current.
@@ -1326,8 +1374,9 @@ def get_snapshot_grades(
                 else None
             ),
             category_system_key=cat_id_to_key.get(i.category_id, ""),
+            activated_at=activated_at,
         )
-        for i in items
+        for i, activated_at in item_rows
     ]
 
     item_ids = [i.id for i in items]

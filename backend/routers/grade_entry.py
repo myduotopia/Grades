@@ -324,6 +324,43 @@ def bulk_upsert_grades(
             ClassroomItem.snapshot_id == body.snapshot_id
         )
     if activation_q.first() is None:
+        # Issue #159: at most one 段考 (major_exam) item may be active in
+        # a class's main bucket at a time. If the teacher tries to add a
+        # second, refuse with a structured 409 that names the existing
+        # item so the UI can deep-link to its edit input.
+        if body.snapshot_id is None:
+            item_cat = (
+                db.query(Category.system_key)
+                .filter(Category.id == item.category_id)
+                .scalar()
+            )
+            if item_cat == "major_exam":
+                existing_major = (
+                    db.query(ClassroomItem.item_id, Item.name)
+                    .join(Item, Item.id == ClassroomItem.item_id)
+                    .join(Category, Category.id == Item.category_id)
+                    .filter(
+                        ClassroomItem.classroom_id == body.classroom_id,
+                        ClassroomItem.snapshot_id.is_(None),
+                        Category.system_key == "major_exam",
+                    )
+                    .first()
+                )
+                if existing_major is not None:
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail={
+                            "error": {
+                                "code": "CONFLICT",
+                                "message_key": "errors.major_exam.already_exists",
+                                "message": "Major exam already exists for this class — edit the existing one.",
+                                "details": {
+                                    "existing_item_id": str(existing_major[0]),
+                                    "existing_item_name": existing_major[1],
+                                },
+                            }
+                        },
+                    )
         db.add(
             ClassroomItem(
                 user_id=user_id,

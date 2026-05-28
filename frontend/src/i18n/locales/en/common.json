@@ -551,6 +551,11 @@
     }
   },
   "errors": {
+    "major_exam": {
+      "already_exists": "A major exam already exists for this class — edit the existing one.",
+      "already_exists_redirect": "Major exam already exists ({{name}}). Switched to it — edit the existing one.",
+      "no_grades_with_weight": "Major exam weight is {{percent}}%, but no major exam scores exist for this class. Missing scores will count as 0. Proceed with archive?"
+    },
     "import": {
       "bad_file_type": "File must be .xlsx format",
       "unreadable": "Excel file could not be parsed",
