@@ -1641,6 +1641,11 @@ def recompute_snapshot_points(
             item_label = (item.name or "").strip() or cat_label
             reason = f"{MEETING_STANDARD_REASON} - {cat_label}: {item_label}"
             if rec is None:
+                # Backdate created_at to the grade's timestamp so the
+                # award appears under the date the score was originally
+                # entered, not "today" when the recompute runs. Keeps the
+                # student detail point-history readable and keeps the
+                # award inside whatever semester the grade belonged to.
                 db.add(
                     PointRecord(
                         user_id=user_id,
@@ -1648,6 +1653,7 @@ def recompute_snapshot_points(
                         points=pts,
                         reason=reason,
                         source_grade_id=g.id,
+                        created_at=g.created_at,
                     )
                 )
                 awarded += 1
