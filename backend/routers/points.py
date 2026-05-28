@@ -10,7 +10,7 @@ mutate it.
 """
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from typing import Annotated
 from uuid import UUID
 
@@ -22,7 +22,7 @@ from auth import require_user_id
 from database import get_db
 from models.classroom import Classroom, Student
 from models.curriculum import Semester
-from models.grading import PointRecord
+from models.grading import PointRecord, PointReset
 from schemas import (
     ClassPointsBatch,
     ClassPointsBatchResult,
@@ -93,19 +93,64 @@ def _get_current_semester(db: Session, user_id: UUID) -> Semester:
     return sem
 
 
+def _last_reset_in_semester(
+    db: Session, user_id: UUID, student_id: UUID, sem: Semester
+) -> datetime | None:
+    """Most-recent PointReset.reset_at for this student within the semester
+    window, or None if there isn't one. Used as the floor for the
+    student's running total — anything created on or before this moment
+    has been zeroed out (issue #165)."""
+    row = (
+        db.query(func.max(PointReset.reset_at))
+        .filter(
+            PointReset.user_id == user_id,
+            PointReset.student_id == student_id,
+            func.date(PointReset.reset_at) >= sem.start_date,
+        )
+        .scalar()
+    )
+    return row
+
+
+def _last_reset_map_for_classroom(
+    db: Session, user_id: UUID, classroom_id: UUID, sem: Semester
+) -> dict[UUID, datetime]:
+    """student_id → latest reset_at within sem (only students that have one)."""
+    rows = (
+        db.query(
+            PointReset.student_id, func.max(PointReset.reset_at)
+        )
+        .join(Student, Student.id == PointReset.student_id)
+        .filter(
+            PointReset.user_id == user_id,
+            Student.classroom_id == classroom_id,
+            func.date(PointReset.reset_at) >= sem.start_date,
+        )
+        .group_by(PointReset.student_id)
+        .all()
+    )
+    return {sid: ts for sid, ts in rows}
+
+
 def _semester_points_for_student(
     db: Session, user_id: UUID, student_id: UUID, sem: Semester
 ) -> int:
-    total = (
+    """Sum since the LATER of (a) semester start (b) student's last reset.
+    Resets are strictly exclusive — a PointRecord written at exactly the
+    reset moment is treated as 'before' (#165)."""
+    last_reset = _last_reset_in_semester(db, user_id, student_id, sem)
+    q = (
         db.query(func.coalesce(func.sum(PointRecord.points), 0))
         .filter(
             PointRecord.user_id == user_id,
             PointRecord.student_id == student_id,
-            func.date(PointRecord.created_at) >= sem.start_date,
         )
-        .scalar()
     )
-    return int(total or 0)
+    if last_reset is not None:
+        q = q.filter(PointRecord.created_at > last_reset)
+    else:
+        q = q.filter(func.date(PointRecord.created_at) >= sem.start_date)
+    return int(q.scalar() or 0)
 
 
 def _semester_points_for_classroom(
@@ -114,19 +159,42 @@ def _semester_points_for_classroom(
     classroom_id: UUID,
     sem: Semester,
 ) -> int:
-    """Sum of all point_records whose student belongs to this classroom and
-    whose created_at lies inside the semester window."""
-    total = (
-        db.query(func.coalesce(func.sum(PointRecord.points), 0))
-        .join(Student, PointRecord.student_id == Student.id)
+    """Classroom total = sum of every student's individual semester total
+    (since each student may have their own last-reset floor)."""
+    last_reset_by_student = _last_reset_map_for_classroom(
+        db, user_id, classroom_id, sem
+    )
+    student_ids = [
+        sid
+        for (sid,) in db.query(Student.id).filter(
+            Student.classroom_id == classroom_id,
+            Student.user_id == user_id,
+        ).all()
+    ]
+    if not student_ids:
+        return 0
+    # Pull every relevant PointRecord once, then bucket per student so we
+    # only apply the right floor per student. Avoids N round-trips.
+    rows = (
+        db.query(
+            PointRecord.student_id,
+            PointRecord.points,
+            PointRecord.created_at,
+        )
         .filter(
             PointRecord.user_id == user_id,
-            Student.classroom_id == classroom_id,
+            PointRecord.student_id.in_(student_ids),
             func.date(PointRecord.created_at) >= sem.start_date,
         )
-        .scalar()
+        .all()
     )
-    return int(total or 0)
+    total = 0
+    for sid, pts, ts in rows:
+        floor = last_reset_by_student.get(sid)
+        if floor is not None and ts <= floor:
+            continue
+        total += int(pts)
+    return total
 
 
 # ---------- Summary views (drive /points pages) ----------
@@ -420,25 +488,29 @@ def reset_student_points(
     if current == 0:
         return PointResetResult(skipped=True, current=0, record=None)
     reason = body.reason.strip() or _DEFAULT_RESET_REASON
-    record = PointRecord(
+    # Issue #165: write a PointReset marker instead of an offsetting
+    # negative PointRecord. Reads filter sums by the latest reset_at, so
+    # past records that later change won't unbalance the reset.
+    marker = PointReset(
         user_id=user_id,
         student_id=student.id,
-        points=-current,
         reason=reason,
-        source_grade_id=None,
     )
-    db.add(record)
+    db.add(marker)
     db.commit()
-    db.refresh(record)
+    db.refresh(marker)
     return PointResetResult(
         skipped=False,
         current=current,
         record=ManualPointOut(
-            id=record.id,
-            student_id=record.student_id,
-            points=record.points,
-            reason=record.reason,
-            created_at=record.created_at,
+            id=marker.id,
+            student_id=marker.student_id,
+            # Surface as a negative delta for the existing client API
+            # shape, even though no PointRecord row exists. Frontend just
+            # uses this to show "歸零 X 點" feedback.
+            points=-current,
+            reason=marker.reason,
+            created_at=marker.reset_at,
         ),
     )
 
@@ -462,22 +534,6 @@ def reset_classroom_points(
         raise _not_found("classroom")
     sem = _get_current_semester(db, user_id)
 
-    # Per-student current sum in one query: group by student_id, sum points
-    # over the semester window. Students with no records won't appear; they're
-    # implicitly at 0 and skipped.
-    sums = dict(
-        db.query(PointRecord.student_id, func.sum(PointRecord.points))
-        .join(Student, PointRecord.student_id == Student.id)
-        .filter(
-            PointRecord.user_id == user_id,
-            Student.classroom_id == classroom_id,
-            Student.user_id == user_id,
-            func.date(PointRecord.created_at) >= sem.start_date,
-        )
-        .group_by(PointRecord.student_id)
-        .all()
-    )
-
     students = (
         db.query(Student)
         .filter(
@@ -490,18 +546,19 @@ def reset_classroom_points(
     reason = body.reason.strip() or _DEFAULT_RESET_REASON
     written = 0
     skipped = 0
+    # Issue #165: write one PointReset marker per student that currently
+    # has a non-zero running total. Students already at 0 (per the new
+    # last-reset-aware sum) are skipped so the history stays clean.
     for s in students:
-        current = int(sums.get(s.id, 0) or 0)
+        current = _semester_points_for_student(db, user_id, s.id, sem)
         if current == 0:
             skipped += 1
             continue
         db.add(
-            PointRecord(
+            PointReset(
                 user_id=user_id,
                 student_id=s.id,
-                points=-current,
                 reason=reason,
-                source_grade_id=None,
             )
         )
         written += 1

@@ -10,6 +10,7 @@ import { PageHeader } from '../layout/PageHeader'
 import {
   api,
   type StudentGradeRow,
+  type StudentPointResetRow,
   type StudentPointRow,
   type StudentPointsView,
   type StudentSubjectSummary,
@@ -316,7 +317,25 @@ function PointHistorySection({
   })
 
   const totalPages = view.total_pages
-  const hasRows = view.data.length > 0
+  const hasRows = view.data.length > 0 || view.resets.length > 0
+
+  // Merge records + resets into a single chronologically-sorted list so
+  // the reset markers appear as dividers between the records they zeroed
+  // out. Resets are returned in full (not paginated), so on multi-page
+  // datasets a reset may appear on more than one page near its date —
+  // acceptable for the typical small N.
+  type MergedRow =
+    | { kind: 'record'; rec: StudentPointRow }
+    | { kind: 'reset'; rst: StudentPointResetRow }
+  const merged: MergedRow[] = [
+    ...view.data.map((r) => ({ kind: 'record' as const, rec: r })),
+    ...view.resets.map((r) => ({ kind: 'reset' as const, rst: r })),
+  ].sort((a, b) => {
+    const at = a.kind === 'record' ? a.rec.created_at : a.rst.reset_at
+    const bt = b.kind === 'record' ? b.rec.created_at : b.rst.reset_at
+    return sort === 'newest' ? bt.localeCompare(at) : at.localeCompare(bt)
+  })
+  const colSpan = showActionsCol ? 5 : 4
   return (
     <>
       <div className="flex flex-wrap items-center gap-3 mb-3 text-sm text-slate-600">
@@ -380,54 +399,85 @@ function PointHistorySection({
                 </tr>
               </thead>
               <tbody>
-                {view.data.map((p) => (
-                  <tr
-                    key={p.id}
-                    className="border-b border-slate-100 last:border-b-0"
-                  >
-                    <td className="px-4 py-2 text-slate-500 text-xs font-mono">
-                      {p.created_at.slice(0, 10)}
-                    </td>
-                    <td
-                      className={`px-4 py-2 text-right font-mono tabular-nums font-medium ${
-                        p.points >= 0 ? 'text-emerald-600' : 'text-rose-600'
-                      }`}
-                    >
-                      {p.points >= 0 ? `+${p.points}` : p.points}
-                    </td>
-                    <td className="px-4 py-2 text-right font-mono tabular-nums text-slate-500">
-                      {p.balance_after >= 0
-                        ? `+${p.balance_after}`
-                        : p.balance_after}
-                    </td>
-                    <td className="px-4 py-2 text-slate-700">
-                      {p.reason || <span className="text-slate-400">—</span>}
-                    </td>
-                    {showActionsCol && (
-                      <td className="px-4 py-2 text-right">
-                        {p.source_grade_id === null ? (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setDeleteError(null)
-                              setPendingDelete(p)
-                            }}
-                            className="text-xs text-rose-600 hover:text-rose-800 hover:underline"
-                          >
-                            {t('common.delete')}
-                          </button>
-                        ) : (
-                          <span
-                            className="text-xs text-slate-300"
-                            title={t('student_detail.delete_auto_tooltip')}
-                          >
-                            —
+                {merged.map((row) => {
+                  if (row.kind === 'reset') {
+                    const r = row.rst
+                    return (
+                      <tr
+                        key={`reset-${r.id}`}
+                        className="bg-amber-50 border-y border-amber-200"
+                      >
+                        <td
+                          colSpan={colSpan}
+                          className="px-4 py-2 text-xs text-amber-800"
+                        >
+                          <span className="font-mono mr-2">
+                            {r.reset_at.slice(0, 10)}
                           </span>
-                        )}
+                          <span className="font-medium">
+                            {t('student_detail.reset_divider', {
+                              amount: r.balance_before,
+                            })}
+                          </span>
+                          {r.reason && r.reason !== '歸零' && (
+                            <span className="ml-2 text-amber-700">
+                              · {r.reason}
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    )
+                  }
+                  const p = row.rec
+                  return (
+                    <tr
+                      key={p.id}
+                      className="border-b border-slate-100 last:border-b-0"
+                    >
+                      <td className="px-4 py-2 text-slate-500 text-xs font-mono">
+                        {p.created_at.slice(0, 10)}
                       </td>
-                    )}
-                  </tr>
-                ))}
+                      <td
+                        className={`px-4 py-2 text-right font-mono tabular-nums font-medium ${
+                          p.points >= 0 ? 'text-emerald-600' : 'text-rose-600'
+                        }`}
+                      >
+                        {p.points >= 0 ? `+${p.points}` : p.points}
+                      </td>
+                      <td className="px-4 py-2 text-right font-mono tabular-nums text-slate-500">
+                        {p.balance_after >= 0
+                          ? `+${p.balance_after}`
+                          : p.balance_after}
+                      </td>
+                      <td className="px-4 py-2 text-slate-700">
+                        {p.reason || <span className="text-slate-400">—</span>}
+                      </td>
+                      {showActionsCol && (
+                        <td className="px-4 py-2 text-right">
+                          {p.source_grade_id === null ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setDeleteError(null)
+                                setPendingDelete(p)
+                              }}
+                              className="text-xs text-rose-600 hover:text-rose-800 hover:underline"
+                            >
+                              {t('common.delete')}
+                            </button>
+                          ) : (
+                            <span
+                              className="text-xs text-slate-300"
+                              title={t('student_detail.delete_auto_tooltip')}
+                            >
+                              —
+                            </span>
+                          )}
+                        </td>
+                      )}
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>

@@ -245,6 +245,14 @@ export interface StudentPointRow {
   balance_after: number
 }
 
+export interface StudentPointResetRow {
+  id: string
+  reset_at: string
+  reason: string
+  // Running balance immediately BEFORE the marker — the amount zeroed.
+  balance_before: number
+}
+
 export interface StudentPointsView {
   semester_id: string | null
   total: number
@@ -254,6 +262,9 @@ export interface StudentPointsView {
   total_pages: number
   reasons: string[]
   data: StudentPointRow[]
+  // Reset markers in the semester window (issue #165). Interleave with
+  // `data` by date when rendering.
+  resets: StudentPointResetRow[]
 }
 
 export interface PointResetResult {
@@ -521,6 +532,14 @@ export interface Snapshot {
   classroom_name: string
   name: string
   created_at: string
+  item_names: string[]
+}
+
+export interface SnapshotRecomputeResult {
+  grades_evaluated: number
+  awarded: number
+  revoked: number
+  unchanged: number
 }
 
 export interface SnapshotList {
@@ -937,5 +956,34 @@ export const api = {
       }),
     viewGrades: (snapshotId: string) =>
       request<ClassroomGradesView>(`/api/snapshots/${snapshotId}/grades`),
+    listStandards: (snapshotId: string) =>
+      request<StandardsView>(`/api/snapshots/${snapshotId}/standards`),
+    upsertStandard: (
+      snapshotId: string,
+      studentId: string,
+      subjectId: string,
+      threshold: number,
+    ) =>
+      request<StudentStandard>(
+        `/api/snapshots/${snapshotId}/standards/${studentId}/${subjectId}`,
+        {
+          method: 'PUT',
+          body: JSON.stringify({ threshold }),
+        },
+      ),
+    deleteStandard: (
+      snapshotId: string,
+      studentId: string,
+      subjectId: string,
+    ) =>
+      request<void>(
+        `/api/snapshots/${snapshotId}/standards/${studentId}/${subjectId}`,
+        { method: 'DELETE' },
+      ),
+    recomputePoints: (snapshotId: string) =>
+      request<SnapshotRecomputeResult>(
+        `/api/snapshots/${snapshotId}/points/recompute`,
+        { method: 'POST' },
+      ),
   },
 }

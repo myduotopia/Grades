@@ -110,6 +110,59 @@ class StudentStandard(Base, UserScopedMixin, TimestampMixin):
     )
 
 
+class SnapshotStandard(Base, UserScopedMixin, TimestampMixin):
+    """Frozen per-student × per-subject threshold for an archived snapshot
+    (issue #160).
+
+    `StudentStandard` is the live, mutable threshold the teacher edits day-
+    to-day. When a snapshot is taken, the current thresholds for every
+    student in the classroom × every subject are copied into this table so
+    later edits to the live thresholds don't change what an archived
+    snapshot says was the standard at archive time.
+
+    The snapshot's recompute-points action reads thresholds from here, not
+    from `StudentStandard`, and the snapshot's standards-tab UI edits these
+    rows independently of the live ones.
+    """
+    __tablename__ = "snapshot_standard"
+
+    id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        primary_key=True,
+        server_default=text("gen_random_uuid()"),
+    )
+    snapshot_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("grade_snapshot.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    student_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("student.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    subject_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("subject.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    threshold: Mapped[Decimal] = mapped_column(Numeric(4, 1), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "snapshot_id", "student_id", "subject_id",
+            name="uq_snapshot_standard",
+        ),
+        CheckConstraint(
+            "threshold >= 0 AND threshold <= 100",
+            name="ck_snapshot_standard_threshold_range",
+        ),
+    )
+
+
 class PointRule(Base, UserScopedMixin, TimestampMixin):
     """How many points to award per category when a student meets standard."""
     __tablename__ = "point_rule"
@@ -170,6 +223,47 @@ class SubjectPointRule(Base, UserScopedMixin, TimestampMixin):
             "points_awarded BETWEEN 0 AND 500",
             name="ck_subject_point_rule_range",
         ),
+    )
+
+
+class PointReset(Base, UserScopedMixin):
+    """Per-student "zero out" marker (issue #165).
+
+    Previously, the reset endpoint appended a negative-sum PointRecord to
+    cancel the student's current total. That broke whenever the past
+    PointRecords later changed (grade edits, threshold recompute, manual
+    delete) because the cancellation amount was frozen at reset time.
+
+    A PointReset is instead a marker: point-sum queries treat `reset_at`
+    as the new floor — only PointRecords created strictly after the latest
+    reset (within the semester window) count toward the student's running
+    total. Past records remain visible in the history table but are
+    partitioned visually + numerically by the marker.
+    """
+    __tablename__ = "point_reset"
+
+    id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        primary_key=True,
+        server_default=text("gen_random_uuid()"),
+    )
+    student_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("student.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    reset_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=text("now()"),
+        index=True,
+    )
+    reason: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=text("now()"),
     )
 
 
