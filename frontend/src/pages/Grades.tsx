@@ -568,6 +568,15 @@ function BySubjectView({
   // drafts[student_id] = score | null (null = blank → delete)
   const [drafts, setDrafts] = useState<Record<string, number | null>>({})
   const [saveErr, setSaveErr] = useState<string | null>(null)
+  // Toast for the 段考 conflict (issue #159) — fixed-position, auto-
+  // dismissing. Distinct from saveErr (inline) because the conflict triggers
+  // a navigation + we want a visible confirmation that the redirect happened.
+  const [majorExamToast, setMajorExamToast] = useState<string | null>(null)
+  useEffect(() => {
+    if (!majorExamToast) return
+    const id = setTimeout(() => setMajorExamToast(null), 5000)
+    return () => clearTimeout(id)
+  }, [majorExamToast])
   // student_id → input ref, populated while a column is in edit mode.
   const inputRefs = useRef<Map<string, HTMLInputElement>>(new Map())
 
@@ -741,7 +750,7 @@ function BySubjectView({
           },
           { replace: true },
         )
-        setSaveErr(
+        setMajorExamToast(
           t('errors.major_exam.already_exists_redirect', {
             name: existingName,
           }),
@@ -989,6 +998,15 @@ function BySubjectView({
 
       {saveErr && (
         <p className="text-sm text-rose-600">{saveErr}</p>
+      )}
+      {majorExamToast && (
+        <div
+          role="status"
+          className="fixed bottom-6 right-6 max-w-sm px-4 py-3 rounded-lg bg-rose-600 text-white text-sm shadow-lg z-50 cursor-pointer"
+          onClick={() => setMajorExamToast(null)}
+        >
+          {majorExamToast}
+        </div>
       )}
     </div>
   )
