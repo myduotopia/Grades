@@ -556,7 +556,9 @@
     "semester_format": "{{year}} 學年第 {{term}} 學期",
     "current": "目前",
     "overall_avg": "總平均",
+    "weighted_total": "加權總分",
     "pick_subject": "選擇科目：",
+    "all_subjects": "全部科目",
     "formula_hint": "加權公式：各類別在有成績的範圍內依權重重新比例化計算；額外加分直接加在加權總分上（封頂 100）。",
     "empty": "這個學期還沒有成績資料。先到班級頁的「匯入成績」上傳檔案。",
     "view": {

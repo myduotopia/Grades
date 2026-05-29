@@ -556,7 +556,9 @@
     "semester_format": "Year {{year}}, Term {{term}}",
     "current": "current",
     "overall_avg": "Overall avg",
+    "weighted_total": "Weighted total",
     "pick_subject": "Pick subject:",
+    "all_subjects": "All subjects",
     "formula_hint": "Weighting: categories with no grades are excluded and the remaining weights are re-normalised. Extra bonus is added on top (capped at 100).",
     "empty": "No grade data for this semester yet. Use 「Import grades」 on the class page to upload a file.",
     "view": {

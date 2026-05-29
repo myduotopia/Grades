@@ -279,16 +279,16 @@ export function StandardsMatrix({
                       aria-label={t('standards.select_all')}
                     />
                   </th>
-                  <th className="px-3 py-3 text-left font-medium">
+                  <th className="px-3 py-3 text-left font-medium w-16">
                     {t('students.col.seat')}
                   </th>
-                  <th className="px-3 py-3 text-left font-medium">
+                  <th className="px-3 py-3 text-left font-medium min-w-[6rem] max-w-[10rem]">
                     {t('students.col.name')}
                   </th>
                   {orderedSubjects.map((s) => (
                     <th
                       key={s.id}
-                      className="px-2 py-3 text-left font-medium text-xs"
+                      className="px-2 py-3 text-left font-medium text-xs max-w-[8rem]"
                     >
                       {s.system_key
                         ? t(`subject.${s.system_key}`)
@@ -312,10 +312,10 @@ export function StandardsMatrix({
                         aria-label={`${s.seat_number} ${s.name ?? ''}`}
                       />
                     </td>
-                    <td className="px-3 py-2 text-slate-500 font-mono tabular-nums">
+                    <td className="px-3 py-2 text-slate-500 font-mono tabular-nums w-16">
                       {s.seat_number}
                     </td>
-                    <td className="px-3 py-2 text-slate-900">
+                    <td className="px-3 py-2 text-slate-900 min-w-[6rem] max-w-[10rem] truncate">
                       {s.name || '—'}
                     </td>
                     {orderedSubjects.map((subj) => {
