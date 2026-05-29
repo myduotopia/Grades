@@ -53,6 +53,16 @@ export function ClassroomPoints() {
   const [displayMode, setDisplayMode] = useState<View>(
     (localStorage.getItem(VIEW_KEY) as View) || 'card',
   )
+  // Quick student lookup by seat number or name fragment (#173).
+  const [query, setQuery] = useState('')
+  const trimmedQuery = query.trim().toLowerCase()
+  const filteredStudents = trimmedQuery
+    ? students.filter((s) => {
+        const seatStr = String(s.seat_number)
+        const name = (s.name ?? '').toLowerCase()
+        return seatStr.includes(trimmedQuery) || name.includes(trimmedQuery)
+      })
+    : students
   function changeView(v: View) {
     setDisplayMode(v)
     localStorage.setItem(VIEW_KEY, v)
@@ -294,7 +304,18 @@ export function ClassroomPoints() {
 
       {!studentsQ.isLoading && students.length > 0 && (
         <>
-          <div className="flex items-center justify-end gap-1 mb-4">
+          <div className="flex items-center gap-3 mb-4">
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={t('points.search_placeholder')}
+              className="w-full sm:w-72 border border-slate-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+            />
+            <span className="text-xs text-slate-500 hidden sm:inline">
+              {t('points.match_count', { count: filteredStudents.length })}
+            </span>
+            <div className="ml-auto flex items-center gap-1">
             <button
               onClick={() => changeView('list')}
               className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
@@ -315,11 +336,16 @@ export function ClassroomPoints() {
             >
               {t('classes.view.card')}
             </button>
+            </div>
           </div>
 
-          {displayMode === 'card' ? (
+          {filteredStudents.length === 0 ? (
+            <div className="bg-white border border-slate-200 rounded-xl p-8 text-center text-sm text-slate-500">
+              {t('points.no_match')}
+            </div>
+          ) : displayMode === 'card' ? (
             <ul className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-              {students.map((s) => {
+              {filteredStudents.map((s) => {
                 const label = `${s.seat_number} ${s.name ?? ''}`.trim()
                 return (
                   <li
@@ -434,7 +460,7 @@ export function ClassroomPoints() {
                   </tr>
                 </thead>
                 <tbody>
-                  {students.map((s) => {
+                  {filteredStudents.map((s) => {
                     const label = `${s.seat_number} ${s.name ?? ''}`.trim()
                     return (
                       <tr
