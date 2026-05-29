@@ -1,0 +1,404 @@
+"""Home page widgets (issue #161).
+
+Three read endpoints + one write:
+- GET  /api/home/class-rankings — points per classroom, optionally scoped
+       to a specific subject (auto-award only).
+- GET  /api/home/top-students  — top N students by semester point total,
+       with met-standard count.
+- GET  /api/home/alerts/summary — new-since-last-view count for the badge.
+- GET  /api/home/alerts/list    — current 0-score live students.
+- POST /api/home/alerts/viewed  — stamp alerts_last_viewed_at = now().
+
+Semester scope: current semester only (matches the rest of the app).
+Point sums respect the latest PointReset marker (issue #165).
+"""
+from __future__ import annotations
+
+from datetime import date, datetime, timezone
+from typing import Annotated
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy import func
+from sqlalchemy.orm import Session
+
+from auth import require_user_id
+from database import get_db
+from models.classroom import Classroom, Student
+from models.curriculum import Category, Item, Semester, Subject
+from models.grading import Grade, PointRecord, PointReset
+from models.settings import UserSettings
+from schemas import (
+    HomeAlertListItem,
+    HomeAlertList,
+    HomeAlertSummary,
+    HomeAlertViewedOut,
+    HomeAlertZeroItem,
+    HomeClassRankingItem,
+    HomeClassRankingList,
+    HomeTopStudentItem,
+    HomeTopStudentList,
+)
+
+router = APIRouter()
+
+
+def _current_semester(db: Session, user_id: UUID) -> Semester | None:
+    return (
+        db.query(Semester)
+        .filter(Semester.user_id == user_id, Semester.is_current.is_(True))
+        .one_or_none()
+    )
+
+
+def _last_reset_map(
+    db: Session, user_id: UUID, sem: Semester, student_ids: list[UUID]
+) -> dict[UUID, datetime]:
+    """student_id → latest reset_at within the semester window."""
+    if not student_ids:
+        return {}
+    rows = (
+        db.query(PointReset.student_id, func.max(PointReset.reset_at))
+        .filter(
+            PointReset.user_id == user_id,
+            PointReset.student_id.in_(student_ids),
+            func.date(PointReset.reset_at) >= sem.start_date,
+        )
+        .group_by(PointReset.student_id)
+        .all()
+    )
+    return {sid: ts for sid, ts in rows}
+
+
+# ---------- Class rankings ----------
+
+@router.get("/api/home/class-rankings", response_model=HomeClassRankingList)
+def class_rankings(
+    user_id: Annotated[UUID, Depends(require_user_id)],
+    db: Annotated[Session, Depends(get_db)],
+    subject_id: Annotated[UUID | None, Query()] = None,
+) -> HomeClassRankingList:
+    """Total auto-award PointRecord per classroom for the current semester.
+
+    `subject_id` filters to records whose source_grade.item.subject_id
+    matches. Manual records (no source_grade) are excluded regardless —
+    they aren't tied to a subject (#161 design call).
+    """
+    classrooms = (
+        db.query(Classroom)
+        .filter(Classroom.user_id == user_id)
+        .order_by(Classroom.grade.asc(), Classroom.name.asc())
+        .all()
+    )
+    if not classrooms:
+        return HomeClassRankingList(data=[])
+    sem = _current_semester(db, user_id)
+    if sem is None:
+        return HomeClassRankingList(
+            data=[
+                HomeClassRankingItem(
+                    classroom_id=c.id,
+                    classroom_grade=c.grade,
+                    classroom_name=c.name,
+                    points=0,
+                )
+                for c in classrooms
+            ]
+        )
+
+    # Pull every student to know per-student reset floor.
+    students = (
+        db.query(Student.id, Student.classroom_id)
+        .filter(Student.user_id == user_id)
+        .all()
+    )
+    student_ids = [s.id for s in students]
+    student_to_class = {s.id: s.classroom_id for s in students}
+    last_reset = _last_reset_map(db, user_id, sem, student_ids)
+
+    # Auto-award records joined with Grade + Item (so we can subject-filter).
+    q = (
+        db.query(
+            PointRecord.student_id,
+            PointRecord.points,
+            PointRecord.created_at,
+        )
+        .join(Grade, Grade.id == PointRecord.source_grade_id)
+        .join(Item, Item.id == Grade.item_id)
+        .filter(
+            PointRecord.user_id == user_id,
+            PointRecord.source_grade_id.is_not(None),
+            PointRecord.student_id.in_(student_ids) if student_ids else False,
+            func.date(PointRecord.created_at) >= sem.start_date,
+        )
+    )
+    if subject_id is not None:
+        q = q.filter(Item.subject_id == subject_id)
+    rows = q.all() if student_ids else []
+
+    sums: dict[UUID, int] = {c.id: 0 for c in classrooms}
+    for sid, pts, ts in rows:
+        floor = last_reset.get(sid)
+        if floor is not None and ts <= floor:
+            continue
+        cid = student_to_class.get(sid)
+        if cid is None:
+            continue
+        sums[cid] = sums.get(cid, 0) + int(pts)
+
+    return HomeClassRankingList(
+        data=[
+            HomeClassRankingItem(
+                classroom_id=c.id,
+                classroom_grade=c.grade,
+                classroom_name=c.name,
+                points=sums.get(c.id, 0),
+            )
+            for c in classrooms
+        ]
+    )
+
+
+# ---------- Top students ----------
+
+@router.get("/api/home/top-students", response_model=HomeTopStudentList)
+def top_students(
+    user_id: Annotated[UUID, Depends(require_user_id)],
+    db: Annotated[Session, Depends(get_db)],
+    classroom_id: Annotated[UUID | None, Query()] = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 10,
+) -> HomeTopStudentList:
+    """Top students by current-semester point total. Also returns count of
+    auto-award PointRecord (= times the student met standard) so the UI
+    can column-sort by it.
+    """
+    sem = _current_semester(db, user_id)
+    if sem is None:
+        return HomeTopStudentList(data=[])
+
+    q = (
+        db.query(Student, Classroom)
+        .join(Classroom, Classroom.id == Student.classroom_id)
+        .filter(Student.user_id == user_id)
+    )
+    if classroom_id is not None:
+        q = q.filter(Student.classroom_id == classroom_id)
+    students = q.all()
+    if not students:
+        return HomeTopStudentList(data=[])
+
+    student_ids = [s.id for s, _ in students]
+    last_reset = _last_reset_map(db, user_id, sem, student_ids)
+
+    # Pull all point records once, partition per student.
+    rows = (
+        db.query(
+            PointRecord.student_id,
+            PointRecord.points,
+            PointRecord.created_at,
+            PointRecord.source_grade_id,
+        )
+        .filter(
+            PointRecord.user_id == user_id,
+            PointRecord.student_id.in_(student_ids),
+            func.date(PointRecord.created_at) >= sem.start_date,
+        )
+        .all()
+    )
+    total_by: dict[UUID, int] = {}
+    met_by: dict[UUID, int] = {}
+    for sid, pts, ts, sgid in rows:
+        floor = last_reset.get(sid)
+        if floor is not None and ts <= floor:
+            continue
+        total_by[sid] = total_by.get(sid, 0) + int(pts)
+        if sgid is not None:
+            met_by[sid] = met_by.get(sid, 0) + 1
+
+    out = [
+        HomeTopStudentItem(
+            student_id=s.id,
+            classroom_id=c.id,
+            classroom_grade=c.grade,
+            classroom_name=c.name,
+            seat_number=s.seat_number,
+            name=s.name,
+            total_points=total_by.get(s.id, 0),
+            met_count=met_by.get(s.id, 0),
+        )
+        for s, c in students
+    ]
+    # Server-side default ordering: highest total first, then most-met,
+    # then seat. Frontend re-sorts by user click.
+    out.sort(
+        key=lambda r: (-r.total_points, -r.met_count, r.classroom_grade, r.seat_number)
+    )
+    return HomeTopStudentList(data=out[:limit])
+
+
+# ---------- Alerts ----------
+
+def _get_or_create_settings(db: Session, user_id: UUID) -> UserSettings:
+    row = (
+        db.query(UserSettings)
+        .filter(UserSettings.user_id == user_id)
+        .one_or_none()
+    )
+    if row is None:
+        row = UserSettings(user_id=user_id)
+        db.add(row)
+        db.flush()
+    return row
+
+
+def _alert_student_ids(db: Session, user_id: UUID) -> list[UUID]:
+    """Distinct students with at least one 0-score live grade (#161)."""
+    rows = (
+        db.query(Grade.student_id)
+        .filter(
+            Grade.user_id == user_id,
+            Grade.snapshot_id.is_(None),
+            Grade.score == 0,
+        )
+        .distinct()
+        .all()
+    )
+    return [r[0] for r in rows]
+
+
+@router.get("/api/home/alerts/summary", response_model=HomeAlertSummary)
+def alerts_summary(
+    user_id: Annotated[UUID, Depends(require_user_id)],
+    db: Annotated[Session, Depends(get_db)],
+) -> HomeAlertSummary:
+    """Badge counter: 0-score live grade rows whose updated_at is newer
+    than the teacher's last visit to the Alerts page. NULL last_viewed
+    means everything counts (initial state)."""
+    settings = (
+        db.query(UserSettings)
+        .filter(UserSettings.user_id == user_id)
+        .one_or_none()
+    )
+    last_viewed = settings.alerts_last_viewed_at if settings else None
+
+    q = db.query(func.count(Grade.id)).filter(
+        Grade.user_id == user_id,
+        Grade.snapshot_id.is_(None),
+        Grade.score == 0,
+    )
+    if last_viewed is not None:
+        q = q.filter(Grade.updated_at > last_viewed)
+    new_count = int(q.scalar() or 0)
+    return HomeAlertSummary(new_count=new_count)
+
+
+@router.get("/api/home/alerts/list", response_model=HomeAlertList)
+def alerts_list(
+    user_id: Annotated[UUID, Depends(require_user_id)],
+    db: Annotated[Session, Depends(get_db)],
+    classroom_id: Annotated[UUID | None, Query()] = None,
+) -> HomeAlertList:
+    """Every student who currently has at least one 0-score live grade,
+    with their semester totals + met-count (same shape as top-students for
+    column-sort parity)."""
+    sem = _current_semester(db, user_id)
+
+    # Fetch every 0-score live grade with its item + category so we can
+    # build both the per-student count AND the tooltip-friendly item list
+    # in one round-trip (#161).
+    zero_rows = (
+        db.query(Grade.student_id, Item.name, Category.system_key)
+        .join(Item, Item.id == Grade.item_id)
+        .join(Category, Category.id == Item.category_id)
+        .filter(
+            Grade.user_id == user_id,
+            Grade.snapshot_id.is_(None),
+            Grade.score == 0,
+        )
+        .order_by(Item.name.asc())
+        .all()
+    )
+    zero_items_by: dict[UUID, list[HomeAlertZeroItem]] = {}
+    for sid, iname, cat_key in zero_rows:
+        zero_items_by.setdefault(sid, []).append(
+            HomeAlertZeroItem(
+                item_name=iname,
+                category_system_key=cat_key,
+            )
+        )
+    zero_count_by = {sid: len(items) for sid, items in zero_items_by.items()}
+    if not zero_count_by:
+        return HomeAlertList(data=[])
+
+    q = (
+        db.query(Student, Classroom)
+        .join(Classroom, Classroom.id == Student.classroom_id)
+        .filter(
+            Student.user_id == user_id,
+            Student.id.in_(zero_count_by.keys()),
+        )
+    )
+    if classroom_id is not None:
+        q = q.filter(Student.classroom_id == classroom_id)
+    students = q.all()
+
+    # Per-student point totals (reset-aware, current semester).
+    total_by: dict[UUID, int] = {}
+    met_by: dict[UUID, int] = {}
+    if sem is not None and students:
+        student_ids = [s.id for s, _ in students]
+        last_reset = _last_reset_map(db, user_id, sem, student_ids)
+        prows = (
+            db.query(
+                PointRecord.student_id,
+                PointRecord.points,
+                PointRecord.created_at,
+                PointRecord.source_grade_id,
+            )
+            .filter(
+                PointRecord.user_id == user_id,
+                PointRecord.student_id.in_(student_ids),
+                func.date(PointRecord.created_at) >= sem.start_date,
+            )
+            .all()
+        )
+        for sid, pts, ts, sgid in prows:
+            floor = last_reset.get(sid)
+            if floor is not None and ts <= floor:
+                continue
+            total_by[sid] = total_by.get(sid, 0) + int(pts)
+            if sgid is not None:
+                met_by[sid] = met_by.get(sid, 0) + 1
+
+    out = [
+        HomeAlertListItem(
+            student_id=s.id,
+            classroom_id=c.id,
+            classroom_grade=c.grade,
+            classroom_name=c.name,
+            seat_number=s.seat_number,
+            name=s.name,
+            total_points=total_by.get(s.id, 0),
+            met_count=met_by.get(s.id, 0),
+            zero_score_count=zero_count_by.get(s.id, 0),
+            zero_score_items=zero_items_by.get(s.id, []),
+        )
+        for s, c in students
+    ]
+    out.sort(
+        key=lambda r: (r.classroom_grade, r.classroom_name, r.seat_number)
+    )
+    return HomeAlertList(data=out)
+
+
+@router.post("/api/home/alerts/viewed", response_model=HomeAlertViewedOut)
+def mark_alerts_viewed(
+    user_id: Annotated[UUID, Depends(require_user_id)],
+    db: Annotated[Session, Depends(get_db)],
+) -> HomeAlertViewedOut:
+    """Stamp alerts_last_viewed_at = now() so the badge counter resets."""
+    settings = _get_or_create_settings(db, user_id)
+    now = datetime.now(timezone.utc)
+    settings.alerts_last_viewed_at = now
+    db.commit()
+    return HomeAlertViewedOut(viewed_at=now)

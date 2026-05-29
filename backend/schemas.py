@@ -534,6 +534,9 @@ class ItemOut(BaseModel):
     subject_display_name: str | None  # set when subject is a custom one
     category_system_key: str
     exam_date: date | None = None  # placeholder; not yet stored
+    # Moment the item was activated for THIS classroom (issue #159). Drives
+    # the "newest column first within category" ordering in the grades view.
+    activated_at: datetime | None = None
 
 
 class ItemDetailOut(BaseModel):
@@ -683,3 +686,64 @@ class ClassroomGradesView(BaseModel):
     students: list[StudentBriefOut]
     items: list[ItemOut]
     grades: list[GradeEntryOut]
+
+
+# ---------- Home page (#161) ----------
+
+class HomeClassRankingItem(BaseModel):
+    classroom_id: UUID
+    classroom_grade: int
+    classroom_name: str
+    points: int
+
+
+class HomeClassRankingList(BaseModel):
+    data: list[HomeClassRankingItem]
+
+
+class HomeTopStudentItem(BaseModel):
+    student_id: UUID
+    classroom_id: UUID
+    classroom_grade: int
+    classroom_name: str
+    seat_number: int
+    name: str | None
+    total_points: int
+    met_count: int
+
+
+class HomeTopStudentList(BaseModel):
+    data: list[HomeTopStudentItem]
+
+
+class HomeAlertSummary(BaseModel):
+    new_count: int
+
+
+class HomeAlertZeroItem(BaseModel):
+    item_name: str
+    category_system_key: str
+
+
+class HomeAlertListItem(BaseModel):
+    student_id: UUID
+    classroom_id: UUID
+    classroom_grade: int
+    classroom_name: str
+    seat_number: int
+    name: str | None
+    total_points: int
+    met_count: int
+    zero_score_count: int
+    # Which live items the student is currently at 0 on (#161). Drives the
+    # tooltip on the 0-score-count column so the teacher can see exactly
+    # what needs revisiting without leaving the page.
+    zero_score_items: list[HomeAlertZeroItem] = []
+
+
+class HomeAlertList(BaseModel):
+    data: list[HomeAlertListItem]
+
+
+class HomeAlertViewedOut(BaseModel):
+    viewed_at: datetime

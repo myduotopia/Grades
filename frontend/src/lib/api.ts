@@ -131,7 +131,12 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const text = await res.text()
   const json = text ? JSON.parse(text) : null
   if (!res.ok) {
-    const body: ApiErrorBody | null = json?.error ?? null
+    // FastAPI wraps HTTPException detail in `{"detail": ...}`. Routers
+    // shape that detail as `{"error": {code, message_key, message, details}}`,
+    // but some legacy responses or middleware may surface `{"error": ...}`
+    // at the top level — accept either.
+    const body: ApiErrorBody | null =
+      json?.detail?.error ?? json?.error ?? null
     throw new ApiError(res.status, body)
   }
   return json as T
@@ -504,6 +509,9 @@ export interface GradeItem {
   subject_display_name: string | null
   category_system_key: string
   exam_date: string | null
+  // Issue #159: when this item was activated for the current classroom.
+  // Drives newest-first column order within each category group.
+  activated_at: string | null
 }
 
 export interface GradeEntry {
@@ -575,7 +583,12 @@ async function uploadMultipart<T>(
   const text = await res.text()
   const json = text ? JSON.parse(text) : null
   if (!res.ok) {
-    const body: ApiErrorBody | null = json?.error ?? null
+    // FastAPI wraps HTTPException detail in `{"detail": ...}`. Routers
+    // shape that detail as `{"error": {code, message_key, message, details}}`,
+    // but some legacy responses or middleware may surface `{"error": ...}`
+    // at the top level — accept either.
+    const body: ApiErrorBody | null =
+      json?.detail?.error ?? json?.error ?? null
     throw new ApiError(res.status, body)
   }
   return json as T
@@ -986,4 +999,69 @@ export const api = {
         { method: 'POST' },
       ),
   },
+  home: {
+    classRankings: (subjectId?: string) => {
+      const qs = subjectId ? `?subject_id=${subjectId}` : ''
+      return request<{ data: HomeClassRankingItem[] }>(
+        `/api/home/class-rankings${qs}`,
+      )
+    },
+    topStudents: (params: { classroomId?: string; limit?: number } = {}) => {
+      const qs = new URLSearchParams()
+      if (params.classroomId) qs.set('classroom_id', params.classroomId)
+      if (params.limit) qs.set('limit', String(params.limit))
+      const tail = qs.toString() ? `?${qs.toString()}` : ''
+      return request<{ data: HomeTopStudentItem[] }>(
+        `/api/home/top-students${tail}`,
+      )
+    },
+    alertsSummary: () =>
+      request<{ new_count: number }>('/api/home/alerts/summary'),
+    alertsList: (classroomId?: string) => {
+      const qs = classroomId ? `?classroom_id=${classroomId}` : ''
+      return request<{ data: HomeAlertListItem[] }>(
+        `/api/home/alerts/list${qs}`,
+      )
+    },
+    markAlertsViewed: () =>
+      request<{ viewed_at: string }>('/api/home/alerts/viewed', {
+        method: 'POST',
+      }),
+  },
+}
+
+export interface HomeClassRankingItem {
+  classroom_id: string
+  classroom_grade: number
+  classroom_name: string
+  points: number
+}
+
+export interface HomeTopStudentItem {
+  student_id: string
+  classroom_id: string
+  classroom_grade: number
+  classroom_name: string
+  seat_number: number
+  name: string | null
+  total_points: number
+  met_count: number
+}
+
+export interface HomeAlertZeroItem {
+  item_name: string
+  category_system_key: string
+}
+
+export interface HomeAlertListItem {
+  student_id: string
+  classroom_id: string
+  classroom_grade: number
+  classroom_name: string
+  seat_number: number
+  name: string | null
+  total_points: number
+  met_count: number
+  zero_score_count: number
+  zero_score_items: HomeAlertZeroItem[]
 }

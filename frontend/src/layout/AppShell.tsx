@@ -1,12 +1,19 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { NavLink, Outlet } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 
 import { useAuth } from '../auth/AuthProvider'
 import { supabase } from '../lib/supabase'
 import { SemesterSwitcher } from '../components/SemesterSwitcher'
+import { api } from '../lib/api'
 
-type NavItem = { to: string; key: string; icon: 'home' | 'classes' | 'categories' }
+type NavItem = {
+  to: string
+  key: string
+  icon: 'home' | 'classes' | 'categories' | 'alerts'
+  badgeKey?: 'alerts'
+}
 
 // Daily-use surfaces (homepage + the two roll-up admin views).
 const NAV_PRIMARY: NavItem[] = [
@@ -14,6 +21,7 @@ const NAV_PRIMARY: NavItem[] = [
   { to: '/classes', key: 'nav.classes', icon: 'classes' },
   { to: '/points', key: 'nav.points', icon: 'classes' },
   { to: '/snapshots', key: 'nav.snapshots', icon: 'classes' },
+  { to: '/alerts', key: 'nav.alerts', icon: 'alerts', badgeKey: 'alerts' },
 ]
 
 // Configuration / settings — separated from the primary group by a divider.
@@ -30,6 +38,16 @@ const COLLAPSE_KEY = 'appshell.sidebar_collapsed'
 export function AppShell() {
   const { t, i18n } = useTranslation()
   const { session } = useAuth()
+  // Alerts badge counter (issue #161). Refetched every 60s so a teacher
+  // who's been on the same surface for a while still sees new 0-scores
+  // show up. Visiting /alerts marks them viewed and the count drops.
+  const alertsSummaryQ = useQuery({
+    queryKey: ['home-alerts-summary'],
+    queryFn: () => api.home.alertsSummary(),
+    refetchInterval: 60000,
+    refetchOnWindowFocus: true,
+  })
+  const alertCount = alertsSummaryQ.data?.new_count ?? 0
   // Mobile drawer state (slides in from off-screen)
   const [drawerOpen, setDrawerOpen] = useState(false)
   // Desktop collapse state (icons-only rail vs. full sidebar). Persisted so
@@ -90,27 +108,45 @@ export function AppShell() {
           </div>
 
           <nav className="flex-1 px-2 py-2 space-y-0.5 overflow-y-auto">
-            {NAV_PRIMARY.map((item) => (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                end={item.to === '/'}
-                onClick={() => setDrawerOpen(false)}
-                title={collapsed ? t(item.key) : undefined}
-                className={({ isActive }) =>
-                  `flex items-center ${
-                    collapsed ? 'justify-center' : 'gap-3'
-                  } px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                    isActive
-                      ? 'bg-slate-800 text-white'
-                      : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-                  }`
-                }
-              >
-                <NavIcon kind={item.icon} />
-                {!collapsed && <span className="truncate">{t(item.key)}</span>}
-              </NavLink>
-            ))}
+            {NAV_PRIMARY.map((item) => {
+              const showBadge =
+                item.badgeKey === 'alerts' && alertCount > 0
+              return (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  end={item.to === '/'}
+                  onClick={() => setDrawerOpen(false)}
+                  title={collapsed ? t(item.key) : undefined}
+                  className={({ isActive }) =>
+                    `relative flex items-center ${
+                      collapsed ? 'justify-center' : 'gap-3'
+                    } px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                      isActive
+                        ? 'bg-slate-800 text-white'
+                        : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                    }`
+                  }
+                >
+                  <NavIcon kind={item.icon} />
+                  {!collapsed && (
+                    <span className="truncate flex-1">{t(item.key)}</span>
+                  )}
+                  {showBadge && (
+                    <span
+                      className={`${
+                        collapsed
+                          ? 'absolute top-1 right-1 min-w-[1.1rem] h-[1.1rem] px-1 text-[10px]'
+                          : 'min-w-[1.25rem] h-5 px-1.5 text-[11px]'
+                      } inline-flex items-center justify-center rounded-full bg-rose-600 text-white font-semibold leading-none`}
+                      aria-label={t('nav.alerts_badge', { count: alertCount })}
+                    >
+                      {alertCount > 99 ? '99+' : alertCount}
+                    </span>
+                  )}
+                </NavLink>
+              )
+            })}
             <div className="my-2 border-t border-slate-800 mx-2" aria-hidden />
             {NAV_SETTINGS.map((item) => (
               <NavLink
@@ -240,8 +276,17 @@ function SignOutIcon() {
   )
 }
 
-function NavIcon({ kind }: { kind: 'home' | 'classes' | 'categories' }) {
+function NavIcon({ kind }: { kind: 'home' | 'classes' | 'categories' | 'alerts' }) {
   const common = 'shrink-0'
+  if (kind === 'alerts') {
+    return (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={common}>
+        <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+        <line x1="12" y1="9" x2="12" y2="13" />
+        <line x1="12" y1="17" x2="12.01" y2="17" />
+      </svg>
+    )
+  }
   if (kind === 'home') {
     return (
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={common}>

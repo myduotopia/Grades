@@ -1,10 +1,12 @@
 import { BrowserRouter, Route, Routes } from 'react-router-dom'
+import { Toaster } from 'react-hot-toast'
 
 import { AuthProvider } from './auth/AuthProvider'
 import { ProtectedRoute } from './auth/ProtectedRoute'
 import { AppShell } from './layout/AppShell'
 import { SemesterViewProvider } from './state/SemesterView'
 import { AdminItems } from './pages/AdminItems'
+import { Alerts } from './pages/Alerts'
 import { AdminReasons } from './pages/AdminReasons'
 import { AdminSemesters } from './pages/AdminSemesters'
 import { AdminSubjects } from './pages/AdminSubjects'
@@ -24,6 +26,13 @@ import { Students } from './pages/Students'
 function App() {
   return (
     <AuthProvider>
+      <Toaster
+        position="bottom-right"
+        toastOptions={{
+          duration: 5000,
+          style: { fontSize: '14px' },
+        }}
+      />
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<Login />} />
@@ -60,6 +69,7 @@ function App() {
               <Route path="/admin/semesters" element={<AdminSemesters />} />
               <Route path="/admin/items" element={<AdminItems />} />
               <Route path="/admin/reasons" element={<AdminReasons />} />
+              <Route path="/alerts" element={<Alerts />} />
               <Route path="/points" element={<Points />} />
               <Route
                 path="/points/:classroomId"

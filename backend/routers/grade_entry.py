@@ -143,6 +143,7 @@ def get_item_grades(
             .filter(
                 Grade.item_id == item.id,
                 Grade.student_id.in_(roster_ids),
+                Grade.snapshot_id.is_(None),  # live bucket only (#169)
             )
             .all()
         }
@@ -203,7 +204,11 @@ def create_grade(
         )
     existing = (
         db.query(Grade)
-        .filter(Grade.item_id == item.id, Grade.student_id == student.id)
+        .filter(
+            Grade.item_id == item.id,
+            Grade.student_id == student.id,
+            Grade.snapshot_id.is_(None),  # live bucket only (#169)
+        )
         .one_or_none()
     )
     if existing is not None:
@@ -324,6 +329,43 @@ def bulk_upsert_grades(
             ClassroomItem.snapshot_id == body.snapshot_id
         )
     if activation_q.first() is None:
+        # Issue #159: at most one 段考 (major_exam) item may be active in
+        # a class's main bucket at a time. If the teacher tries to add a
+        # second, refuse with a structured 409 that names the existing
+        # item so the UI can deep-link to its edit input.
+        if body.snapshot_id is None:
+            item_cat = (
+                db.query(Category.system_key)
+                .filter(Category.id == item.category_id)
+                .scalar()
+            )
+            if item_cat == "major_exam":
+                existing_major = (
+                    db.query(ClassroomItem.item_id, Item.name)
+                    .join(Item, Item.id == ClassroomItem.item_id)
+                    .join(Category, Category.id == Item.category_id)
+                    .filter(
+                        ClassroomItem.classroom_id == body.classroom_id,
+                        ClassroomItem.snapshot_id.is_(None),
+                        Category.system_key == "major_exam",
+                    )
+                    .first()
+                )
+                if existing_major is not None:
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail={
+                            "error": {
+                                "code": "CONFLICT",
+                                "message_key": "errors.major_exam.already_exists",
+                                "message": "Major exam already exists for this class — edit the existing one.",
+                                "details": {
+                                    "existing_item_id": str(existing_major[0]),
+                                    "existing_item_name": existing_major[1],
+                                },
+                            }
+                        },
+                    )
         db.add(
             ClassroomItem(
                 user_id=user_id,
@@ -350,11 +392,20 @@ def bulk_upsert_grades(
         .all()
     }
 
+    # Bucket lookup: live (body.snapshot_id is None) targets snapshot_id IS
+    # NULL; snapshot edit (body.snapshot_id set) targets that snapshot. The
+    # UNIQUE on (item_id, student_id, snapshot_id) keeps each bucket clean
+    # (#169).
+    bucket_q = db.query(Grade).filter(
+        Grade.item_id == item.id,
+        Grade.student_id.in_(student_ids),
+    )
+    if body.snapshot_id is None:
+        bucket_q = bucket_q.filter(Grade.snapshot_id.is_(None))
+    else:
+        bucket_q = bucket_q.filter(Grade.snapshot_id == body.snapshot_id)
     existing_by_student: dict[UUID, Grade] = {
-        g.student_id: g
-        for g in db.query(Grade)
-        .filter(Grade.item_id == item.id, Grade.student_id.in_(student_ids))
-        .all()
+        g.student_id: g for g in bucket_q.all()
     }
 
     pre_award_grade_ids = {
@@ -385,6 +436,7 @@ def bulk_upsert_grades(
                 user_id=user_id,
                 item_id=item.id,
                 student_id=e.student_id,
+                snapshot_id=body.snapshot_id,  # bucket scope (#169)
                 score=Decimal(str(e.score)),
                 source="manual",
             )
@@ -396,7 +448,12 @@ def bulk_upsert_grades(
         written += 1
 
     db.flush()
-    apply_auto_award(db, user_id, written_grades)
+    # Auto-award is a live-ledger concept: it uses live StudentStandard and
+    # writes live PointRecord rows. Snapshot edits manage their own points
+    # via the snapshot recompute endpoint (#160), so skip auto-award when
+    # the teacher is editing inside a snapshot (#169).
+    if body.snapshot_id is None:
+        apply_auto_award(db, user_id, written_grades)
     db.flush()
 
     # Compute award / revoke deltas vs the pre-write snapshot.

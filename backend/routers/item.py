@@ -153,16 +153,18 @@ def list_items(
     }
 
     item_ids = [i.id for i in items]
+    # Admin counts reflect the live working set — snapshot copies excluded
+    # so an item used in N archived snapshots doesn't inflate to N× (#169).
     grade_counts = dict(
         db.query(Grade.item_id, func.count(Grade.id))
-        .filter(Grade.item_id.in_(item_ids))
+        .filter(Grade.item_id.in_(item_ids), Grade.snapshot_id.is_(None))
         .group_by(Grade.item_id)
         .all()
     )
     point_counts_rows = (
         db.query(Grade.item_id, func.count(PointRecord.id))
         .join(PointRecord, PointRecord.source_grade_id == Grade.id)
-        .filter(Grade.item_id.in_(item_ids))
+        .filter(Grade.item_id.in_(item_ids), Grade.snapshot_id.is_(None))
         .group_by(Grade.item_id)
         .all()
     )
@@ -284,13 +286,17 @@ def _detail_for(db: Session, item: Item) -> ItemDetailOut:
     """Build one ItemDetailOut, used by POST/PUT to echo back."""
     subj = db.get(Subject, item.subject_id)
     cat = db.get(Category, item.category_id)
+    # Live-bucket counts only (#169) — snapshot copies don't bloat the
+    # admin view of the item.
     grade_count = (
-        db.query(func.count(Grade.id)).filter(Grade.item_id == item.id).scalar()
+        db.query(func.count(Grade.id))
+        .filter(Grade.item_id == item.id, Grade.snapshot_id.is_(None))
+        .scalar()
     ) or 0
     point_count = (
         db.query(func.count(PointRecord.id))
         .join(Grade, PointRecord.source_grade_id == Grade.id)
-        .filter(Grade.item_id == item.id)
+        .filter(Grade.item_id == item.id, Grade.snapshot_id.is_(None))
         .scalar()
     ) or 0
     return ItemDetailOut(
