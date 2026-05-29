@@ -152,7 +152,7 @@ function ClassRankingRow({
         {rank}
       </span>
       <Link
-        to={`/classes/${row.classroom_id}/grades`}
+        to={`/points/${row.classroom_id}`}
         className="flex-1 text-slate-900 text-sm hover:text-amber-700"
       >
         {classroomDisplayName(row.classroom_grade, row.classroom_name, lang)}
@@ -293,6 +293,8 @@ function TopStudentsWidget({ lang }: { lang: string }) {
                   <td className="px-3 py-2">
                     <Link
                       to={`/students/${s.student_id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
                       className="text-slate-900 hover:text-amber-700"
                     >
                       {s.name || '—'}
