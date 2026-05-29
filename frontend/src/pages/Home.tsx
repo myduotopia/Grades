@@ -93,21 +93,30 @@ function ClassRankingWidget({ lang }: { lang: string }) {
             ))}
           </select>
         </label>
-        <label className="text-sm text-slate-700 inline-flex items-center gap-2 ml-auto">
-          {t('home.class_ranking.sort_label')}
-          <select
-            value={sort}
-            onChange={(e) => setSort(e.target.value as ClassSort)}
-            className="border border-slate-300 rounded-md px-2 py-1 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-amber-500"
-          >
-            <option value="points_desc">
-              {t('home.class_ranking.sort_desc')}
-            </option>
-            <option value="points_asc">
-              {t('home.class_ranking.sort_asc')}
-            </option>
-          </select>
-        </label>
+        <button
+          type="button"
+          onClick={() =>
+            setSort((s) => (s === 'points_desc' ? 'points_asc' : 'points_desc'))
+          }
+          title={
+            sort === 'points_desc'
+              ? t('home.class_ranking.sort_desc')
+              : t('home.class_ranking.sort_asc')
+          }
+          aria-label={
+            sort === 'points_desc'
+              ? t('home.class_ranking.sort_desc')
+              : t('home.class_ranking.sort_asc')
+          }
+          className="ml-auto inline-flex items-center gap-1 px-2 py-1 rounded-md border border-slate-200 bg-white hover:bg-slate-50 text-sm text-slate-700"
+        >
+          <span className="text-xs text-slate-500">
+            {t('home.class_ranking.col_points')}
+          </span>
+          <span className="text-amber-700 text-sm leading-none">
+            {sort === 'points_desc' ? '▼' : '▲'}
+          </span>
+        </button>
       </div>
       {rankQ.isLoading ? (
         <div className="px-4 py-6 text-sm text-slate-500 text-center">

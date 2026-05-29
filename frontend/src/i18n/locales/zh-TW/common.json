@@ -279,9 +279,9 @@
       "title": "班級點數排行",
       "subject_label": "科目：",
       "all_subjects": "全部（不限科目）",
-      "sort_label": "排序：",
-      "sort_desc": "高到低",
-      "sort_asc": "低到高",
+      "col_points": "點數",
+      "sort_desc": "目前：高到低（點切換）",
+      "sort_asc": "目前：低到高（點切換）",
       "empty": "本學期沒有點數紀錄。"
     },
     "top_students": {

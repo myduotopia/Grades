@@ -279,9 +279,9 @@
       "title": "Class point rankings",
       "subject_label": "Subject:",
       "all_subjects": "All (any subject)",
-      "sort_label": "Sort:",
-      "sort_desc": "High to low",
-      "sort_asc": "Low to high",
+      "col_points": "Points",
+      "sort_desc": "Currently high → low (click to flip)",
+      "sort_asc": "Currently low → high (click to flip)",
       "empty": "No point records for the current semester."
     },
     "top_students": {
