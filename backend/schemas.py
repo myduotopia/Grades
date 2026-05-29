@@ -87,6 +87,10 @@ class ManualPointCreate(BaseModel):
 class ClassPointsBatch(BaseModel):
     points: int = Field(ge=-100, le=100)
     reason: str = Field(default="", max_length=200)
+    # Optional subset (#173): when present, only these students in the
+    # classroom get the point row. None = apply to every student in the
+    # class (existing behaviour preserved for the whole-class flow).
+    student_ids: list[UUID] | None = None
 
 
 class ManualPointOut(BaseModel):

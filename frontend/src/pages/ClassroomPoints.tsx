@@ -55,6 +55,19 @@ export function ClassroomPoints() {
   )
   // Quick student lookup by seat number or name fragment (#173).
   const [query, setQuery] = useState('')
+  // Per-row selection for the subset batch flow (#173). The batch button
+  // is enabled only when ≥1 student is checked; "select all" toggles the
+  // full filtered set so a search-narrowed list can be batch-applied.
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [batchOpen, setBatchOpen] = useState(false)
+  function toggleSelected(studentId: string) {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(studentId)) next.delete(studentId)
+      else next.add(studentId)
+      return next
+    })
+  }
   const trimmedQuery = query.trim().toLowerCase()
   const filteredStudents = trimmedQuery
     ? students.filter((s) => {
@@ -125,6 +138,38 @@ export function ClassroomPoints() {
       qc.invalidateQueries({ queryKey: ['points-students', classroomId] })
       qc.invalidateQueries({ queryKey: ['points-classrooms'] })
       setModal(null)
+    },
+    onError: (err) => {
+      setToast(
+        err instanceof ApiError && err.body?.message
+          ? err.body.message
+          : t('common.error_generic'),
+      )
+      setTimeout(() => setToast(null), 4000)
+    },
+  })
+
+  const batchMut = useMutation({
+    mutationFn: (args: { points: number; reason: string }) =>
+      api.points.classBatch(classroomId as string, {
+        points: args.points,
+        reason: args.reason,
+        student_ids: Array.from(selected),
+      }),
+    onSuccess: (data, vars) => {
+      setBatchOpen(false)
+      setSelected(new Set())
+      setToast(
+        t('points.toast.applied_batch', {
+          count: data.written,
+          delta:
+            vars.points >= 0 ? `+${vars.points}` : String(vars.points),
+          reason: vars.reason,
+        }),
+      )
+      setTimeout(() => setToast(null), 3500)
+      qc.invalidateQueries({ queryKey: ['points-students', classroomId] })
+      qc.invalidateQueries({ queryKey: ['points-classrooms'] })
     },
     onError: (err) => {
       setToast(
@@ -315,7 +360,58 @@ export function ClassroomPoints() {
             <span className="text-xs text-slate-500 hidden sm:inline">
               {t('points.match_count', { count: filteredStudents.length })}
             </span>
-            <div className="ml-auto flex items-center gap-1">
+            <label className="inline-flex items-center gap-1.5 text-xs text-slate-600 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={
+                  filteredStudents.length > 0 &&
+                  filteredStudents.every((s) =>
+                    selected.has(s.student_id),
+                  )
+                }
+                ref={(el) => {
+                  if (!el) return
+                  const allChecked =
+                    filteredStudents.length > 0 &&
+                    filteredStudents.every((s) =>
+                      selected.has(s.student_id),
+                    )
+                  const someChecked =
+                    !allChecked &&
+                    filteredStudents.some((s) => selected.has(s.student_id))
+                  el.indeterminate = someChecked
+                }}
+                onChange={(e) => {
+                  if (e.target.checked) {
+                    setSelected(
+                      (prev) =>
+                        new Set([
+                          ...prev,
+                          ...filteredStudents.map((s) => s.student_id),
+                        ]),
+                    )
+                  } else {
+                    setSelected((prev) => {
+                      const next = new Set(prev)
+                      for (const s of filteredStudents)
+                        next.delete(s.student_id)
+                      return next
+                    })
+                  }
+                }}
+                disabled={filteredStudents.length === 0}
+              />
+              {t('points.select_all')}
+            </label>
+            <button
+              type="button"
+              disabled={isArchived || selected.size === 0}
+              onClick={() => setBatchOpen(true)}
+              className="inline-flex items-center px-3 py-1.5 rounded-md bg-amber-500 hover:bg-amber-600 text-white text-sm font-medium shadow-sm disabled:bg-slate-300 disabled:cursor-not-allowed"
+            >
+              {t('points.batch_apply', { count: selected.size })}
+            </button>
+            <div className="flex items-center gap-1">
             <button
               onClick={() => changeView('list')}
               className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
@@ -353,18 +449,27 @@ export function ClassroomPoints() {
                     className="bg-white border border-slate-200 rounded-xl p-3 shadow-sm flex flex-col gap-2"
                   >
                     <div className="flex items-baseline justify-between gap-2">
-                      <a
-                        href={`/students/${s.student_id}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-sm font-medium text-slate-900 hover:text-amber-700 truncate"
-                        title={s.name ?? ''}
-                      >
-                        <span className="text-slate-500 font-mono tabular-nums mr-1">
-                          {s.seat_number}
-                        </span>
-                        {s.name || '—'}
-                      </a>
+                      <label className="inline-flex items-baseline gap-2 min-w-0">
+                        <input
+                          type="checkbox"
+                          checked={selected.has(s.student_id)}
+                          onChange={() => toggleSelected(s.student_id)}
+                          className="shrink-0"
+                          aria-label={s.name ?? ''}
+                        />
+                        <a
+                          href={`/students/${s.student_id}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-sm font-medium text-slate-900 hover:text-amber-700 truncate"
+                          title={s.name ?? ''}
+                        >
+                          <span className="text-slate-500 font-mono tabular-nums mr-1">
+                            {s.seat_number}
+                          </span>
+                          {s.name || '—'}
+                        </a>
+                      </label>
                       <span
                         className={`text-xs font-mono tabular-nums font-semibold shrink-0 ${
                           s.semester_points > 0
@@ -445,6 +550,7 @@ export function ClassroomPoints() {
               <table className="min-w-full text-sm">
                 <thead className="bg-slate-50 border-b border-slate-200 text-slate-600">
                   <tr>
+                    <th className="px-3 py-3 w-10"></th>
                     <th className="px-4 py-3 text-left font-medium w-16">
                       {t('students.col.seat')}
                     </th>
@@ -467,6 +573,14 @@ export function ClassroomPoints() {
                         key={s.student_id}
                         className="border-b border-slate-100 last:border-b-0"
                       >
+                        <td className="px-3 py-2.5">
+                          <input
+                            type="checkbox"
+                            checked={selected.has(s.student_id)}
+                            onChange={() => toggleSelected(s.student_id)}
+                            aria-label={s.name ?? ''}
+                          />
+                        </td>
                         <td className="px-4 py-2.5 text-slate-500 font-mono tabular-nums">
                           {s.seat_number}
                         </td>
@@ -585,6 +699,22 @@ export function ClassroomPoints() {
               reason,
               points,
             })
+          }
+        />
+      )}
+
+      {batchOpen && (
+        <QuickPointModal
+          initialReason=""
+          initialPoints={1}
+          editableReason={true}
+          applyMode="class"
+          pending={batchMut.isPending}
+          onClose={() => {
+            if (!batchMut.isPending) setBatchOpen(false)
+          }}
+          onConfirm={(reason, points) =>
+            batchMut.mutate({ reason, points })
           }
         />
       )}

@@ -51,6 +51,8 @@
     "search_placeholder": "搜尋學生（座號或姓名）…",
     "match_count": "符合 {{count}} 位",
     "no_match": "沒有符合的學生。",
+    "select_all": "全選",
+    "batch_apply": "批次加扣點（{{count}} 位）",
     "goto_classes": "前往班級管理",
     "back": "返回班級列表",
     "custom": "自訂",
@@ -75,6 +77,7 @@
     "toast": {
       "applied_class": "已為 {{count}} 位學生 {{delta}} 點，原因「{{reason}}」",
       "applied_student": "已 {{delta}} 點，原因「{{reason}}」",
+      "applied_batch": "已為 {{count}} 位學生 {{delta}} 點，原因「{{reason}}」",
       "reset_done": "已歸零，已寫入一筆反向紀錄",
       "reset_skipped_zero": "此學生本學期點數已是 0，無須歸零",
       "reset_class_done": "全班歸零完成：寫入 {{written}} 筆、略過 {{skipped}} 位（已是 0）"

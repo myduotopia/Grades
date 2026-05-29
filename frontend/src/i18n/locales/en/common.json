@@ -51,6 +51,8 @@
     "search_placeholder": "Search students (seat or name)…",
     "match_count": "{{count}} match(es)",
     "no_match": "No matching students.",
+    "select_all": "Select all",
+    "batch_apply": "Batch apply ({{count}})",
     "goto_classes": "Go to classes",
     "back": "Back",
     "custom": "Custom",
@@ -75,6 +77,7 @@
     "toast": {
       "applied_class": "{{count}} students {{delta}} pts, reason \"{{reason}}\"",
       "applied_student": "{{delta}} pts applied, reason \"{{reason}}\"",
+      "applied_batch": "{{count}} students {{delta}} pts, reason \"{{reason}}\"",
       "reset_done": "Reset done — a reverse record was written",
       "reset_skipped_zero": "Student is already at 0; nothing to reset",
       "reset_class_done": "Class reset: {{written}} written, {{skipped}} already at 0"
