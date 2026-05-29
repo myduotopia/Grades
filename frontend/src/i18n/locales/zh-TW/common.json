@@ -33,6 +33,8 @@
     "admin_reasons": "點數原因",
     "admin_semesters": "學期管理",
     "snapshots": "成績封存區",
+    "alerts": "警示",
+    "alerts_badge": "{{count}} 筆新警示",
     "settings": "設定",
     "open_menu": "開啟選單",
     "collapse_sidebar": "收合側邊欄",
@@ -267,15 +269,55 @@
     "quick_actions": "快速動作",
     "action": {
       "add_classroom": "新增 / 管理班級",
+      "points": "點數管理",
+      "alerts": "學生警示",
       "add_assessment": "新增考試或作業",
       "import_grades": "匯入成績",
       "coming_soon": "之後版本提供"
+    },
+    "class_ranking": {
+      "title": "班級點數排行",
+      "subject_label": "科目：",
+      "all_subjects": "全部（不限科目）",
+      "col_points": "點數",
+      "sort_desc": "目前：高到低（點切換）",
+      "sort_asc": "目前：低到高（點切換）",
+      "empty": "本學期沒有點數紀錄。"
+    },
+    "top_students": {
+      "title": "本學期優秀學生 Top 10",
+      "tab_all": "全部班級",
+      "empty": "目前沒有學生資料。",
+      "col": {
+        "classroom": "班級",
+        "seat": "座號",
+        "name": "姓名",
+        "points": "總點數",
+        "met": "達標次數"
+      }
     },
     "workflow": {
       "heading": "建議的使用流程",
       "step1": "先建立班級，並把學生加進去",
       "step2": "在每個科目下，新增考試或作業（段考、小考、作業…）",
       "step3": "輸入成績，系統會依標準自動發放點數"
+    }
+  },
+  "alerts": {
+    "title": "學生警示",
+    "subtitle": "班級主成績頁目前有 0 分（視為缺交）的紀錄。每一筆缺交都是一列，點學生名進入詳情頁。",
+    "tab_all": "全部班級",
+    "filter_name_label": "姓名：",
+    "filter_name_all": "全部姓名",
+    "filter_name_clear": "清除姓名篩選",
+    "total_count": "共 {{count}} 筆缺交",
+    "empty": "太好了，目前沒有缺交。",
+    "col": {
+      "classroom": "班級",
+      "seat": "座號",
+      "name": "姓名",
+      "category": "類別",
+      "item": "缺交項目"
     }
   },
   "category": {

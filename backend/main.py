@@ -23,6 +23,7 @@ from routers import categories as categories_router
 from routers import classroom as classroom_router
 from routers import grade_entry as grade_entry_router
 from routers import grades as grades_router
+from routers import home as home_router
 from routers import item as item_router
 from routers import me as me_router
 from routers import points as points_router
@@ -71,6 +72,7 @@ app.include_router(student_detail_router.router, tags=["student-detail"])
 app.include_router(standards_router.router, tags=["standards"])
 app.include_router(points_router.router, tags=["points"])
 app.include_router(grades_router.router, tags=["grades"])
+app.include_router(home_router.router, tags=["home"])
 app.include_router(grade_entry_router.router, tags=["grade-entry"])
 app.include_router(item_router.router, tags=["items"])
 app.include_router(subjects_router.router, tags=["subjects"])

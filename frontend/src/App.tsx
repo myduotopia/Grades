@@ -6,6 +6,7 @@ import { ProtectedRoute } from './auth/ProtectedRoute'
 import { AppShell } from './layout/AppShell'
 import { SemesterViewProvider } from './state/SemesterView'
 import { AdminItems } from './pages/AdminItems'
+import { Alerts } from './pages/Alerts'
 import { AdminReasons } from './pages/AdminReasons'
 import { AdminSemesters } from './pages/AdminSemesters'
 import { AdminSubjects } from './pages/AdminSubjects'
@@ -68,6 +69,7 @@ function App() {
               <Route path="/admin/semesters" element={<AdminSemesters />} />
               <Route path="/admin/items" element={<AdminItems />} />
               <Route path="/admin/reasons" element={<AdminReasons />} />
+              <Route path="/alerts" element={<Alerts />} />
               <Route path="/points" element={<Points />} />
               <Route
                 path="/points/:classroomId"

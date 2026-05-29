@@ -33,6 +33,8 @@
     "admin_reasons": "Point reasons",
     "admin_semesters": "Semesters",
     "snapshots": "Archived grades",
+    "alerts": "Alerts",
+    "alerts_badge": "{{count}} new alerts",
     "settings": "Settings",
     "open_menu": "Open menu",
     "collapse_sidebar": "Collapse sidebar",
@@ -267,15 +269,55 @@
     "quick_actions": "Quick actions",
     "action": {
       "add_classroom": "Add / manage classes",
+      "points": "Manage points",
+      "alerts": "Student alerts",
       "add_assessment": "Add exam or assignment",
       "import_grades": "Import grades",
       "coming_soon": "Coming soon"
+    },
+    "class_ranking": {
+      "title": "Class point rankings",
+      "subject_label": "Subject:",
+      "all_subjects": "All (any subject)",
+      "col_points": "Points",
+      "sort_desc": "Currently high → low (click to flip)",
+      "sort_asc": "Currently low → high (click to flip)",
+      "empty": "No point records for the current semester."
+    },
+    "top_students": {
+      "title": "Top 10 students this semester",
+      "tab_all": "All classes",
+      "empty": "No student data yet.",
+      "col": {
+        "classroom": "Class",
+        "seat": "Seat",
+        "name": "Name",
+        "points": "Total pts",
+        "met": "Met standard"
+      }
     },
     "workflow": {
       "heading": "Suggested workflow",
       "step1": "Create classes and add students",
       "step2": "Under each subject, add exams or assignments (midterm, quiz, homework…)",
       "step3": "Enter scores; the system auto-awards points when a student meets their standard"
+    }
+  },
+  "alerts": {
+    "title": "Student alerts",
+    "subtitle": "Live grade rows currently at 0 (treated as missing). One row per missing item; click a name to drill in.",
+    "tab_all": "All classes",
+    "filter_name_label": "Name:",
+    "filter_name_all": "All names",
+    "filter_name_clear": "Clear name filter",
+    "total_count": "{{count}} missing in total",
+    "empty": "All clear — nothing missing.",
+    "col": {
+      "classroom": "Class",
+      "seat": "Seat",
+      "name": "Name",
+      "category": "Category",
+      "item": "Missing item"
     }
   },
   "category": {
