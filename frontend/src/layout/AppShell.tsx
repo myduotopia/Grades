@@ -69,8 +69,10 @@ export function AppShell() {
   const handleSignOut = () => supabase.auth.signOut()
 
   const widthClass = collapsed ? 'md:w-16' : 'md:w-64'
-  // Drawer is always full-width on mobile; collapse only applies on md+.
-  const asideClass = `fixed md:static inset-y-0 left-0 z-30 w-64 ${widthClass} bg-slate-900 text-slate-200 transform transition-[transform,width] duration-200 md:translate-x-0 ${
+  // Mobile: full-screen drawer (fixed). Desktop: sticky 100vh column so
+  // the sidebar height is independent of main content — long pages don't
+  // stretch / push the sidebar (#173).
+  const asideClass = `fixed md:sticky md:top-0 md:h-screen inset-y-0 left-0 z-30 w-64 ${widthClass} bg-slate-900 text-slate-200 transform transition-[transform,width] duration-200 md:translate-x-0 ${
     drawerOpen ? 'translate-x-0' : '-translate-x-full'
   }`
 

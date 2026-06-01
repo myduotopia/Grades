@@ -369,6 +369,9 @@ function ByStudentTable({
   const [query, setQuery] = useState('')
   const [sortKey, setSortKey] = useState<SortKey>('seat')
   const [sortDir, setSortDir] = useState<SortDir>('asc')
+  // Subject filter (#173): '' = all-subjects overview (existing behaviour);
+  // non-empty = single-subject breakdown by category column.
+  const [pickedSubjectId, setPickedSubjectId] = useState<string>('')
 
   if (view.items.length === 0) {
     return <EmptyHint />
@@ -382,6 +385,18 @@ function ByStudentTable({
       setSortDir('asc')
     }
   }
+
+  // Categories present for the picked subject, in canonical order
+  // (issue #173). Empty categories are hidden so the table doesn't waste
+  // space on 出席率 if the teacher never enters attendance.
+  const pickedCategories = (() => {
+    if (!pickedSubjectId) return [] as string[]
+    const seen = new Set<string>()
+    for (const it of view.items) {
+      if (it.subject_id === pickedSubjectId) seen.add(it.category_system_key)
+    }
+    return CATEGORY_ORDER.filter((c) => seen.has(c))
+  })()
 
   // Precompute (overall, per-subject-total) for each student so sort doesn't
   // re-walk the matrix on every comparison.
@@ -412,7 +427,16 @@ function ByStudentTable({
       row: typeof enriched[number],
     ): number | null => {
       if (sortKey === 'seat') return row.student.seat_number
-      if (sortKey === 'overall') return row.overall
+      if (sortKey === 'overall') {
+        // In single-subject mode, "overall" maps to that subject's
+        // weighted total (the rightmost column). In all-subjects mode it
+        // remains the average of every subject's total.
+        if (pickedSubjectId) {
+          const v = row.row[pickedSubjectId]?.weightedTotal
+          return typeof v === 'number' ? v : null
+        }
+        return row.overall
+      }
       // subject column
       const v = row.row[sortKey]?.weightedTotal
       return typeof v === 'number' ? v : null
@@ -443,9 +467,14 @@ function ByStudentTable({
   const headerBtn =
     'inline-flex items-center text-left font-medium hover:text-slate-900 cursor-pointer select-none'
 
+  const totalCols =
+    pickedSubjectId
+      ? 2 + pickedCategories.length + 1 // seat + name + cats + weighted total
+      : 2 + subjects.length + 1 // seat + name + subjects + overall
+
   return (
     <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
-      <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/60">
+      <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/60 flex flex-wrap gap-3 items-center">
         <input
           type="search"
           value={query}
@@ -453,22 +482,45 @@ function ByStudentTable({
           placeholder={t('grades.search_placeholder')}
           className="w-full sm:w-72 border border-slate-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
         />
+        <label className="text-sm text-slate-600 inline-flex items-center gap-2 sm:ml-auto">
+          {t('grades.pick_subject')}
+          <select
+            value={pickedSubjectId}
+            onChange={(e) => {
+              setPickedSubjectId(e.target.value)
+              // Keep sort sensible: switching mode resets sort to seat asc.
+              setSortKey('seat')
+              setSortDir('asc')
+            }}
+            className="border border-slate-300 rounded-md px-2 py-1 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-amber-500"
+          >
+            <option value="">{t('grades.all_subjects')}</option>
+            {subjects.map((s) => (
+              <option key={s.id} value={s.id}>
+                {subjectLabel(s, t)}
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
       <div className="overflow-x-auto">
         <table className="min-w-full text-sm">
           <thead className="bg-slate-50 border-b border-slate-200 text-slate-600">
             <tr>
-              <th className="px-4 py-3 text-left">
+              <th className="px-4 py-3 text-left w-16">
                 <button onClick={() => toggleSort('seat')} className={headerBtn}>
                   {t('students.col.seat')}
                   {arrow('seat')}
                 </button>
               </th>
-              <th className="px-4 py-3 text-left font-medium">
+              <th className="px-4 py-3 text-left font-medium min-w-[6rem] max-w-[10rem]">
                 {t('students.col.name')}
               </th>
-              {subjects.map((sub) => (
-                <th key={sub.id} className="px-4 py-3 text-left">
+              {!pickedSubjectId && subjects.map((sub) => (
+                <th
+                  key={sub.id}
+                  className="px-4 py-3 text-left max-w-[8rem]"
+                >
                   <button
                     onClick={() => toggleSort(sub.id)}
                     className={headerBtn}
@@ -478,53 +530,78 @@ function ByStudentTable({
                   </button>
                 </th>
               ))}
-              <th className="px-4 py-3 text-left">
+              {pickedSubjectId && pickedCategories.map((c) => (
+                <th
+                  key={c}
+                  className="px-4 py-3 text-left max-w-[8rem]"
+                >
+                  {t(`category.${c}`)}
+                </th>
+              ))}
+              <th className="px-4 py-3 text-left max-w-[8rem]">
                 <button
                   onClick={() => toggleSort('overall')}
                   className={headerBtn}
                 >
-                  {t('grades.overall_avg')}
+                  {pickedSubjectId
+                    ? t('grades.weighted_total')
+                    : t('grades.overall_avg')}
                   {arrow('overall')}
                 </button>
               </th>
             </tr>
           </thead>
           <tbody>
-            {sorted.map(({ student: s, row, overall }) => (
-              <tr
-                key={s.id}
-                className="border-b border-slate-100 last:border-b-0"
-              >
-                <td className="px-4 py-2.5 text-slate-900 font-medium">
-                  {s.seat_number}
-                </td>
-                <td className="px-4 py-2.5 text-slate-700">
-                  <a
-                    href={`/students/${s.id}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="hover:text-amber-700 hover:underline"
-                  >
-                    {s.name || <span className="text-slate-400">—</span>}
-                  </a>
-                </td>
-                {subjects.map((sub) => (
-                  <td
-                    key={sub.id}
-                    className="px-4 py-2.5 text-slate-700 tabular-nums"
-                  >
-                    {formatScore(row[sub.id]?.weightedTotal)}
+            {sorted.map(({ student: s, row, overall }) => {
+              const pickedRow = pickedSubjectId ? row[pickedSubjectId] : null
+              return (
+                <tr
+                  key={s.id}
+                  className="border-b border-slate-100 last:border-b-0"
+                >
+                  <td className="px-4 py-2.5 text-slate-900 font-medium w-16">
+                    {s.seat_number}
                   </td>
-                ))}
-                <td className="px-4 py-2.5 text-slate-900 font-semibold tabular-nums">
-                  {formatScore(overall)}
-                </td>
-              </tr>
-            ))}
+                  <td className="px-4 py-2.5 text-slate-700 min-w-[6rem] max-w-[10rem] truncate">
+                    <a
+                      href={`/students/${s.id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="hover:text-amber-700 hover:underline"
+                    >
+                      {s.name || <span className="text-slate-400">—</span>}
+                    </a>
+                  </td>
+                  {!pickedSubjectId && subjects.map((sub) => (
+                    <td
+                      key={sub.id}
+                      className="px-4 py-2.5 text-slate-700 tabular-nums max-w-[8rem] truncate"
+                    >
+                      {formatScore(row[sub.id]?.weightedTotal)}
+                    </td>
+                  ))}
+                  {pickedSubjectId && pickedCategories.map((c) => (
+                    <td
+                      key={c}
+                      className="px-4 py-2.5 text-slate-700 tabular-nums max-w-[8rem] truncate"
+                    >
+                      {formatScore(pickedRow?.byCategory[c])}
+                    </td>
+                  ))}
+                  <td className="px-4 py-2.5 text-slate-900 font-semibold tabular-nums max-w-[8rem] truncate">
+                    {formatScore(
+                      pickedSubjectId
+                        ? pickedRow?.weightedTotal
+                        : overall,
+                    )}
+                  </td>
+                </tr>
+              )
+            })}
             {sorted.length === 0 && (
               <tr>
                 <td
-                  colSpan={subjects.length + 3}
+                  colSpan={totalCols}
                   className="px-4 py-8 text-center text-sm text-slate-400"
                 >
                   {t('grades.no_match')}
