@@ -28,6 +28,7 @@ export function Alerts() {
   const qc = useQueryClient()
   const [classroomId, setClassroomId] = useState<string>('')
   const [nameFilter, setNameFilter] = useState<string>('')
+  const [itemFilter, setItemFilter] = useState<string>('')
   const [sortKey, setSortKey] = useState<SortKey>('seat')
   const [sortDir, setSortDir] = useState<SortDir>('asc')
 
@@ -84,11 +85,22 @@ export function Alerts() {
     return out.sort()
   }, [allRows])
 
+  const itemNames = useMemo(() => {
+    const seen = new Set<string>()
+    for (const r of allRows) seen.add(r.item_name)
+    return Array.from(seen).sort()
+  }, [allRows])
+
   const filtered = useMemo(() => {
-    const needle = nameFilter.trim().toLowerCase()
-    const f = needle
-      ? allRows.filter((r) => (r.name || '').toLowerCase().includes(needle))
-      : allRows
+    const nameNeedle = nameFilter.trim().toLowerCase()
+    const itemNeedle = itemFilter.trim().toLowerCase()
+    const f = allRows.filter((r) => {
+      if (nameNeedle && !(r.name || '').toLowerCase().includes(nameNeedle))
+        return false
+      if (itemNeedle && !r.item_name.toLowerCase().includes(itemNeedle))
+        return false
+      return true
+    })
     const catLabel = (k: string) => t(`category.${k}`)
     const cmp = (a: MissingRow, b: MissingRow) => {
       if (sortKey === 'seat') {
@@ -107,7 +119,7 @@ export function Alerts() {
     const out = [...f].sort(cmp)
     if (sortDir === 'desc') out.reverse()
     return out
-  }, [allRows, nameFilter, sortKey, sortDir, t])
+  }, [allRows, nameFilter, itemFilter, sortKey, sortDir, t])
 
   function toggleSort(key: SortKey) {
     if (sortKey === key) {
@@ -176,6 +188,32 @@ export function Alerts() {
               onClick={() => setNameFilter('')}
               className="text-xs text-slate-500 hover:text-slate-700"
               aria-label={t('alerts.filter_name_clear')}
+            >
+              ✕
+            </button>
+          )}
+        </label>
+        <label className="inline-flex items-center gap-2">
+          {t('alerts.filter_item_label')}
+          <input
+            type="search"
+            list="alerts-item-options"
+            value={itemFilter}
+            onChange={(e) => setItemFilter(e.target.value)}
+            placeholder={t('alerts.filter_item_all')}
+            className="border border-slate-300 rounded-md px-2 py-1 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-amber-500 min-w-[10rem]"
+          />
+          <datalist id="alerts-item-options">
+            {itemNames.map((n) => (
+              <option key={n} value={n} />
+            ))}
+          </datalist>
+          {itemFilter && (
+            <button
+              type="button"
+              onClick={() => setItemFilter('')}
+              className="text-xs text-slate-500 hover:text-slate-700"
+              aria-label={t('alerts.filter_item_clear')}
             >
               ✕
             </button>
