@@ -6,7 +6,9 @@ Three read endpoints + one write:
 - GET  /api/home/top-students  — top N students by semester point total,
        with met-standard count.
 - GET  /api/home/alerts/summary — new-since-last-view count for the badge.
-- GET  /api/home/alerts/list    — students with ungraded (NULL) live items.
+- GET  /api/home/alerts/list    — students missing a Grade row for any
+       active (classroom_item, snapshot_id IS NULL) item (#179). 0 = valid
+       grade, not missing; only "no Grade row at all" counts as missing.
 - POST /api/home/alerts/viewed  — stamp alerts_last_viewed_at = now().
 
 Semester scope: current semester only (matches the rest of the app).
@@ -25,7 +27,7 @@ from sqlalchemy.orm import Session
 from auth import require_user_id
 from database import get_db
 from models.classroom import Classroom, Student
-from models.curriculum import Category, Item, Semester, Subject
+from models.curriculum import Category, ClassroomItem, Item, Semester, Subject
 from models.grading import Grade, PointRecord, PointReset
 from models.settings import UserSettings
 from schemas import (
@@ -251,19 +253,61 @@ def _get_or_create_settings(db: Session, user_id: UUID) -> UserSettings:
     return row
 
 
-def _alert_student_ids(db: Session, user_id: UUID) -> list[UUID]:
-    """Distinct students with at least one ungraded (NULL score) live grade (#176)."""
-    rows = (
-        db.query(Grade.student_id)
+def _compute_missing(
+    db: Session, user_id: UUID
+) -> list[tuple[UUID, UUID, UUID, str, str, datetime]]:
+    """Cross-join active (classroom_item.snapshot_id IS NULL) × student-in-
+    classroom, then subtract rows that already have a live Grade. The
+    leftover (sid, cid, iid, iname, cat_key, item_created_at) tuples are
+    what the teacher has not yet entered a score for (#179)."""
+    pairs = (
+        db.query(
+            ClassroomItem.classroom_id,
+            ClassroomItem.item_id,
+            Item.name,
+            Item.created_at,
+            Category.system_key,
+        )
+        .join(Item, Item.id == ClassroomItem.item_id)
+        .join(Category, Category.id == Item.category_id)
+        .filter(
+            ClassroomItem.user_id == user_id,
+            ClassroomItem.snapshot_id.is_(None),
+        )
+        .all()
+    )
+    if not pairs:
+        return []
+
+    classroom_ids = {p[0] for p in pairs}
+    students_by_classroom: dict[UUID, list[UUID]] = {}
+    for sid, cid in (
+        db.query(Student.id, Student.classroom_id)
+        .filter(
+            Student.user_id == user_id,
+            Student.classroom_id.in_(classroom_ids),
+        )
+        .all()
+    ):
+        students_by_classroom.setdefault(cid, []).append(sid)
+
+    item_ids = {p[1] for p in pairs}
+    graded: set[tuple[UUID, UUID]] = set(
+        db.query(Grade.student_id, Grade.item_id)
         .filter(
             Grade.user_id == user_id,
             Grade.snapshot_id.is_(None),
-            Grade.score.is_(None),
+            Grade.item_id.in_(item_ids),
         )
-        .distinct()
         .all()
     )
-    return [r[0] for r in rows]
+
+    out: list[tuple[UUID, UUID, UUID, str, str, datetime]] = []
+    for cid, iid, iname, icreated, ckey in pairs:
+        for sid in students_by_classroom.get(cid, []):
+            if (sid, iid) not in graded:
+                out.append((sid, cid, iid, iname, ckey, icreated))
+    return out
 
 
 @router.get("/api/home/alerts/summary", response_model=HomeAlertSummary)
@@ -271,8 +315,8 @@ def alerts_summary(
     user_id: Annotated[UUID, Depends(require_user_id)],
     db: Annotated[Session, Depends(get_db)],
 ) -> HomeAlertSummary:
-    """Badge counter: ungraded (NULL score) live grade rows whose updated_at
-    is newer than the teacher's last visit to the Alerts page. NULL
+    """Badge counter: missing (student, item) pairs whose backing item was
+    created after the teacher's last visit to the Alerts page. NULL
     last_viewed means everything counts (initial state)."""
     settings = (
         db.query(UserSettings)
@@ -281,14 +325,11 @@ def alerts_summary(
     )
     last_viewed = settings.alerts_last_viewed_at if settings else None
 
-    q = db.query(func.count(Grade.id)).filter(
-        Grade.user_id == user_id,
-        Grade.snapshot_id.is_(None),
-        Grade.score.is_(None),
-    )
-    if last_viewed is not None:
-        q = q.filter(Grade.updated_at > last_viewed)
-    new_count = int(q.scalar() or 0)
+    missing = _compute_missing(db, user_id)
+    if last_viewed is None:
+        new_count = len(missing)
+    else:
+        new_count = sum(1 for row in missing if row[5] > last_viewed)
     return HomeAlertSummary(new_count=new_count)
 
 
@@ -298,34 +339,19 @@ def alerts_list(
     db: Annotated[Session, Depends(get_db)],
     classroom_id: Annotated[UUID | None, Query()] = None,
 ) -> HomeAlertList:
-    """Every student who currently has at least one ungraded (NULL score)
-    live grade, with their semester totals + met-count (same shape as
+    """Every student who currently has at least one missing (no Grade row)
+    live item, with their semester totals + met-count (same shape as
     top-students for column-sort parity)."""
     sem = _current_semester(db, user_id)
 
-    # Fetch every ungraded live grade with its item + category so we can
-    # build both the per-student count AND the tooltip-friendly item list
-    # in one round-trip (#176).
-    missing_rows = (
-        db.query(Grade.student_id, Item.name, Category.system_key)
-        .join(Item, Item.id == Grade.item_id)
-        .join(Category, Category.id == Item.category_id)
-        .filter(
-            Grade.user_id == user_id,
-            Grade.snapshot_id.is_(None),
-            Grade.score.is_(None),
-        )
-        .order_by(Item.name.asc())
-        .all()
-    )
+    missing = _compute_missing(db, user_id)
     missing_items_by: dict[UUID, list[HomeAlertMissingItem]] = {}
-    for sid, iname, cat_key in missing_rows:
+    for sid, _cid, _iid, iname, cat_key, _ts in missing:
         missing_items_by.setdefault(sid, []).append(
-            HomeAlertMissingItem(
-                item_name=iname,
-                category_system_key=cat_key,
-            )
+            HomeAlertMissingItem(item_name=iname, category_system_key=cat_key)
         )
+    for items in missing_items_by.values():
+        items.sort(key=lambda i: i.item_name)
     missing_count_by = {sid: len(items) for sid, items in missing_items_by.items()}
     if not missing_count_by:
         return HomeAlertList(data=[])
