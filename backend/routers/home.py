@@ -6,7 +6,7 @@ Three read endpoints + one write:
 - GET  /api/home/top-students  — top N students by semester point total,
        with met-standard count.
 - GET  /api/home/alerts/summary — new-since-last-view count for the badge.
-- GET  /api/home/alerts/list    — current 0-score live students.
+- GET  /api/home/alerts/list    — students with ungraded (NULL) live items.
 - POST /api/home/alerts/viewed  — stamp alerts_last_viewed_at = now().
 
 Semester scope: current semester only (matches the rest of the app).
@@ -33,7 +33,7 @@ from schemas import (
     HomeAlertList,
     HomeAlertSummary,
     HomeAlertViewedOut,
-    HomeAlertZeroItem,
+    HomeAlertMissingItem,
     HomeClassRankingItem,
     HomeClassRankingList,
     HomeTopStudentItem,
@@ -252,13 +252,13 @@ def _get_or_create_settings(db: Session, user_id: UUID) -> UserSettings:
 
 
 def _alert_student_ids(db: Session, user_id: UUID) -> list[UUID]:
-    """Distinct students with at least one 0-score live grade (#161)."""
+    """Distinct students with at least one ungraded (NULL score) live grade (#176)."""
     rows = (
         db.query(Grade.student_id)
         .filter(
             Grade.user_id == user_id,
             Grade.snapshot_id.is_(None),
-            Grade.score == 0,
+            Grade.score.is_(None),
         )
         .distinct()
         .all()
@@ -271,9 +271,9 @@ def alerts_summary(
     user_id: Annotated[UUID, Depends(require_user_id)],
     db: Annotated[Session, Depends(get_db)],
 ) -> HomeAlertSummary:
-    """Badge counter: 0-score live grade rows whose updated_at is newer
-    than the teacher's last visit to the Alerts page. NULL last_viewed
-    means everything counts (initial state)."""
+    """Badge counter: ungraded (NULL score) live grade rows whose updated_at
+    is newer than the teacher's last visit to the Alerts page. NULL
+    last_viewed means everything counts (initial state)."""
     settings = (
         db.query(UserSettings)
         .filter(UserSettings.user_id == user_id)
@@ -284,7 +284,7 @@ def alerts_summary(
     q = db.query(func.count(Grade.id)).filter(
         Grade.user_id == user_id,
         Grade.snapshot_id.is_(None),
-        Grade.score == 0,
+        Grade.score.is_(None),
     )
     if last_viewed is not None:
         q = q.filter(Grade.updated_at > last_viewed)
@@ -298,36 +298,36 @@ def alerts_list(
     db: Annotated[Session, Depends(get_db)],
     classroom_id: Annotated[UUID | None, Query()] = None,
 ) -> HomeAlertList:
-    """Every student who currently has at least one 0-score live grade,
-    with their semester totals + met-count (same shape as top-students for
-    column-sort parity)."""
+    """Every student who currently has at least one ungraded (NULL score)
+    live grade, with their semester totals + met-count (same shape as
+    top-students for column-sort parity)."""
     sem = _current_semester(db, user_id)
 
-    # Fetch every 0-score live grade with its item + category so we can
+    # Fetch every ungraded live grade with its item + category so we can
     # build both the per-student count AND the tooltip-friendly item list
-    # in one round-trip (#161).
-    zero_rows = (
+    # in one round-trip (#176).
+    missing_rows = (
         db.query(Grade.student_id, Item.name, Category.system_key)
         .join(Item, Item.id == Grade.item_id)
         .join(Category, Category.id == Item.category_id)
         .filter(
             Grade.user_id == user_id,
             Grade.snapshot_id.is_(None),
-            Grade.score == 0,
+            Grade.score.is_(None),
         )
         .order_by(Item.name.asc())
         .all()
     )
-    zero_items_by: dict[UUID, list[HomeAlertZeroItem]] = {}
-    for sid, iname, cat_key in zero_rows:
-        zero_items_by.setdefault(sid, []).append(
-            HomeAlertZeroItem(
+    missing_items_by: dict[UUID, list[HomeAlertMissingItem]] = {}
+    for sid, iname, cat_key in missing_rows:
+        missing_items_by.setdefault(sid, []).append(
+            HomeAlertMissingItem(
                 item_name=iname,
                 category_system_key=cat_key,
             )
         )
-    zero_count_by = {sid: len(items) for sid, items in zero_items_by.items()}
-    if not zero_count_by:
+    missing_count_by = {sid: len(items) for sid, items in missing_items_by.items()}
+    if not missing_count_by:
         return HomeAlertList(data=[])
 
     q = (
@@ -335,7 +335,7 @@ def alerts_list(
         .join(Classroom, Classroom.id == Student.classroom_id)
         .filter(
             Student.user_id == user_id,
-            Student.id.in_(zero_count_by.keys()),
+            Student.id.in_(missing_count_by.keys()),
         )
     )
     if classroom_id is not None:
@@ -380,8 +380,8 @@ def alerts_list(
             name=s.name,
             total_points=total_by.get(s.id, 0),
             met_count=met_by.get(s.id, 0),
-            zero_score_count=zero_count_by.get(s.id, 0),
-            zero_score_items=zero_items_by.get(s.id, []),
+            missing_count=missing_count_by.get(s.id, 0),
+            missing_items=missing_items_by.get(s.id, []),
         )
         for s, c in students
     ]

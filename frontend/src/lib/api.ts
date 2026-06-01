@@ -1048,7 +1048,7 @@ export interface HomeTopStudentItem {
   met_count: number
 }
 
-export interface HomeAlertZeroItem {
+export interface HomeAlertMissingItem {
   item_name: string
   category_system_key: string
 }
@@ -1062,6 +1062,6 @@ export interface HomeAlertListItem {
   name: string | null
   total_points: number
   met_count: number
-  zero_score_count: number
-  zero_score_items: HomeAlertZeroItem[]
+  missing_count: number
+  missing_items: HomeAlertMissingItem[]
 }

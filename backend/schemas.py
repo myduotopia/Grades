@@ -724,7 +724,7 @@ class HomeAlertSummary(BaseModel):
     new_count: int
 
 
-class HomeAlertZeroItem(BaseModel):
+class HomeAlertMissingItem(BaseModel):
     item_name: str
     category_system_key: str
 
@@ -738,11 +738,11 @@ class HomeAlertListItem(BaseModel):
     name: str | None
     total_points: int
     met_count: int
-    zero_score_count: int
-    # Which live items the student is currently at 0 on (#161). Drives the
-    # tooltip on the 0-score-count column so the teacher can see exactly
-    # what needs revisiting without leaving the page.
-    zero_score_items: list[HomeAlertZeroItem] = []
+    missing_count: int
+    # Which live items the student has not yet been graded on (#176 — NULL
+    # score). Drives the tooltip on the missing-count column so the teacher
+    # can see exactly what needs entering without leaving the page.
+    missing_items: list[HomeAlertMissingItem] = []
 
 
 class HomeAlertList(BaseModel):
