@@ -646,7 +646,7 @@ export const api = {
       ),
     classBatch: (
       classroomId: string,
-      body: { points: number; reason: string },
+      body: { points: number; reason: string; student_ids?: string[] },
     ) =>
       request<{ written: number }>(
         `/api/classrooms/${classroomId}/points/batch`,

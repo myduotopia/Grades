@@ -48,6 +48,11 @@
     "manage_reasons": "管理原因清單",
     "empty_classrooms": "還沒建立任何班級。",
     "empty_students": "這個班級沒有學生。",
+    "search_placeholder": "搜尋學生（座號或姓名）…",
+    "match_count": "符合 {{count}} 位",
+    "no_match": "沒有符合的學生。",
+    "select_all": "全選",
+    "batch_apply": "批次加扣點（{{count}} 位）",
     "goto_classes": "前往班級管理",
     "back": "返回班級列表",
     "custom": "自訂",
@@ -72,6 +77,7 @@
     "toast": {
       "applied_class": "已為 {{count}} 位學生 {{delta}} 點，原因「{{reason}}」",
       "applied_student": "已 {{delta}} 點，原因「{{reason}}」",
+      "applied_batch": "已為 {{count}} 位學生 {{delta}} 點，原因「{{reason}}」",
       "reset_done": "已歸零，已寫入一筆反向紀錄",
       "reset_skipped_zero": "此學生本學期點數已是 0，無須歸零",
       "reset_class_done": "全班歸零完成：寫入 {{written}} 筆、略過 {{skipped}} 位（已是 0）"
@@ -556,7 +562,9 @@
     "semester_format": "{{year}} 學年第 {{term}} 學期",
     "current": "目前",
     "overall_avg": "總平均",
+    "weighted_total": "加權總分",
     "pick_subject": "選擇科目：",
+    "all_subjects": "全部科目",
     "formula_hint": "加權公式：各類別在有成績的範圍內依權重重新比例化計算；額外加分直接加在加權總分上（封頂 100）。",
     "empty": "這個學期還沒有成績資料。先到班級頁的「匯入成績」上傳檔案。",
     "view": {

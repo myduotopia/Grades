@@ -48,6 +48,11 @@
     "manage_reasons": "Manage reasons",
     "empty_classrooms": "No classrooms yet.",
     "empty_students": "This classroom has no students.",
+    "search_placeholder": "Search students (seat or name)…",
+    "match_count": "{{count}} match(es)",
+    "no_match": "No matching students.",
+    "select_all": "Select all",
+    "batch_apply": "Batch apply ({{count}})",
     "goto_classes": "Go to classes",
     "back": "Back",
     "custom": "Custom",
@@ -72,6 +77,7 @@
     "toast": {
       "applied_class": "{{count}} students {{delta}} pts, reason \"{{reason}}\"",
       "applied_student": "{{delta}} pts applied, reason \"{{reason}}\"",
+      "applied_batch": "{{count}} students {{delta}} pts, reason \"{{reason}}\"",
       "reset_done": "Reset done — a reverse record was written",
       "reset_skipped_zero": "Student is already at 0; nothing to reset",
       "reset_class_done": "Class reset: {{written}} written, {{skipped}} already at 0"
@@ -556,7 +562,9 @@
     "semester_format": "Year {{year}}, Term {{term}}",
     "current": "current",
     "overall_avg": "Overall avg",
+    "weighted_total": "Weighted total",
     "pick_subject": "Pick subject:",
+    "all_subjects": "All subjects",
     "formula_hint": "Weighting: categories with no grades are excluded and the remaining weights are re-normalised. Extra bonus is added on top (capped at 100).",
     "empty": "No grade data for this semester yet. Use 「Import grades」 on the class page to upload a file.",
     "view": {

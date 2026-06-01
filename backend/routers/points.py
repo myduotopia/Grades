@@ -380,14 +380,16 @@ def add_classroom_points_batch(
         raise _not_found("classroom")
     _get_current_semester(db, user_id)
 
-    students = (
-        db.query(Student)
-        .filter(
-            Student.classroom_id == classroom_id,
-            Student.user_id == user_id,
-        )
-        .all()
+    student_q = db.query(Student).filter(
+        Student.classroom_id == classroom_id,
+        Student.user_id == user_id,
     )
+    # #173: optional student subset. Backend always intersects with the
+    # classroom's roster so a client can't write to a student outside the
+    # named class via this endpoint.
+    if body.student_ids:
+        student_q = student_q.filter(Student.id.in_(body.student_ids))
+    students = student_q.all()
     reason = body.reason.strip()
     for s in students:
         db.add(
