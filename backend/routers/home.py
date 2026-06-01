@@ -315,22 +315,16 @@ def alerts_summary(
     user_id: Annotated[UUID, Depends(require_user_id)],
     db: Annotated[Session, Depends(get_db)],
 ) -> HomeAlertSummary:
-    """Badge counter: missing (student, item) pairs whose backing item was
-    created after the teacher's last visit to the Alerts page. NULL
-    last_viewed means everything counts (initial state)."""
-    settings = (
-        db.query(UserSettings)
-        .filter(UserSettings.user_id == user_id)
-        .one_or_none()
-    )
-    last_viewed = settings.alerts_last_viewed_at if settings else None
+    """Badge counter: total current missing (student × item) pairs.
 
+    Since #179 missing rows are computed from the live ClassroomItem ×
+    Student set difference (no Grade row = missing), they're persistent —
+    they don't "go away once seen", so a "new since last viewed" semantic
+    no longer maps cleanly. The badge now shows the same number the alerts
+    list shows; `alerts_last_viewed_at` is still stamped on visit for
+    potential future use but no longer gates the count."""
     missing = _compute_missing(db, user_id)
-    if last_viewed is None:
-        new_count = len(missing)
-    else:
-        new_count = sum(1 for row in missing if row[5] > last_viewed)
-    return HomeAlertSummary(new_count=new_count)
+    return HomeAlertSummary(new_count=len(missing))
 
 
 @router.get("/api/home/alerts/list", response_model=HomeAlertList)
