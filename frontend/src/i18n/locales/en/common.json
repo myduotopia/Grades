@@ -311,7 +311,7 @@
   },
   "alerts": {
     "title": "Student alerts",
-    "subtitle": "Live grade rows currently at 0 (treated as missing). One row per missing item; click a name to drill in.",
+    "subtitle": "Items on the main classroom grade page with no score entered are treated as missing. One row per missing item; click a name to drill in.",
     "tab_all": "All classes",
     "filter_name_label": "Name:",
     "filter_name_all": "All names",
