@@ -55,7 +55,7 @@ export function Alerts() {
   const allRows: MissingRow[] = useMemo(() => {
     const out: MissingRow[] = []
     for (const s of listQ.data?.data ?? []) {
-      for (const z of s.zero_score_items) {
+      for (const z of s.missing_items) {
         out.push({
           student_id: s.student_id,
           classroom_id: s.classroom_id,
