@@ -10,13 +10,20 @@ import { PageHeader } from '../layout/PageHeader'
 import {
   api,
   type HomeClassRankingItem,
+  type HomePoorPerformanceItem,
   type HomeTopStudentItem,
+  type ReasonCount,
 } from '../lib/api'
 import { classroomDisplayName } from '../lib/classroomFormat'
 
 type ClassSort = 'points_desc' | 'points_asc'
-type StudentSortKey = 'seat' | 'total_points' | 'met_count'
+type StudentSortKey = 'seat' | 'total_points' | 'met_count' | 'reason'
+type PoorSortKey = 'seat' | 'deducted_total' | 'deduction_count' | 'reason'
 type SortDir = 'asc' | 'desc'
+
+function primaryReason(items: ReasonCount[]): string {
+  return items[0]?.reason ?? ''
+}
 
 export function Home() {
   const { t, i18n } = useTranslation()
@@ -43,11 +50,18 @@ export function Home() {
         <ClassRankingWidget lang={i18n.language} />
       </section>
 
-      <section>
+      <section className="mb-8">
         <h2 className="text-lg font-semibold text-slate-900 mb-3 tracking-tight">
           {t('home.top_students.title')}
         </h2>
         <TopStudentsWidget lang={i18n.language} />
+      </section>
+
+      <section>
+        <h2 className="text-lg font-semibold text-slate-900 mb-3 tracking-tight">
+          {t('home.poor_performance.title')}
+        </h2>
+        <PoorPerformanceWidget lang={i18n.language} />
       </section>
     </PageContainer>
   )
@@ -191,7 +205,10 @@ function TopStudentsWidget({ lang }: { lang: string }) {
         return a.seat_number - b.seat_number
       }
       if (sortKey === 'total_points') return a.total_points - b.total_points
-      return a.met_count - b.met_count
+      if (sortKey === 'met_count') return a.met_count - b.met_count
+      return primaryReason(a.reason_breakdown).localeCompare(
+        primaryReason(b.reason_breakdown),
+      )
     }
     rows.sort(cmp)
     if (sortDir === 'desc') rows.reverse()
@@ -279,6 +296,13 @@ function TopStudentsWidget({ lang }: { lang: string }) {
                 >
                   {t('home.top_students.col.met')}
                 </SortableTh>
+                <SortableTh
+                  active={sortKey === 'reason'}
+                  dir={sortDir}
+                  onClick={() => toggleSort('reason')}
+                >
+                  {t('home.top_students.col.reason')}
+                </SortableTh>
               </tr>
             </thead>
             <tbody>
@@ -306,12 +330,36 @@ function TopStudentsWidget({ lang }: { lang: string }) {
                   <td className="px-3 py-2 text-right font-mono tabular-nums text-emerald-700">
                     {s.met_count}
                   </td>
+                  <td className="px-3 py-2">
+                    <ReasonBreakdown items={s.reason_breakdown} />
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       )}
+    </div>
+  )
+}
+
+function ReasonBreakdown({ items }: { items: ReasonCount[] }) {
+  if (items.length === 0) {
+    return <span className="text-slate-300">—</span>
+  }
+  return (
+    <div className="flex flex-wrap gap-1">
+      {items.map((r) => (
+        <span
+          key={r.reason}
+          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 text-xs"
+        >
+          {r.reason}
+          <span className="font-mono tabular-nums text-slate-400">
+            ×{r.count}
+          </span>
+        </span>
+      ))}
     </div>
   )
 }
@@ -345,5 +393,177 @@ function SortableTh({
         </span>
       </span>
     </th>
+  )
+}
+
+function PoorPerformanceWidget({ lang }: { lang: string }) {
+  const { t } = useTranslation()
+  const [classroomId, setClassroomId] = useState<string>('')
+  // Default: most-deducted first. deducted_total is negative, so ascending
+  // puts the most-negative student on top.
+  const [sortKey, setSortKey] = useState<PoorSortKey>('deducted_total')
+  const [sortDir, setSortDir] = useState<SortDir>('asc')
+
+  const classroomsQ = useClassrooms()
+  const poorQ = useQuery({
+    queryKey: ['home-poor-performance', classroomId || null],
+    queryFn: () => api.home.poorPerformance(classroomId || undefined),
+  })
+
+  const sorted = useMemo(() => {
+    const rows = [...(poorQ.data?.data ?? [])]
+    const cmp = (a: HomePoorPerformanceItem, b: HomePoorPerformanceItem) => {
+      if (sortKey === 'seat') {
+        if (a.classroom_grade !== b.classroom_grade)
+          return a.classroom_grade - b.classroom_grade
+        if (a.classroom_name !== b.classroom_name)
+          return a.classroom_name.localeCompare(b.classroom_name)
+        return a.seat_number - b.seat_number
+      }
+      if (sortKey === 'deducted_total')
+        return a.deducted_total - b.deducted_total
+      if (sortKey === 'deduction_count')
+        return a.deduction_count - b.deduction_count
+      return primaryReason(a.reason_breakdown).localeCompare(
+        primaryReason(b.reason_breakdown),
+      )
+    }
+    rows.sort(cmp)
+    if (sortDir === 'desc') rows.reverse()
+    return rows
+  }, [poorQ.data, sortKey, sortDir])
+
+  function toggleSort(key: PoorSortKey) {
+    if (sortKey === key) {
+      setSortDir((d) => (d === 'desc' ? 'asc' : 'desc'))
+    } else {
+      setSortKey(key)
+      setSortDir(key === 'deduction_count' ? 'desc' : 'asc')
+    }
+  }
+
+  const classrooms = classroomsQ.data?.data ?? []
+  return (
+    <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+      <div className="flex flex-wrap gap-1 px-4 py-3 border-b border-slate-100">
+        <button
+          type="button"
+          onClick={() => setClassroomId('')}
+          className={`px-3 py-1.5 text-xs rounded-md ${
+            classroomId === ''
+              ? 'bg-slate-900 text-white'
+              : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+          }`}
+        >
+          {t('home.poor_performance.tab_all')}
+        </button>
+        {classrooms.map((c) => (
+          <button
+            key={c.id}
+            type="button"
+            onClick={() => setClassroomId(c.id)}
+            className={`px-3 py-1.5 text-xs rounded-md ${
+              classroomId === c.id
+                ? 'bg-slate-900 text-white'
+                : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+            }`}
+          >
+            {classroomDisplayName(c.grade, c.name, lang)}
+          </button>
+        ))}
+      </div>
+      {poorQ.isLoading ? (
+        <div className="px-4 py-6 text-sm text-slate-500 text-center">
+          {t('common.loading')}
+        </div>
+      ) : sorted.length === 0 ? (
+        <div className="px-4 py-6 text-sm text-slate-500 text-center">
+          {t('home.poor_performance.empty')}
+        </div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-sm">
+            <thead className="bg-slate-50 text-slate-600 border-b border-slate-200">
+              <tr>
+                <th className="px-3 py-2 text-left font-medium">
+                  {t('home.poor_performance.col.classroom')}
+                </th>
+                <SortableTh
+                  active={sortKey === 'seat'}
+                  dir={sortDir}
+                  onClick={() => toggleSort('seat')}
+                >
+                  {t('home.poor_performance.col.seat')}
+                </SortableTh>
+                <th className="px-3 py-2 text-left font-medium">
+                  {t('home.poor_performance.col.name')}
+                </th>
+                <SortableTh
+                  active={sortKey === 'deducted_total'}
+                  dir={sortDir}
+                  onClick={() => toggleSort('deducted_total')}
+                  align="right"
+                >
+                  {t('home.poor_performance.col.deducted')}
+                </SortableTh>
+                <SortableTh
+                  active={sortKey === 'deduction_count'}
+                  dir={sortDir}
+                  onClick={() => toggleSort('deduction_count')}
+                  align="right"
+                >
+                  {t('home.poor_performance.col.count')}
+                </SortableTh>
+                <SortableTh
+                  active={sortKey === 'reason'}
+                  dir={sortDir}
+                  onClick={() => toggleSort('reason')}
+                >
+                  {t('home.poor_performance.col.reason')}
+                </SortableTh>
+              </tr>
+            </thead>
+            <tbody>
+              {sorted.map((s) => (
+                <tr
+                  key={s.student_id}
+                  className="border-b border-slate-100 last:border-b-0"
+                >
+                  <td className="px-3 py-2 text-slate-700">
+                    {classroomDisplayName(
+                      s.classroom_grade,
+                      s.classroom_name,
+                      lang,
+                    )}
+                  </td>
+                  <td className="px-3 py-2 text-slate-500 font-mono tabular-nums">
+                    {s.seat_number}
+                  </td>
+                  <td className="px-3 py-2">
+                    <Link
+                      to={`/students/${s.student_id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-slate-900 hover:text-amber-700"
+                    >
+                      {s.name || '—'}
+                    </Link>
+                  </td>
+                  <td className="px-3 py-2 text-right font-mono tabular-nums text-rose-700 font-semibold">
+                    {s.deducted_total}
+                  </td>
+                  <td className="px-3 py-2 text-right font-mono tabular-nums text-slate-600">
+                    {s.deduction_count}
+                  </td>
+                  <td className="px-3 py-2">
+                    <ReasonBreakdown items={s.reason_breakdown} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
   )
 }

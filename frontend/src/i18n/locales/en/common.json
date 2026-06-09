@@ -90,6 +90,13 @@
     "reset_confirm_class": "A reverse record will be added for each of the {{count}} students, bringing this semester's points to 0. History is preserved.",
     "reset_confirm_action": "Confirm reset"
   },
+  "point_reason": {
+    "poor_order": "Poor class order",
+    "leave_classroom": "Left the classroom during class",
+    "late_homework": "Homework not submitted on time",
+    "excellent_homework": "Excellent homework",
+    "good_performance": "Good class participation"
+  },
   "admin_reasons": {
     "title": "Point reasons",
     "subtitle": "Manage reasons like \"asked a good question\" with default point amounts. Positive = reward, negative = deduction.",
@@ -99,6 +106,8 @@
     "invalid_hint": "Every reason needs a name (max 50 chars).",
     "drag_to_reorder": "Drag to reorder",
     "name_placeholder": "e.g., Helped a classmate",
+    "load_defaults": "Load presets",
+    "load_defaults_hint": "Save or discard your current edits before loading presets.",
     "col": {
       "name": "Name",
       "default_points": "Default points",
@@ -299,7 +308,21 @@
         "seat": "Seat",
         "name": "Name",
         "points": "Total pts",
-        "met": "Met standard"
+        "met": "Met standard",
+        "reason": "Award reasons"
+      }
+    },
+    "poor_performance": {
+      "title": "Poor-performance alert",
+      "tab_all": "All classes",
+      "empty": "No students with deductions.",
+      "col": {
+        "classroom": "Class",
+        "seat": "Seat",
+        "name": "Name",
+        "deducted": "Total deducted",
+        "count": "Deductions",
+        "reason": "Deduction reasons"
       }
     },
     "workflow": {

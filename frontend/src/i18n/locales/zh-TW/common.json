@@ -90,6 +90,13 @@
     "reset_confirm_class": "將為全班共 {{count}} 位學生各自寫入一筆反向紀錄，使本學期點數回到 0。歷史紀錄不會被刪除。",
     "reset_confirm_action": "確認歸零"
   },
+  "point_reason": {
+    "poor_order": "上課秩序不佳",
+    "leave_classroom": "上課期間離開教室",
+    "late_homework": "未準時繳交作業",
+    "excellent_homework": "作業優秀",
+    "good_performance": "課堂表現良好"
+  },
   "admin_reasons": {
     "title": "點數原因",
     "subtitle": "管理「主動發問」「值日生」這類原因的預設加扣點數；點數可以是正（加分）或負（扣分）。",
@@ -99,6 +106,8 @@
     "invalid_hint": "每個原因都需要填名稱（最多 50 字）",
     "drag_to_reorder": "拖曳調整順序",
     "name_placeholder": "例如：主動發問",
+    "load_defaults": "載入預設",
+    "load_defaults_hint": "請先儲存或還原目前的編輯，再載入預設。",
     "col": {
       "name": "名稱",
       "default_points": "預設點數",
@@ -299,7 +308,21 @@
         "seat": "座號",
         "name": "姓名",
         "points": "總點數",
-        "met": "達標次數"
+        "met": "達標次數",
+        "reason": "加點原因"
+      }
+    },
+    "poor_performance": {
+      "title": "表現不良警示",
+      "tab_all": "全部班級",
+      "empty": "目前沒有被扣點的學生。",
+      "col": {
+        "classroom": "班級",
+        "seat": "座號",
+        "name": "姓名",
+        "deducted": "扣點總額",
+        "count": "扣點次數",
+        "reason": "扣點原因"
       }
     },
     "workflow": {

@@ -16,6 +16,7 @@ import {
   type PointReason,
   type StudentPointsSummaryList,
 } from '../lib/api'
+import { reasonLabel } from '../lib/pointReasons'
 
 type View = 'list' | 'card'
 const VIEW_KEY = 'points.classroom_view'
@@ -492,7 +493,7 @@ export function ClassroomPoints() {
                           onClick={() =>
                             addMut.mutate({
                               studentId: s.student_id,
-                              reason: r.name,
+                              reason: reasonLabel(r, t),
                               points: r.default_points,
                             })
                           }
@@ -501,13 +502,13 @@ export function ClassroomPoints() {
                               ? 'bg-sky-50 border-sky-200 text-sky-800 hover:bg-sky-100'
                               : 'bg-rose-50 border-rose-200 text-rose-800 hover:bg-rose-100'
                           }`}
-                          title={`${r.name} ${
+                          title={`${reasonLabel(r, t)} ${
                             r.default_points >= 0
                               ? `+${r.default_points}`
                               : r.default_points
                           }`}
                         >
-                          {r.name}
+                          {reasonLabel(r, t)}
                           <span className="font-mono tabular-nums">
                             {r.default_points >= 0
                               ? `+${r.default_points}`
@@ -614,7 +615,7 @@ export function ClassroomPoints() {
                                 onClick={() =>
                                   addMut.mutate({
                                     studentId: s.student_id,
-                                    reason: r.name,
+                                    reason: reasonLabel(r, t),
                                     points: r.default_points,
                                   })
                                 }
@@ -624,7 +625,7 @@ export function ClassroomPoints() {
                                     : 'bg-rose-50 border-rose-200 text-rose-800 hover:bg-rose-100'
                                 }`}
                               >
-                                {r.name}{' '}
+                                {reasonLabel(r, t)}{' '}
                                 {r.default_points >= 0
                                   ? `+${r.default_points}`
                                   : r.default_points}
