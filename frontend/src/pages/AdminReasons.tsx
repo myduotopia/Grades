@@ -23,6 +23,7 @@ import { useMe } from '../hooks/useMe'
 import { PageContainer } from '../layout/PageContainer'
 import { PageHeader } from '../layout/PageHeader'
 import { api, type PointReason } from '../lib/api'
+import { reasonLabel } from '../lib/pointReasons'
 
 const PRIMARY_BTN =
   'inline-flex items-center px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white text-sm font-medium shadow-sm transition-colors disabled:bg-slate-300 disabled:cursor-not-allowed'
@@ -100,15 +101,35 @@ export function AdminReasons() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['me'] }),
   })
 
+  // Append any missing seeded presets (idempotent server-side, deduped by
+  // preset_key). Persists immediately, so it's disabled while the draft has
+  // unsaved edits to avoid clobbering them.
+  const loadDefaultsMut = useMutation({
+    mutationFn: () => api.me.loadDefaultReasons(),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['me'] }),
+  })
+
   return (
     <PageContainer>
       <PageHeader
         title={t('admin_reasons.title')}
         subtitle={t('admin_reasons.subtitle')}
         actions={
-          <button onClick={addRow} className={PRIMARY_BTN}>
-            {t('admin_reasons.add')}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => loadDefaultsMut.mutate()}
+              disabled={dirty || loadDefaultsMut.isPending}
+              title={dirty ? t('admin_reasons.load_defaults_hint') : undefined}
+              className={SECONDARY_BTN}
+            >
+              {loadDefaultsMut.isPending
+                ? t('common.loading')
+                : t('admin_reasons.load_defaults')}
+            </button>
+            <button onClick={addRow} className={PRIMARY_BTN}>
+              {t('admin_reasons.add')}
+            </button>
+          </div>
         }
       />
 
@@ -190,15 +211,21 @@ export function AdminReasons() {
                       handleTitle={t('admin_reasons.drag_to_reorder')}
                     >
                       <td className="px-4 py-2">
-                        <input
-                          value={r.name}
-                          onChange={(e) =>
-                            updateRow(r.id, { name: e.target.value })
-                          }
-                          maxLength={50}
-                          placeholder={t('admin_reasons.name_placeholder')}
-                          className="w-full border border-slate-300 rounded-md px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
-                        />
+                        {r.preset_key ? (
+                          <span className="text-sm text-slate-900">
+                            {reasonLabel(r, t)}
+                          </span>
+                        ) : (
+                          <input
+                            value={r.name}
+                            onChange={(e) =>
+                              updateRow(r.id, { name: e.target.value })
+                            }
+                            maxLength={50}
+                            placeholder={t('admin_reasons.name_placeholder')}
+                            className="w-full border border-slate-300 rounded-md px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                          />
+                        )}
                       </td>
                       <td className="px-4 py-2">
                         <SignedNumberInput

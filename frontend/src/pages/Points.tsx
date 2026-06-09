@@ -15,6 +15,7 @@ import {
   type ClassPointsSummary,
   type PointReason,
 } from '../lib/api'
+import { reasonLabel } from '../lib/pointReasons'
 
 const SECONDARY_BTN =
   'inline-flex items-center px-4 py-2 rounded-lg bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-medium shadow-sm transition-colors disabled:opacity-60'
@@ -216,7 +217,7 @@ export function Points() {
                         onClick={() =>
                           batchMut.mutate({
                             classroomId: c.classroom_id,
-                            reason: r.name,
+                            reason: reasonLabel(r, t),
                             points: r.default_points,
                           })
                         }
@@ -226,7 +227,7 @@ export function Points() {
                             : 'bg-rose-50 border-rose-200 text-rose-800 hover:bg-rose-100'
                         }`}
                       >
-                        {r.name}
+                        {reasonLabel(r, t)}
                         <span className="font-mono tabular-nums">
                           {r.default_points >= 0
                             ? `+${r.default_points}`
@@ -293,7 +294,7 @@ export function Points() {
                               onClick={() =>
                                 batchMut.mutate({
                                   classroomId: c.classroom_id,
-                                  reason: r.name,
+                                  reason: reasonLabel(r, t),
                                   points: r.default_points,
                                 })
                               }
@@ -303,7 +304,7 @@ export function Points() {
                                   : 'bg-rose-50 border-rose-200 text-rose-800 hover:bg-rose-100'
                               }`}
                             >
-                              {r.name}{' '}
+                              {reasonLabel(r, t)}{' '}
                               {r.default_points >= 0
                                 ? `+${r.default_points}`
                                 : r.default_points}

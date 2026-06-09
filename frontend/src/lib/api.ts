@@ -34,6 +34,8 @@ export interface PointReason {
   name: string
   default_points: number
   system_key?: string | null
+  // Seeded bilingual preset (#193): render an i18n label instead of `name`.
+  preset_key?: string | null
 }
 
 export interface ClassPointsSummary {
@@ -636,6 +638,11 @@ export const api = {
         method: 'PUT',
         body: JSON.stringify({ reasons }),
       }),
+    loadDefaultReasons: () =>
+      request<{ point_reasons: PointReason[] }>(
+        '/api/me/point-reasons/load-defaults',
+        { method: 'POST' },
+      ),
   },
   points: {
     listClassrooms: () =>
@@ -1027,6 +1034,12 @@ export const api = {
       request<{ viewed_at: string }>('/api/home/alerts/viewed', {
         method: 'POST',
       }),
+    poorPerformance: (classroomId?: string) => {
+      const qs = classroomId ? `?classroom_id=${classroomId}` : ''
+      return request<{ data: HomePoorPerformanceItem[] }>(
+        `/api/home/poor-performance${qs}`,
+      )
+    },
   },
 }
 
@@ -1034,6 +1047,12 @@ export interface HomeClassRankingItem {
   classroom_id: string
   classroom_grade: number
   classroom_name: string
+  points: number
+}
+
+export interface ReasonCount {
+  reason: string
+  count: number
   points: number
 }
 
@@ -1046,6 +1065,19 @@ export interface HomeTopStudentItem {
   name: string | null
   total_points: number
   met_count: number
+  reason_breakdown: ReasonCount[]
+}
+
+export interface HomePoorPerformanceItem {
+  student_id: string
+  classroom_id: string
+  classroom_grade: number
+  classroom_name: string
+  seat_number: number
+  name: string | null
+  deducted_total: number
+  deduction_count: number
+  reason_breakdown: ReasonCount[]
 }
 
 export interface HomeAlertMissingItem {
