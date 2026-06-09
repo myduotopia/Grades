@@ -72,7 +72,9 @@ class Student(Base, UserScopedMixin, TimestampMixin):
         index=True,
     )
     seat_number: Mapped[int] = mapped_column(nullable=False)
-    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    # Optional — the import template, API schemas, and frontend all treat the
+    # student name as 選填. Roster import by seat number alone leaves it null.
+    name: Mapped[str | None] = mapped_column(String(200), nullable=True)
     # Optional Google account email — used as the Supabase invite target and
     # the matching key when a student/parent first authenticates.
     email: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
