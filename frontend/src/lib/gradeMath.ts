@@ -149,3 +149,14 @@ export function formatScore(n: number | null | undefined): string {
   if (n === null || n === undefined) return '—'
   return n.toFixed(1)
 }
+
+/**
+ * Arithmetic mean of a list of numbers, or null when the list is empty.
+ * Used for the per-item / per-column class averages (issue #190): callers
+ * filter out null/undefined cells first, so the denominator is the count of
+ * students who actually have a score (未應考者不計入).
+ */
+export function mean(nums: number[]): number | null {
+  if (nums.length === 0) return null
+  return nums.reduce((a, b) => a + b, 0) / nums.length
+}
