@@ -46,15 +46,29 @@ SYSTEM_POINT_REASONS: list[dict] = [
 ]
 
 # Seed list when a user first onboards (or runs /api/me/reset). Teachers can
-# rename / delete / add via /admin/reasons.
+# rename / delete / add via /admin/reasons. Each carries a `preset_key` so the
+# UI shows a bilingual i18n label (`point_reason.<preset_key>`) while points
+# stay editable (#193). `name` is the zh canonical fallback.
 DEFAULT_POINT_REASONS: list[dict] = [
-    {"name": "主動發問", "default_points": 3},
-    {"name": "幫助同學", "default_points": 2},
-    {"name": "課堂表現好", "default_points": 2},
-    {"name": "值日生", "default_points": 1},
-    {"name": "作業優秀", "default_points": 3},
-    {"name": "上課講話", "default_points": -1},
+    {"preset_key": "poor_order", "name": "上課秩序不佳", "default_points": -1},
+    {"preset_key": "leave_classroom", "name": "上課期間離開教室", "default_points": -1},
+    {"preset_key": "late_homework", "name": "未準時繳交作業", "default_points": -2},
+    {"preset_key": "excellent_homework", "name": "作業優秀", "default_points": 3},
+    {"preset_key": "good_performance", "name": "課堂表現良好", "default_points": 2},
 ]
+
+# Recognised preset keys — the only `preset_key` values the API will persist.
+PRESET_KEYS: set[str] = {r["preset_key"] for r in DEFAULT_POINT_REASONS}
+
+
+def _seed_reason(r: dict) -> dict:
+    """Wrap a DEFAULT_POINT_REASONS entry with a fresh uuid id."""
+    return {
+        "id": str(uuid4()),
+        "name": r["name"],
+        "default_points": r["default_points"],
+        "preset_key": r["preset_key"],
+    }
 
 
 def _new_default_reasons() -> list[dict]:
@@ -68,10 +82,7 @@ def _new_default_reasons() -> list[dict]:
         }
         for r in SYSTEM_POINT_REASONS
     ]
-    user_seed = [
-        {"id": str(uuid4()), "name": r["name"], "default_points": r["default_points"]}
-        for r in DEFAULT_POINT_REASONS
-    ]
+    user_seed = [_seed_reason(r) for r in DEFAULT_POINT_REASONS]
     return system + user_seed
 
 router = APIRouter()
@@ -473,14 +484,49 @@ def update_point_reasons(
         if r.id in seen_ids:
             continue
         pts = max(-100, min(100, int(r.default_points)))
-        cleaned.append({
+        entry: dict = {
             "id": r.id,
             "name": name,
             "default_points": pts,
-        })
+        }
+        # Preserve a recognised preset_key so the row keeps its i18n label;
+        # unknown values are dropped (treated as a plain custom row).
+        if r.preset_key in PRESET_KEYS:
+            entry["preset_key"] = r.preset_key
+        cleaned.append(entry)
         seen_ids.add(r.id)
 
     final = system_rows + cleaned
+
+    if settings is None:
+        settings = UserSettings(user_id=user_id, point_reasons=final)
+        db.add(settings)
+    else:
+        settings.point_reasons = final
+    db.commit()
+    return {"point_reasons": final}
+
+
+@router.post("/point-reasons/load-defaults")
+def load_default_point_reasons(
+    user_id: Annotated[UUID, Depends(require_user_id)],
+    db: Annotated[Session, Depends(get_db)],
+) -> dict[str, list[dict]]:
+    """Append any missing bilingual preset reasons to the user's list (#193).
+
+    Idempotent: presets already present (matched by `preset_key`) are not
+    re-added, so the teacher can press 「載入預設」 repeatedly without dupes.
+    Existing custom rows are untouched.
+    """
+    settings = db.get(UserSettings, user_id)
+    existing: list[dict] = settings.point_reasons if settings else []
+    present_keys = {e.get("preset_key") for e in existing if e.get("preset_key")}
+    additions = [
+        _seed_reason(r)
+        for r in DEFAULT_POINT_REASONS
+        if r["preset_key"] not in present_keys
+    ]
+    final = existing + additions
 
     if settings is None:
         settings = UserSettings(user_id=user_id, point_reasons=final)
