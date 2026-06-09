@@ -565,6 +565,7 @@
     "semester_format": "Year {{year}}, Term {{term}}",
     "current": "current",
     "overall_avg": "Overall avg",
+    "row_average": "Class avg",
     "weighted_total": "Weighted total",
     "pick_subject": "Pick subject:",
     "all_subjects": "All subjects",

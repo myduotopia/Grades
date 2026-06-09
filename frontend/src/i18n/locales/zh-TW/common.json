@@ -565,6 +565,7 @@
     "semester_format": "{{year}} 學年第 {{term}} 學期",
     "current": "目前",
     "overall_avg": "總平均",
+    "row_average": "平均",
     "weighted_total": "加權總分",
     "pick_subject": "選擇科目：",
     "all_subjects": "全部科目",

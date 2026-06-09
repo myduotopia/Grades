@@ -24,6 +24,7 @@ import { classroomDisplayName } from '../lib/classroomFormat'
 import {
   buildMatrix,
   formatScore,
+  mean,
   subjectsInView,
 } from '../lib/gradeMath'
 
@@ -412,6 +413,14 @@ function ByStudentTable({
     return { student: s, row, overall }
   })
 
+  // Class average per column = mean over the WHOLE roster's non-null values
+  // (issue #190). Uses `enriched` (not the filtered list) so the search box
+  // never changes the class average.
+  const colMean = (
+    pick: (e: (typeof enriched)[number]) => number | null | undefined,
+  ): number | null =>
+    mean(enriched.map(pick).filter((n): n is number => typeof n === 'number'))
+
   const q = query.trim().toLowerCase()
   const filtered = q
     ? enriched.filter(({ student }) => {
@@ -552,12 +561,16 @@ function ByStudentTable({
             </tr>
           </thead>
           <tbody>
-            {sorted.map(({ student: s, row, overall }) => {
+            {sorted.map(({ student: s, row, overall }, si) => {
               const pickedRow = pickedSubjectId ? row[pickedSubjectId] : null
               return (
                 <tr
                   key={s.id}
-                  className="border-b border-slate-100 last:border-b-0"
+                  className={`${
+                    (si + 1) % 5 === 0
+                      ? 'border-b-2 border-slate-300'
+                      : 'border-b border-slate-100'
+                  } last:border-b-0`}
                 >
                   <td className="px-4 py-2.5 text-slate-900 font-medium w-16">
                     {s.seat_number}
@@ -608,6 +621,43 @@ function ByStudentTable({
                 </td>
               </tr>
             )}
+            <tr className="bg-slate-50 font-semibold text-slate-700">
+              <td
+                colSpan={2}
+                className="px-4 py-2.5 border-t-4 border-double border-slate-400"
+              >
+                {t('grades.row_average')}
+              </td>
+              {!pickedSubjectId &&
+                subjects.map((sub) => (
+                  <td
+                    key={sub.id}
+                    className="px-4 py-2.5 tabular-nums border-t-4 border-double border-slate-400"
+                  >
+                    {formatScore(colMean((e) => e.row[sub.id]?.weightedTotal))}
+                  </td>
+                ))}
+              {pickedSubjectId &&
+                pickedCategories.map((c) => (
+                  <td
+                    key={c}
+                    className="px-4 py-2.5 tabular-nums border-t-4 border-double border-slate-400"
+                  >
+                    {formatScore(
+                      colMean((e) => e.row[pickedSubjectId]?.byCategory[c]),
+                    )}
+                  </td>
+                ))}
+              <td className="px-4 py-2.5 tabular-nums border-t-4 border-double border-slate-400">
+                {formatScore(
+                  colMean((e) =>
+                    pickedSubjectId
+                      ? e.row[pickedSubjectId]?.weightedTotal
+                      : e.overall,
+                  ),
+                )}
+              </td>
+            </tr>
           </tbody>
         </table>
       </div>
@@ -1011,7 +1061,11 @@ function BySubjectView({
               {view.students.map((s, si) => (
                 <tr
                   key={s.id}
-                  className="border-b border-slate-100 last:border-b-0"
+                  className={`${
+                    (si + 1) % 5 === 0
+                      ? 'border-b-2 border-slate-300'
+                      : 'border-b border-slate-100'
+                  } last:border-b-0`}
                 >
                   <td className="px-4 py-2.5 text-slate-900 font-medium w-16">
                     {s.seat_number}
@@ -1060,6 +1114,31 @@ function BySubjectView({
                   })}
                 </tr>
               ))}
+              <tr className="bg-slate-50 font-semibold text-slate-700">
+                <td
+                  colSpan={2}
+                  className="px-4 py-2.5 border-t-4 border-double border-slate-400"
+                >
+                  {t('grades.row_average')}
+                </td>
+                {items.map((i) => {
+                  const vals = view.students
+                    .map((s) =>
+                      editingItemId === i.id
+                        ? drafts[s.id]
+                        : lookup[s.id]?.[i.id],
+                    )
+                    .filter((n): n is number => typeof n === 'number')
+                  return (
+                    <td
+                      key={i.id}
+                      className="px-3 py-2.5 tabular-nums border-t-4 border-double border-slate-400"
+                    >
+                      {formatScore(mean(vals))}
+                    </td>
+                  )
+                })}
+              </tr>
             </tbody>
           </table>
         </div>
