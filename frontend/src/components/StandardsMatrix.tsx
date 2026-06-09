@@ -298,10 +298,14 @@ export function StandardsMatrix({
                 </tr>
               </thead>
               <tbody>
-                {students.map((s) => (
+                {students.map((s, si) => (
                   <tr
                     key={s.id}
-                    className="border-b border-slate-100 last:border-b-0"
+                    className={`${
+                      (si + 1) % 5 === 0
+                        ? 'border-b-2 border-slate-300'
+                        : 'border-b border-slate-100'
+                    } last:border-b-0`}
                   >
                     <td className="px-3 py-2">
                       <input
