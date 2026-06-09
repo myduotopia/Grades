@@ -6,12 +6,16 @@
 import truststore  # noqa: E402
 truststore.inject_into_ssl()  # noqa: E402
 
+import logging
+import re
 from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
+from starlette.requests import Request
+from starlette.responses import JSONResponse
 
 from auth import get_current_user, require_user_id
 from config import settings
@@ -46,6 +50,54 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+logger = logging.getLogger("grades")
+
+
+def _error_cors_headers(request: Request) -> dict[str, str]:
+    """CORS headers for an error response, mirroring the CORSMiddleware config.
+
+    Unhandled exceptions are turned into a 500 by Starlette's outermost
+    ServerErrorMiddleware, which sits *outside* CORSMiddleware — so that 500
+    never gets CORS headers and the browser reports it as a CORS failure. We
+    re-attach them here, reusing `settings` as the single source of truth.
+    """
+    origin = request.headers.get("origin")
+    if not origin:
+        return {}
+    regex = settings.cors_allowed_origin_regex
+    allowed = origin in settings.cors_origins or bool(
+        regex and re.fullmatch(regex, origin)
+    )
+    if not allowed:
+        return {}
+    return {
+        "Access-Control-Allow-Origin": origin,
+        "Access-Control-Allow-Credentials": "true",
+        "Vary": "Origin",
+    }
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(
+    request: Request, exc: Exception
+) -> JSONResponse:
+    """Last-resort handler: return a real, translatable error (with CORS
+    headers) instead of a header-less 500 that masquerades as a CORS error."""
+    logger.exception(
+        "Unhandled error on %s %s", request.method, request.url.path
+    )
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error": {
+                "code": "INTERNAL_ERROR",
+                "message_key": "common.error_generic",
+                "message": "Internal server error.",
+            }
+        },
+        headers=_error_cors_headers(request),
+    )
 
 
 @app.get("/health")

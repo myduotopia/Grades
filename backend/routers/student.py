@@ -325,8 +325,18 @@ async def import_students(
             "Cannot import while preview contains errors.",
         )
 
-    _commit_import(db, user_id, classroom_id, preview_rows, by_seat)
-    db.commit()
+    try:
+        _commit_import(db, user_id, classroom_id, preview_rows, by_seat)
+        db.commit()
+    except IntegrityError:
+        # Any residual DB conflict (e.g. a seat that slipped past preview):
+        # return a clean, translatable error instead of an unhandled 500 that
+        # would escape CORSMiddleware and look like a CORS failure to the client.
+        db.rollback()
+        raise _conflict(
+            "errors.student.duplicate_seat",
+            "Seat number already exists in this classroom.",
+        )
     return ImportResult(dry_run=False, summary=summary, rows=preview_rows)
 
 
