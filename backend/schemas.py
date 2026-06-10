@@ -71,6 +71,9 @@ class PointReasonOut(BaseModel):
     name: str
     default_points: int
     system_key: str | None = None
+    # Set on the seeded bilingual presets (#193). The UI renders an i18n label
+    # `point_reason.<preset_key>` instead of the raw name; points stay editable.
+    preset_key: str | None = None
 
 
 class PointReasonsUpdate(BaseModel):
@@ -705,6 +708,15 @@ class HomeClassRankingList(BaseModel):
     data: list[HomeClassRankingItem]
 
 
+class ReasonCount(BaseModel):
+    """Per-reason rollup for a student (#193): how many records carried this
+    reason and their summed points (positive for awards, negative for
+    deductions)."""
+    reason: str
+    count: int
+    points: int
+
+
 class HomeTopStudentItem(BaseModel):
     student_id: UUID
     classroom_id: UUID
@@ -714,10 +726,27 @@ class HomeTopStudentItem(BaseModel):
     name: str | None
     total_points: int
     met_count: int
+    reason_breakdown: list[ReasonCount] = []
 
 
 class HomeTopStudentList(BaseModel):
     data: list[HomeTopStudentItem]
+
+
+class HomePoorPerformanceItem(BaseModel):
+    student_id: UUID
+    classroom_id: UUID
+    classroom_grade: int
+    classroom_name: str
+    seat_number: int
+    name: str | None
+    deducted_total: int  # negative sum of deduction records
+    deduction_count: int
+    reason_breakdown: list[ReasonCount] = []
+
+
+class HomePoorPerformanceList(BaseModel):
+    data: list[HomePoorPerformanceItem]
 
 
 class HomeAlertSummary(BaseModel):

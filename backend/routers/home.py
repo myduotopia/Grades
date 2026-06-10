@@ -38,11 +38,18 @@ from schemas import (
     HomeAlertMissingItem,
     HomeClassRankingItem,
     HomeClassRankingList,
+    HomePoorPerformanceItem,
+    HomePoorPerformanceList,
     HomeTopStudentItem,
     HomeTopStudentList,
+    ReasonCount,
 )
 
 router = APIRouter()
+
+# Default reason written by the points-reset flow (points.py). Excluded from
+# the poor-performance alert — a reset is housekeeping, not bad behaviour.
+_RESET_REASON = "歸零"
 
 
 def _current_semester(db: Session, user_id: UUID) -> Semester | None:
@@ -70,6 +77,24 @@ def _last_reset_map(
         .all()
     )
     return {sid: ts for sid, ts in rows}
+
+
+def _breakdown(counts: dict[str, list[int]]) -> list[ReasonCount]:
+    """counts: reason → [count, points_sum] → sorted ReasonCount list
+    (most-frequent first, then larger magnitude, then label)."""
+    items = [
+        ReasonCount(reason=reason, count=c, points=p)
+        for reason, (c, p) in counts.items()
+    ]
+    items.sort(key=lambda r: (-r.count, -abs(r.points), r.reason))
+    return items
+
+
+def _add_reason(bucket: dict[str, list[int]], reason: str | None, pts: int) -> None:
+    label = (reason or "").strip() or "—"
+    cur = bucket.setdefault(label, [0, 0])
+    cur[0] += 1
+    cur[1] += pts
 
 
 # ---------- Class rankings ----------
@@ -199,6 +224,7 @@ def top_students(
             PointRecord.points,
             PointRecord.created_at,
             PointRecord.source_grade_id,
+            PointRecord.reason,
         )
         .filter(
             PointRecord.user_id == user_id,
@@ -209,13 +235,17 @@ def top_students(
     )
     total_by: dict[UUID, int] = {}
     met_by: dict[UUID, int] = {}
-    for sid, pts, ts, sgid in rows:
+    # student_id → {reason → [count, points_sum]} over the awarded (>0) records.
+    award_reasons: dict[UUID, dict[str, list[int]]] = {}
+    for sid, pts, ts, sgid, reason in rows:
         floor = last_reset.get(sid)
         if floor is not None and ts <= floor:
             continue
         total_by[sid] = total_by.get(sid, 0) + int(pts)
         if sgid is not None:
             met_by[sid] = met_by.get(sid, 0) + 1
+        if int(pts) > 0:
+            _add_reason(award_reasons.setdefault(sid, {}), reason, int(pts))
 
     out = [
         HomeTopStudentItem(
@@ -227,6 +257,7 @@ def top_students(
             name=s.name,
             total_points=total_by.get(s.id, 0),
             met_count=met_by.get(s.id, 0),
+            reason_breakdown=_breakdown(award_reasons.get(s.id, {})),
         )
         for s, c in students
     ]
@@ -236,6 +267,88 @@ def top_students(
         key=lambda r: (-r.total_points, -r.met_count, r.classroom_grade, r.seat_number)
     )
     return HomeTopStudentList(data=out[:limit])
+
+
+# ---------- Poor-performance alert (#193) ----------
+
+@router.get("/api/home/poor-performance", response_model=HomePoorPerformanceList)
+def poor_performance(
+    user_id: Annotated[UUID, Depends(require_user_id)],
+    db: Annotated[Session, Depends(get_db)],
+    classroom_id: Annotated[UUID | None, Query()] = None,
+) -> HomePoorPerformanceList:
+    """Students with deductions this semester, ranked by total deducted
+    (most-negative first). Unlike top-students this is NOT limited — every
+    student who lost points shows up. Mirrors the top-students aggregation
+    but keeps only negative (<0) records.
+    """
+    sem = _current_semester(db, user_id)
+    if sem is None:
+        return HomePoorPerformanceList(data=[])
+
+    q = (
+        db.query(Student, Classroom)
+        .join(Classroom, Classroom.id == Student.classroom_id)
+        .filter(Student.user_id == user_id)
+    )
+    if classroom_id is not None:
+        q = q.filter(Student.classroom_id == classroom_id)
+    students = q.all()
+    if not students:
+        return HomePoorPerformanceList(data=[])
+
+    student_ids = [s.id for s, _ in students]
+    last_reset = _last_reset_map(db, user_id, sem, student_ids)
+
+    rows = (
+        db.query(
+            PointRecord.student_id,
+            PointRecord.points,
+            PointRecord.created_at,
+            PointRecord.reason,
+        )
+        .filter(
+            PointRecord.user_id == user_id,
+            PointRecord.student_id.in_(student_ids),
+            PointRecord.points < 0,
+            # Exclude legacy reset markers (reason='歸零'): a points reset is a
+            # deliberate housekeeping action, not poor performance (#193). New
+            # resets write a PointReset row, but old negative 歸零 PointRecords
+            # were intentionally left in the data.
+            PointRecord.reason != _RESET_REASON,
+            func.date(PointRecord.created_at) >= sem.start_date,
+        )
+        .all()
+    )
+    deducted_by: dict[UUID, int] = {}
+    count_by: dict[UUID, int] = {}
+    deduct_reasons: dict[UUID, dict[str, list[int]]] = {}
+    for sid, pts, ts, reason in rows:
+        floor = last_reset.get(sid)
+        if floor is not None and ts <= floor:
+            continue
+        deducted_by[sid] = deducted_by.get(sid, 0) + int(pts)
+        count_by[sid] = count_by.get(sid, 0) + 1
+        _add_reason(deduct_reasons.setdefault(sid, {}), reason, int(pts))
+
+    out = [
+        HomePoorPerformanceItem(
+            student_id=s.id,
+            classroom_id=c.id,
+            classroom_grade=c.grade,
+            classroom_name=c.name,
+            seat_number=s.seat_number,
+            name=s.name,
+            deducted_total=deducted_by.get(s.id, 0),
+            deduction_count=count_by.get(s.id, 0),
+            reason_breakdown=_breakdown(deduct_reasons.get(s.id, {})),
+        )
+        for s, c in students
+        if deducted_by.get(s.id, 0) < 0
+    ]
+    # Most-deducted (most negative) first.
+    out.sort(key=lambda r: (r.deducted_total, r.classroom_grade, r.seat_number))
+    return HomePoorPerformanceList(data=out)
 
 
 # ---------- Alerts ----------
