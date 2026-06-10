@@ -7,6 +7,11 @@
     "backend_error": "Backend error",
     "switch_lang": "切換到中文"
   },
+  "pagination": {
+    "prev": "← Prev",
+    "next": "Next →",
+    "page_of": "Page {{page}} / {{total}}"
+  },
   "auth": {
     "sign_in_with_google": "Sign in with Google",
     "sign_out": "Sign out",

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
@@ -396,6 +396,8 @@ function SortableTh({
   )
 }
 
+const POOR_PAGE_SIZE = 10
+
 function PoorPerformanceWidget({ lang }: { lang: string }) {
   const { t } = useTranslation()
   const [classroomId, setClassroomId] = useState<string>('')
@@ -442,6 +444,18 @@ function PoorPerformanceWidget({ lang }: { lang: string }) {
     }
   }
 
+  // Client-side pagination: the endpoint returns every deducted student, so
+  // page through 10 at a time. Switching class changes the list length, so
+  // reset to page 1; safePage clamps after a sort/filter shrinks the list.
+  const [page, setPage] = useState(1)
+  useEffect(() => setPage(1), [classroomId])
+  const totalPages = Math.max(1, Math.ceil(sorted.length / POOR_PAGE_SIZE))
+  const safePage = Math.min(page, totalPages)
+  const pageRows = sorted.slice(
+    (safePage - 1) * POOR_PAGE_SIZE,
+    safePage * POOR_PAGE_SIZE,
+  )
+
   const classrooms = classroomsQ.data?.data ?? []
   return (
     <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
@@ -481,6 +495,7 @@ function PoorPerformanceWidget({ lang }: { lang: string }) {
           {t('home.poor_performance.empty')}
         </div>
       ) : (
+        <>
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
             <thead className="bg-slate-50 text-slate-600 border-b border-slate-200">
@@ -524,7 +539,7 @@ function PoorPerformanceWidget({ lang }: { lang: string }) {
               </tr>
             </thead>
             <tbody>
-              {sorted.map((s) => (
+              {pageRows.map((s) => (
                 <tr
                   key={s.student_id}
                   className="border-b border-slate-100 last:border-b-0"
@@ -563,6 +578,30 @@ function PoorPerformanceWidget({ lang }: { lang: string }) {
             </tbody>
           </table>
         </div>
+        {totalPages > 1 && (
+          <div className="flex items-center justify-center gap-3 px-4 py-3 border-t border-slate-100 text-sm text-slate-600">
+            <button
+              type="button"
+              disabled={safePage <= 1}
+              onClick={() => setPage(safePage - 1)}
+              className="px-3 py-1.5 rounded-md border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {t('pagination.prev')}
+            </button>
+            <span className="font-mono tabular-nums">
+              {t('pagination.page_of', { page: safePage, total: totalPages })}
+            </span>
+            <button
+              type="button"
+              disabled={safePage >= totalPages}
+              onClick={() => setPage(safePage + 1)}
+              className="px-3 py-1.5 rounded-md border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {t('pagination.next')}
+            </button>
+          </div>
+        )}
+        </>
       )}
     </div>
   )
