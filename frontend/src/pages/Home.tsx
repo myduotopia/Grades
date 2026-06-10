@@ -264,20 +264,21 @@ function TopStudentsWidget({ lang }: { lang: string }) {
         </div>
       ) : (
         <div className="overflow-x-auto">
-          <table className="min-w-full text-sm">
+          <table className="min-w-full text-sm table-fixed">
             <thead className="bg-slate-50 text-slate-600 border-b border-slate-200">
               <tr>
-                <th className="px-3 py-2 text-left font-medium">
+                <th className="px-3 py-2 text-left font-medium w-28">
                   {t('home.top_students.col.classroom')}
                 </th>
                 <SortableTh
                   active={sortKey === 'seat'}
                   dir={sortDir}
                   onClick={() => toggleSort('seat')}
+                  className="w-16"
                 >
                   {t('home.top_students.col.seat')}
                 </SortableTh>
-                <th className="px-3 py-2 text-left font-medium">
+                <th className="px-3 py-2 text-left font-medium w-32">
                   {t('home.top_students.col.name')}
                 </th>
                 <SortableTh
@@ -285,6 +286,7 @@ function TopStudentsWidget({ lang }: { lang: string }) {
                   dir={sortDir}
                   onClick={() => toggleSort('total_points')}
                   align="right"
+                  className="w-20"
                 >
                   {t('home.top_students.col.points')}
                 </SortableTh>
@@ -293,6 +295,7 @@ function TopStudentsWidget({ lang }: { lang: string }) {
                   dir={sortDir}
                   onClick={() => toggleSort('met_count')}
                   align="right"
+                  className="w-20"
                 >
                   {t('home.top_students.col.met')}
                 </SortableTh>
@@ -308,17 +311,18 @@ function TopStudentsWidget({ lang }: { lang: string }) {
             <tbody>
               {sorted.map((s) => (
                 <tr key={s.student_id} className="border-b border-slate-100 last:border-b-0">
-                  <td className="px-3 py-2 text-slate-700">
+                  <td className="px-3 py-2 text-slate-700 truncate">
                     {classroomDisplayName(s.classroom_grade, s.classroom_name, lang)}
                   </td>
                   <td className="px-3 py-2 text-slate-500 font-mono tabular-nums">
                     {s.seat_number}
                   </td>
-                  <td className="px-3 py-2">
+                  <td className="px-3 py-2 truncate">
                     <Link
                       to={`/students/${s.student_id}`}
                       target="_blank"
                       rel="noopener noreferrer"
+                      title={s.name || undefined}
                       className="text-slate-900 hover:text-amber-700"
                     >
                       {s.name || '—'}
@@ -370,18 +374,20 @@ function SortableTh({
   dir,
   onClick,
   align = 'left',
+  className = '',
 }: {
   children: React.ReactNode
   active: boolean
   dir: SortDir
   onClick: () => void
   align?: 'left' | 'right'
+  className?: string
 }) {
   return (
     <th
       className={`px-3 py-2 font-medium cursor-pointer select-none ${
         align === 'right' ? 'text-right' : 'text-left'
-      }`}
+      } ${className}`}
       onClick={onClick}
     >
       <span className="inline-flex items-center gap-1">
@@ -497,20 +503,21 @@ function PoorPerformanceWidget({ lang }: { lang: string }) {
       ) : (
         <>
         <div className="overflow-x-auto">
-          <table className="min-w-full text-sm">
+          <table className="min-w-full text-sm table-fixed">
             <thead className="bg-slate-50 text-slate-600 border-b border-slate-200">
               <tr>
-                <th className="px-3 py-2 text-left font-medium">
+                <th className="px-3 py-2 text-left font-medium w-28">
                   {t('home.poor_performance.col.classroom')}
                 </th>
                 <SortableTh
                   active={sortKey === 'seat'}
                   dir={sortDir}
                   onClick={() => toggleSort('seat')}
+                  className="w-16"
                 >
                   {t('home.poor_performance.col.seat')}
                 </SortableTh>
-                <th className="px-3 py-2 text-left font-medium">
+                <th className="px-3 py-2 text-left font-medium w-32">
                   {t('home.poor_performance.col.name')}
                 </th>
                 <SortableTh
@@ -518,6 +525,7 @@ function PoorPerformanceWidget({ lang }: { lang: string }) {
                   dir={sortDir}
                   onClick={() => toggleSort('deducted_total')}
                   align="right"
+                  className="w-20"
                 >
                   {t('home.poor_performance.col.deducted')}
                 </SortableTh>
@@ -526,6 +534,7 @@ function PoorPerformanceWidget({ lang }: { lang: string }) {
                   dir={sortDir}
                   onClick={() => toggleSort('deduction_count')}
                   align="right"
+                  className="w-20"
                 >
                   {t('home.poor_performance.col.count')}
                 </SortableTh>
@@ -544,7 +553,7 @@ function PoorPerformanceWidget({ lang }: { lang: string }) {
                   key={s.student_id}
                   className="border-b border-slate-100 last:border-b-0"
                 >
-                  <td className="px-3 py-2 text-slate-700">
+                  <td className="px-3 py-2 text-slate-700 truncate">
                     {classroomDisplayName(
                       s.classroom_grade,
                       s.classroom_name,
@@ -554,11 +563,12 @@ function PoorPerformanceWidget({ lang }: { lang: string }) {
                   <td className="px-3 py-2 text-slate-500 font-mono tabular-nums">
                     {s.seat_number}
                   </td>
-                  <td className="px-3 py-2">
+                  <td className="px-3 py-2 truncate">
                     <Link
                       to={`/students/${s.student_id}`}
                       target="_blank"
                       rel="noopener noreferrer"
+                      title={s.name || undefined}
                       className="text-slate-900 hover:text-amber-700"
                     >
                       {s.name || '—'}
