@@ -47,6 +47,10 @@ from schemas import (
 
 router = APIRouter()
 
+# Default reason written by the points-reset flow (points.py). Excluded from
+# the poor-performance alert — a reset is housekeeping, not bad behaviour.
+_RESET_REASON = "歸零"
+
 
 def _current_semester(db: Session, user_id: UUID) -> Semester | None:
     return (
@@ -307,6 +311,11 @@ def poor_performance(
             PointRecord.user_id == user_id,
             PointRecord.student_id.in_(student_ids),
             PointRecord.points < 0,
+            # Exclude legacy reset markers (reason='歸零'): a points reset is a
+            # deliberate housekeeping action, not poor performance (#193). New
+            # resets write a PointReset row, but old negative 歸零 PointRecords
+            # were intentionally left in the data.
+            PointRecord.reason != _RESET_REASON,
             func.date(PointRecord.created_at) >= sem.start_date,
         )
         .all()
