@@ -93,29 +93,27 @@ def _get_current_semester(db: Session, user_id: UUID) -> Semester:
     return sem
 
 
-def _last_reset_in_semester(
-    db: Session, user_id: UUID, student_id: UUID, sem: Semester
+def _latest_reset(
+    db: Session, user_id: UUID, student_id: UUID
 ) -> datetime | None:
-    """Most-recent PointReset.reset_at for this student within the semester
-    window, or None if there isn't one. Used as the floor for the
-    student's running total — anything created on or before this moment
-    has been zeroed out (issue #165)."""
-    row = (
+    """Most-recent PointReset.reset_at for this student across ALL time
+    (cumulative — #207), or None if there isn't one. Acts as the floor for
+    the running total: anything created on or before this moment has been
+    zeroed out (#165)."""
+    return (
         db.query(func.max(PointReset.reset_at))
         .filter(
             PointReset.user_id == user_id,
             PointReset.student_id == student_id,
-            func.date(PointReset.reset_at) >= sem.start_date,
         )
         .scalar()
     )
-    return row
 
 
-def _last_reset_map_for_classroom(
-    db: Session, user_id: UUID, classroom_id: UUID, sem: Semester
+def _latest_reset_map_for_classroom(
+    db: Session, user_id: UUID, classroom_id: UUID
 ) -> dict[UUID, datetime]:
-    """student_id → latest reset_at within sem (only students that have one)."""
+    """student_id → latest reset_at ever (only students that have one)."""
     rows = (
         db.query(
             PointReset.student_id, func.max(PointReset.reset_at)
@@ -124,7 +122,6 @@ def _last_reset_map_for_classroom(
         .filter(
             PointReset.user_id == user_id,
             Student.classroom_id == classroom_id,
-            func.date(PointReset.reset_at) >= sem.start_date,
         )
         .group_by(PointReset.student_id)
         .all()
@@ -132,37 +129,30 @@ def _last_reset_map_for_classroom(
     return {sid: ts for sid, ts in rows}
 
 
-def _semester_points_for_student(
-    db: Session, user_id: UUID, student_id: UUID, sem: Semester
+def _points_for_student(
+    db: Session, user_id: UUID, student_id: UUID
 ) -> int:
-    """Sum since the LATER of (a) semester start (b) student's last reset.
-    Resets are strictly exclusive — a PointRecord written at exactly the
-    reset moment is treated as 'before' (#165)."""
-    last_reset = _last_reset_in_semester(db, user_id, student_id, sem)
-    q = (
-        db.query(func.coalesce(func.sum(PointRecord.points), 0))
-        .filter(
-            PointRecord.user_id == user_id,
-            PointRecord.student_id == student_id,
-        )
+    """Cumulative running total (#207): sum of ALL the student's points after
+    their latest 歸零 reset (or all, if never reset). No semester window —
+    archived-period and prior-semester points all count. Resets are strictly
+    exclusive (a record at exactly the reset moment is 'before', #165)."""
+    last_reset = _latest_reset(db, user_id, student_id)
+    q = db.query(func.coalesce(func.sum(PointRecord.points), 0)).filter(
+        PointRecord.user_id == user_id,
+        PointRecord.student_id == student_id,
     )
     if last_reset is not None:
         q = q.filter(PointRecord.created_at > last_reset)
-    else:
-        q = q.filter(func.date(PointRecord.created_at) >= sem.start_date)
     return int(q.scalar() or 0)
 
 
-def _semester_points_for_classroom(
-    db: Session,
-    user_id: UUID,
-    classroom_id: UUID,
-    sem: Semester,
+def _points_for_classroom(
+    db: Session, user_id: UUID, classroom_id: UUID
 ) -> int:
-    """Classroom total = sum of every student's individual semester total
-    (since each student may have their own last-reset floor)."""
-    last_reset_by_student = _last_reset_map_for_classroom(
-        db, user_id, classroom_id, sem
+    """Classroom total = sum of every student's cumulative total (each may
+    have their own last-reset floor)."""
+    last_reset_by_student = _latest_reset_map_for_classroom(
+        db, user_id, classroom_id
     )
     student_ids = [
         sid
@@ -184,7 +174,6 @@ def _semester_points_for_classroom(
         .filter(
             PointRecord.user_id == user_id,
             PointRecord.student_id.in_(student_ids),
-            func.date(PointRecord.created_at) >= sem.start_date,
         )
         .all()
     )
@@ -207,10 +196,10 @@ def list_classroom_summaries(
     user_id: Annotated[UUID, Depends(require_user_id)],
     db: Annotated[Session, Depends(get_db)],
 ) -> ClassPointsSummaryList:
-    """Top page on /points: every classroom + roster size + semester points.
+    """Top page on /points: every classroom + roster size + cumulative points.
 
-    Returns empty list when no semester is current — frontend shows an
-    empty-state pointing the user at /admin/semesters.
+    Points are cumulative across all time (#207), so they no longer depend on
+    a current semester being set.
     """
     classrooms = (
         db.query(Classroom)
@@ -221,11 +210,6 @@ def list_classroom_summaries(
     if not classrooms:
         return ClassPointsSummaryList(data=[])
 
-    sem = (
-        db.query(Semester)
-        .filter(Semester.user_id == user_id, Semester.is_current.is_(True))
-        .one_or_none()
-    )
     # student counts per classroom in one query
     counts_rows = (
         db.query(Student.classroom_id, func.count(Student.id))
@@ -237,11 +221,7 @@ def list_classroom_summaries(
 
     out: list[ClassPointsSummary] = []
     for c in classrooms:
-        pts = (
-            _semester_points_for_classroom(db, user_id, c.id, sem)
-            if sem is not None
-            else 0
-        )
+        pts = _points_for_classroom(db, user_id, c.id)
         out.append(
             ClassPointsSummary(
                 classroom_id=c.id,
@@ -281,19 +261,9 @@ def list_classroom_student_summaries(
         .all()
     )
 
-    sem = (
-        db.query(Semester)
-        .filter(Semester.user_id == user_id, Semester.is_current.is_(True))
-        .one_or_none()
-    )
-
     out: list[StudentPointsSummary] = []
     for s in students:
-        pts = (
-            _semester_points_for_student(db, user_id, s.id, sem)
-            if sem is not None
-            else 0
-        )
+        pts = _points_for_student(db, user_id, s.id)
         out.append(
             StudentPointsSummary(
                 student_id=s.id,
@@ -428,7 +398,7 @@ def delete_student_point(
     )
     if student is None:
         raise _not_found("student")
-    sem = _get_current_semester(db, user_id)  # 403 if no active semester
+    _get_current_semester(db, user_id)  # 403 if no active semester
     record = (
         db.query(PointRecord)
         .filter(
@@ -454,11 +424,6 @@ def delete_student_point(
                 }
             },
         )
-    # Block deleting records that belong to an archived semester — the
-    # archived banner already prevents the UI from offering the button, but
-    # enforce it server-side too.
-    if record.created_at.date() < sem.start_date:
-        raise _archived_forbidden()
     db.delete(record)
     db.commit()
 
@@ -485,8 +450,8 @@ def reset_student_points(
     )
     if student is None:
         raise _not_found("student")
-    sem = _get_current_semester(db, user_id)
-    current = _semester_points_for_student(db, user_id, student.id, sem)
+    _get_current_semester(db, user_id)  # 403 if no active semester
+    current = _points_for_student(db, user_id, student.id)
     if current == 0:
         return PointResetResult(skipped=True, current=0, record=None)
     reason = body.reason.strip() or _DEFAULT_RESET_REASON
@@ -534,7 +499,7 @@ def reset_classroom_points(
     )
     if classroom is None:
         raise _not_found("classroom")
-    sem = _get_current_semester(db, user_id)
+    _get_current_semester(db, user_id)  # 403 if no active semester
 
     students = (
         db.query(Student)
@@ -552,7 +517,7 @@ def reset_classroom_points(
     # has a non-zero running total. Students already at 0 (per the new
     # last-reset-aware sum) are skipped so the history stays clean.
     for s in students:
-        current = _semester_points_for_student(db, user_id, s.id, sem)
+        current = _points_for_student(db, user_id, s.id)
         if current == 0:
             skipped += 1
             continue

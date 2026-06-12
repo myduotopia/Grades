@@ -62,12 +62,12 @@
     "back": "Back",
     "custom": "Custom",
     "classroom_card": {
-      "summary": "{{count}} students · {{total}} pts this semester"
+      "summary": "{{count}} students · {{total}} pts total"
     },
     "col": {
       "classroom": "Classroom",
       "students": "Students",
-      "semester_points": "Pts this semester",
+      "semester_points": "Total pts",
       "actions": "Quick add/deduct"
     },
     "quick_modal": {
@@ -91,8 +91,8 @@
     "reset_class": "Reset class",
     "reset_confirm_student_title": "Reset this student's points to 0",
     "reset_confirm_class_title": "Reset all students' points to 0",
-    "reset_confirm_student": "A reverse record will be added for {{label}} (currently {{current}}), bringing this semester's points to 0. History is preserved.",
-    "reset_confirm_class": "A reverse record will be added for each of the {{count}} students, bringing this semester's points to 0. History is preserved.",
+    "reset_confirm_student": "A reverse record will be added for {{label}} (currently {{current}}), bringing their total points to 0. History is preserved.",
+    "reset_confirm_class": "A reverse record will be added for each of the {{count}} students, bringing their total points to 0. History is preserved.",
     "reset_confirm_action": "Confirm reset"
   },
   "point_reason": {
@@ -302,10 +302,10 @@
       "col_points": "Points",
       "sort_desc": "Currently high → low (click to flip)",
       "sort_asc": "Currently low → high (click to flip)",
-      "empty": "No point records for the current semester."
+      "empty": "No point records yet."
     },
     "top_students": {
-      "title": "Top 10 students this semester",
+      "title": "Top 10 students",
       "tab_all": "All classes",
       "empty": "No student data yet.",
       "col": {
@@ -521,13 +521,13 @@
   "student_detail": {
     "title": "Student transcript",
     "semester_label": "Semester:",
-    "semester_points": "{{count}} pts this semester",
+    "semester_points": "{{count}} pts total",
     "weighted_summary": "Weighted totals",
     "grade_history": "Grade history",
     "point_history": "Point history",
-    "points_total": "Total {{total}} pts this semester",
+    "points_total": "Total {{total}} pts",
     "no_grades": "No grades for this semester yet.",
-    "no_points": "No points for this semester yet.",
+    "no_points": "No points yet.",
     "no_points_filtered": "No records match the current filter.",
     "reset_divider": "Reset (zeroed out {{amount}} pts; running total restarts)",
     "sort_label": "Sort:",
