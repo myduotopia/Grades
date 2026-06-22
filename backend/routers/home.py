@@ -61,9 +61,9 @@ def _current_semester(db: Session, user_id: UUID) -> Semester | None:
 
 
 def _last_reset_map(
-    db: Session, user_id: UUID, sem: Semester, student_ids: list[UUID]
+    db: Session, user_id: UUID, student_ids: list[UUID]
 ) -> dict[UUID, datetime]:
-    """student_id → latest reset_at within the semester window."""
+    """student_id → latest reset_at ever (cumulative, #207)."""
     if not student_ids:
         return {}
     rows = (
@@ -71,7 +71,6 @@ def _last_reset_map(
         .filter(
             PointReset.user_id == user_id,
             PointReset.student_id.in_(student_ids),
-            func.date(PointReset.reset_at) >= sem.start_date,
         )
         .group_by(PointReset.student_id)
         .all()
@@ -141,7 +140,7 @@ def class_rankings(
     )
     student_ids = [s.id for s in students]
     student_to_class = {s.id: s.classroom_id for s in students}
-    last_reset = _last_reset_map(db, user_id, sem, student_ids)
+    last_reset = _last_reset_map(db, user_id, student_ids)
 
     # Auto-award records joined with Grade + Item (so we can subject-filter).
     q = (
@@ -156,7 +155,6 @@ def class_rankings(
             PointRecord.user_id == user_id,
             PointRecord.source_grade_id.is_not(None),
             PointRecord.student_id.in_(student_ids) if student_ids else False,
-            func.date(PointRecord.created_at) >= sem.start_date,
         )
     )
     if subject_id is not None:
@@ -215,7 +213,7 @@ def top_students(
         return HomeTopStudentList(data=[])
 
     student_ids = [s.id for s, _ in students]
-    last_reset = _last_reset_map(db, user_id, sem, student_ids)
+    last_reset = _last_reset_map(db, user_id, student_ids)
 
     # Pull all point records once, partition per student.
     rows = (
@@ -229,7 +227,6 @@ def top_students(
         .filter(
             PointRecord.user_id == user_id,
             PointRecord.student_id.in_(student_ids),
-            func.date(PointRecord.created_at) >= sem.start_date,
         )
         .all()
     )
@@ -298,7 +295,7 @@ def poor_performance(
         return HomePoorPerformanceList(data=[])
 
     student_ids = [s.id for s, _ in students]
-    last_reset = _last_reset_map(db, user_id, sem, student_ids)
+    last_reset = _last_reset_map(db, user_id, student_ids)
 
     rows = (
         db.query(
@@ -316,7 +313,6 @@ def poor_performance(
             # resets write a PointReset row, but old negative 歸零 PointRecords
             # were intentionally left in the data.
             PointRecord.reason != _RESET_REASON,
-            func.date(PointRecord.created_at) >= sem.start_date,
         )
         .all()
     )
@@ -480,7 +476,7 @@ def alerts_list(
     met_by: dict[UUID, int] = {}
     if sem is not None and students:
         student_ids = [s.id for s, _ in students]
-        last_reset = _last_reset_map(db, user_id, sem, student_ids)
+        last_reset = _last_reset_map(db, user_id, student_ids)
         prows = (
             db.query(
                 PointRecord.student_id,
@@ -491,8 +487,7 @@ def alerts_list(
             .filter(
                 PointRecord.user_id == user_id,
                 PointRecord.student_id.in_(student_ids),
-                func.date(PointRecord.created_at) >= sem.start_date,
-            )
+                )
             .all()
         )
         for sid, pts, ts, sgid in prows:
