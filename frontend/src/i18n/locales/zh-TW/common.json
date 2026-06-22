@@ -62,12 +62,12 @@
     "back": "返回班級列表",
     "custom": "自訂",
     "classroom_card": {
-      "summary": "{{count}} 位學生・本學期累積 {{total}} 點"
+      "summary": "{{count}} 位學生・累計 {{total}} 點"
     },
     "col": {
       "classroom": "班級",
       "students": "學生數",
-      "semester_points": "本學期點數",
+      "semester_points": "累計點數",
       "actions": "快速加扣點"
     },
     "quick_modal": {
@@ -84,15 +84,15 @@
       "applied_student": "已 {{delta}} 點，原因「{{reason}}」",
       "applied_batch": "已為 {{count}} 位學生 {{delta}} 點，原因「{{reason}}」",
       "reset_done": "已歸零，已寫入一筆反向紀錄",
-      "reset_skipped_zero": "此學生本學期點數已是 0，無須歸零",
+      "reset_skipped_zero": "此學生累計點數已是 0，無須歸零",
       "reset_class_done": "全班歸零完成：寫入 {{written}} 筆、略過 {{skipped}} 位（已是 0）"
     },
     "reset_student": "歸零",
     "reset_class": "全班歸零",
     "reset_confirm_student_title": "確認將此學生點數歸零",
     "reset_confirm_class_title": "確認全班點數歸零",
-    "reset_confirm_student": "將為「{{label}}」新增一筆反向紀錄（目前 {{current}}），讓本學期點數回到 0。歷史紀錄不會被刪除。",
-    "reset_confirm_class": "將為全班共 {{count}} 位學生各自寫入一筆反向紀錄，使本學期點數回到 0。歷史紀錄不會被刪除。",
+    "reset_confirm_student": "將為「{{label}}」新增一筆反向紀錄（目前 {{current}}），讓累計點數回到 0。歷史紀錄不會被刪除。",
+    "reset_confirm_class": "將為全班共 {{count}} 位學生各自寫入一筆反向紀錄，使累計點數回到 0。歷史紀錄不會被刪除。",
     "reset_confirm_action": "確認歸零"
   },
   "point_reason": {
@@ -302,10 +302,10 @@
       "col_points": "點數",
       "sort_desc": "目前：高到低（點切換）",
       "sort_asc": "目前：低到高（點切換）",
-      "empty": "本學期沒有點數紀錄。"
+      "empty": "目前沒有點數紀錄。"
     },
     "top_students": {
-      "title": "本學期優秀學生 Top 10",
+      "title": "優秀學生 Top 10",
       "tab_all": "全部班級",
       "empty": "目前沒有學生資料。",
       "col": {
@@ -521,13 +521,13 @@
   "student_detail": {
     "title": "學生成績單",
     "semester_label": "學期：",
-    "semester_points": "{{count}} 點 / 本學期",
+    "semester_points": "累計 {{count}} 點",
     "weighted_summary": "各科加權成績",
     "grade_history": "成績紀錄",
     "point_history": "點數紀錄",
-    "points_total": "本學期合計 {{total}} 點",
+    "points_total": "累計 {{total}} 點",
     "no_grades": "本學期還沒有成績紀錄。",
-    "no_points": "本學期還沒有點數紀錄。",
+    "no_points": "還沒有點數紀錄。",
     "no_points_filtered": "目前篩選條件下沒有紀錄。",
     "reset_divider": "歸零（已抵銷 {{amount}} 點，之後重新計算）",
     "sort_label": "排序：",

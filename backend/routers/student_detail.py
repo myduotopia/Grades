@@ -8,7 +8,7 @@ The "weighted total" math mirrors what the by-student view on
 """
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import datetime
 from typing import Annotated, Literal
 from uuid import UUID
 
@@ -83,46 +83,35 @@ def _semester_label(sem: Semester) -> str:
     return f"{sem.academic_year}-{sem.term}"
 
 
-def _latest_reset_at(
-    db: Session, user_id: UUID, student_id: UUID, start: date
+def _latest_reset(
+    db: Session, user_id: UUID, student_id: UUID
 ) -> datetime | None:
-    """Most-recent PointReset.reset_at for this student since `start`, or
-    None. Aligns with the same helper in routers/points.py — duplicated
-    here to keep this module independent (#165)."""
+    """Most-recent PointReset.reset_at for this student across all time
+    (cumulative, #207), or None. Mirrors routers/points.py._latest_reset."""
     return (
         db.query(func.max(PointReset.reset_at))
         .filter(
             PointReset.user_id == user_id,
             PointReset.student_id == student_id,
-            func.date(PointReset.reset_at) >= start,
         )
         .scalar()
     )
 
 
-def _points_in_window(
-    db: Session,
-    user_id: UUID,
-    student_id: UUID,
-    start: date,
+def _points_cumulative(
+    db: Session, user_id: UUID, student_id: UUID
 ) -> int:
-    """Sum a student's points from `start` onward, with the latest reset
-    (if any) acting as a moving floor. Records at or before the reset
-    moment don't count toward the running total (#165).
-
-    No upper bound: if the current semester's end_date has passed but no
-    new semester exists yet, points entered today still count for the
-    current semester. Mirrors the same choice in points.py (see #97 / #93).
-    """
-    last_reset = _latest_reset_at(db, user_id, student_id, start)
+    """Cumulative running total (#207): all of a student's points after their
+    latest 歸零 reset (or all, if never reset). No semester window — archived
+    and prior-semester points all count. Records at/before the reset moment
+    don't count (#165)."""
+    last_reset = _latest_reset(db, user_id, student_id)
     q = db.query(func.coalesce(func.sum(PointRecord.points), 0)).filter(
         PointRecord.user_id == user_id,
         PointRecord.student_id == student_id,
     )
     if last_reset is not None:
         q = q.filter(PointRecord.created_at > last_reset)
-    else:
-        q = q.filter(func.date(PointRecord.created_at) >= start)
     return int(q.scalar() or 0)
 
 
@@ -137,11 +126,7 @@ def get_student_detail(
     classroom = db.get(Classroom, student.classroom_id)
     sem = _resolve_semester(db, user_id, semester_id)
 
-    semester_points = 0
-    if sem is not None:
-        semester_points = _points_in_window(
-            db, user_id, student.id, sem.start_date
-        )
+    semester_points = _points_cumulative(db, user_id, student.id)
 
     return StudentDetailOut(
         id=student.id,
@@ -318,7 +303,6 @@ def get_student_points(
         .filter(
             PointRecord.user_id == user_id,
             PointRecord.student_id == student.id,
-            func.date(PointRecord.created_at) >= sem.start_date,
         )
         .order_by(PointRecord.created_at.asc(), PointRecord.id.asc())
         .all()
@@ -328,7 +312,6 @@ def get_student_points(
         .filter(
             PointReset.user_id == user_id,
             PointReset.student_id == student.id,
-            func.date(PointReset.reset_at) >= sem.start_date,
         )
         .order_by(PointReset.reset_at.asc(), PointReset.id.asc())
         .all()
@@ -376,7 +359,7 @@ def get_student_points(
     # Distinct reasons across the unfiltered window.
     reasons = sorted({r.reason for r in all_records})
 
-    total = _points_in_window(db, user_id, student.id, sem.start_date)
+    total = _points_cumulative(db, user_id, student.id)
     return StudentPointsView(
         semester_id=sem.id,
         total=total,
