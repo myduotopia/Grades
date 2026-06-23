@@ -19,6 +19,7 @@ import { Snapshots } from './pages/Snapshots'
 import { Home } from './pages/Home'
 import { Login } from './pages/Login'
 import { Points } from './pages/Points'
+import { PrintGradeCards } from './pages/PrintGradeCards'
 import { Settings } from './pages/Settings'
 import { StudentDetail } from './pages/StudentDetail'
 import { Students } from './pages/Students'
@@ -77,6 +78,8 @@ function App() {
               />
               <Route path="/settings" element={<Settings />} />
             </Route>
+            {/* Chrome-free print page (no sidebar/header), still behind auth */}
+            <Route path="/classes/print" element={<PrintGradeCards />} />
           </Route>
         </Routes>
       </BrowserRouter>

@@ -24,3 +24,22 @@ body {
   background-color: #fafafa;
   color: #0f172a;
 }
+
+/* Print grade cards (#210): A4, white pages, ~6 cards per page. */
+@page {
+  size: A4;
+  margin: 10mm;
+}
+
+@media print {
+  body {
+    background-color: #ffffff;
+  }
+  /* One class per page block; no trailing blank page after the last. */
+  .print-class {
+    break-after: page;
+  }
+  .print-class:last-child {
+    break-after: auto;
+  }
+}
