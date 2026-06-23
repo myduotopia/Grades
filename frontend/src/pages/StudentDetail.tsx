@@ -15,8 +15,22 @@ import {
   type StudentPointsView,
   type StudentSubjectSummary,
 } from '../lib/api'
+import {
+  computeProjection,
+  formatScore,
+  type Projection,
+} from '../lib/gradeMath'
 
 const POINTS_PAGE_SIZE = 20
+
+// Canonical category order for the per-subject cards (#210).
+const CATEGORY_ORDER: readonly string[] = [
+  'major_exam',
+  'quiz',
+  'homework',
+  'attendance',
+  'extra',
+]
 
 const SELECT_CLS =
   'border border-slate-300 rounded-lg px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-amber-500'
@@ -85,10 +99,23 @@ export function StudentDetail() {
         title={headerTitle}
         subtitle={detail?.email || undefined}
         actions={
-          detail && (
-            <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-50 text-amber-800 text-sm font-medium border border-amber-200">
-              {t('student_detail.semester_points', { count: detail.semester_points })}
-            </span>
+          (detail || gradesView) && (
+            <div className="flex flex-wrap items-center gap-2">
+              {gradesView && (
+                <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-800 text-sm font-medium border border-emerald-200">
+                  {t('student_detail.met_count', {
+                    count: gradesView.met_count_total,
+                  })}
+                </span>
+              )}
+              {detail && (
+                <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-50 text-amber-800 text-sm font-medium border border-amber-200">
+                  {t('student_detail.semester_points', {
+                    count: detail.semester_points,
+                  })}
+                </span>
+              )}
+            </div>
           )
         }
       />
@@ -127,13 +154,20 @@ export function StudentDetail() {
         </section>
       )}
 
-      {/* Section · 成績歷史 */}
+      {/* Section · 成績歷史 (collapsed by default — the per-subject cards above
+          are the primary compact view; this keeps the full per-record detail
+          available without taking space, #210). */}
       {gradesView && gradesView.grades.length > 0 && (
         <section className="mb-6">
-          <h2 className="text-base font-semibold text-slate-900 mb-3">
-            {t('student_detail.grade_history')}
-          </h2>
-          <GradeHistoryTable rows={gradesView.grades} />
+          <details className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+            <summary className="px-4 py-3 text-base font-semibold text-slate-900 cursor-pointer select-none flex items-center gap-2">
+              {t('student_detail.grade_history')}
+              <span className="text-xs font-normal text-slate-400">
+                ({gradesView.grades.length})
+              </span>
+            </summary>
+            <GradeHistoryTable rows={gradesView.grades} />
+          </details>
         </section>
       )}
 
@@ -181,30 +215,106 @@ function SubjectCard({ summary }: { summary: StudentSubjectSummary }) {
   const label = summary.subject_system_key
     ? t(`subject.${summary.subject_system_key}`)
     : (summary.subject_display_name ?? '—')
+  const proj = computeProjection(
+    summary.category_averages,
+    summary.category_weights,
+  )
+  // Non-extra categories present, in canonical order, with their 比重.
+  const cats = CATEGORY_ORDER.filter(
+    (c) => c !== 'extra' && c in summary.category_averages,
+  )
+  const hasExtra = 'extra' in summary.category_averages
+  // 額外加分 contributes avg × weight / 100 on top, not its raw average.
+  const extraBonus =
+    (summary.category_averages['extra'] ?? 0) *
+    (summary.category_weights['extra'] ?? 0) /
+    100
+
   return (
     <div className="bg-white border border-slate-200 rounded-xl p-4">
       <div className="text-xs text-slate-500 uppercase tracking-wider">
         {label}
       </div>
-      <div className="mt-1 text-2xl font-semibold text-slate-900 tabular-nums">
-        {summary.weighted_total === null ? '—' : summary.weighted_total.toFixed(1)}
-      </div>
-      <dl className="mt-3 space-y-1 text-xs text-slate-600">
-        {Object.entries(summary.category_averages).map(([k, v]) => (
-          <div key={k} className="flex justify-between">
-            <dt>{t(`category.${k}`)}</dt>
-            <dd className="font-mono tabular-nums">{v.toFixed(1)}</dd>
+      <dl className="mt-2 space-y-1 text-sm text-slate-600">
+        {cats.map((k) => {
+          const w = summary.category_weights[k] ?? 0
+          return (
+            <div key={k} className="flex justify-between gap-2">
+              <dt className="truncate">
+                {t(`category.${k}`)}
+                {w > 0 && (
+                  <span className="ml-1 text-xs text-slate-400">
+                    {t('grades.weight_suffix', { weight: w })}
+                  </span>
+                )}
+              </dt>
+              <dd className="font-mono tabular-nums">
+                {summary.category_averages[k].toFixed(1)}
+              </dd>
+            </div>
+          )
+        })}
+        {hasExtra && (
+          <div className="flex justify-between gap-2 text-emerald-700">
+            <dt className="truncate">{t('grades.extra_bonus')}</dt>
+            <dd className="font-mono tabular-nums">+{extraBonus.toFixed(1)}</dd>
           </div>
-        ))}
+        )}
       </dl>
+      <div className="mt-3 pt-3 border-t border-slate-100 flex items-baseline justify-between gap-2">
+        <span className="text-xs text-slate-500">
+          {t('grades.weighted_total')}
+        </span>
+        <ProjectionTotal proj={proj} />
+      </div>
     </div>
+  )
+}
+
+/** Bottom-line of a subject card: real total (pass/fail), gray projection of the
+ * 段考 average needed, or a red total + `*` when 及格 is impossible (#210). */
+function ProjectionTotal({ proj }: { proj: Projection }) {
+  const { t } = useTranslation()
+  const base = 'text-2xl font-semibold tabular-nums'
+  if (proj.status === 'none') {
+    return <span className={`${base} text-slate-400`}>—</span>
+  }
+  if (proj.status === 'projected') {
+    const need = Math.ceil((proj.requiredExam ?? 0) * 10) / 10
+    return (
+      <span className="text-base font-semibold text-slate-400">
+        {t('grades.required_exam', { score: need })}
+      </span>
+    )
+  }
+  if (proj.status === 'safe') {
+    return (
+      <span className={`${base} text-slate-400`}>
+        {formatScore(proj.weightedTotal)}
+      </span>
+    )
+  }
+  if (proj.status === 'fail' || proj.status === 'impossible') {
+    return (
+      <span
+        className={`${base} text-rose-600`}
+        title={t('grades.cannot_pass')}
+      >
+        {formatScore(proj.weightedTotal)}*
+      </span>
+    )
+  }
+  return (
+    <span className={`${base} text-slate-900`}>
+      {formatScore(proj.weightedTotal)}
+    </span>
   )
 }
 
 function GradeHistoryTable({ rows }: { rows: StudentGradeRow[] }) {
   const { t } = useTranslation()
   return (
-    <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+    <div className="border-t border-slate-200">
       <div className="overflow-x-auto">
         <table className="min-w-full text-sm">
           <thead className="bg-slate-50 border-b border-slate-200 text-slate-600">

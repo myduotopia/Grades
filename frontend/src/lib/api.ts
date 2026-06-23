@@ -233,12 +233,16 @@ export interface StudentSubjectSummary {
   subject_display_name: string | null
   weighted_total: number | null
   category_averages: Record<string, number>
+  // Per-category weight (整數百分比) for this subject (#210).
+  category_weights: Record<string, number>
 }
 
 export interface StudentGradesView {
   semester_id: string | null
   subjects: StudentSubjectSummary[]
   grades: StudentGradeRow[]
+  // 達標 count across the whole semester, incl. archived snapshots (#210).
+  met_count_total: number
 }
 
 export interface StudentPointRow {
