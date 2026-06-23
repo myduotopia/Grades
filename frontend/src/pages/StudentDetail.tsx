@@ -4,10 +4,7 @@ import { useParams, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { ArchivedSemesterBanner } from '../components/ArchivedSemesterBanner'
-import {
-  StudentSummaryCard,
-  SubjectCard,
-} from '../components/StudentGradeCard'
+import { StudentSummaryCard } from '../components/StudentGradeCard'
 import { useSemesters } from '../hooks/useSemesters'
 import { PageContainer } from '../layout/PageContainer'
 import { PageHeader } from '../layout/PageHeader'
@@ -112,26 +109,6 @@ export function StudentDetail() {
             semesterPoints={detail.semester_points}
             subjects={gradesView.subjects}
           />
-        </section>
-      )}
-
-      {/* Section · 加權成績摘要 */}
-      {gradesView && (
-        <section className="mb-6">
-          <h2 className="text-base font-semibold text-slate-900 mb-3">
-            {t('student_detail.weighted_summary')}
-          </h2>
-          {gradesView.subjects.length === 0 ? (
-            <div className="bg-white border border-slate-200 rounded-xl p-6 text-sm text-slate-500 text-center">
-              {t('student_detail.no_grades')}
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {gradesView.subjects.map((s) => (
-                <SubjectCard key={s.subject_id} summary={s} />
-              ))}
-            </div>
-          )}
         </section>
       )}
 

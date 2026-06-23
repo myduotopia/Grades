@@ -73,8 +73,13 @@ export function ProjectionNoteLine({ proj }: { proj: Projection }) {
   )
 }
 
-/** Per-subject detail card with category 比重 breakdown (#210). */
-export function SubjectCard({ summary }: { summary: StudentSubjectSummary }) {
+/** Per-subject category 比重 breakdown — subject label + categories + 額外加分 +
+ * 加權總分 + note. Borderless so it can sit inside other cards (#210). */
+export function SubjectBreakdown({
+  summary,
+}: {
+  summary: StudentSubjectSummary
+}) {
   const { t } = useTranslation()
   const label = subjectLabel(summary, t)
   const proj = computeProjection(
@@ -91,7 +96,7 @@ export function SubjectCard({ summary }: { summary: StudentSubjectSummary }) {
     100
 
   return (
-    <div className="bg-white border border-slate-200 rounded-xl p-4">
+    <div>
       <div className="text-xs text-slate-500 uppercase tracking-wider">
         {label}
       </div>
@@ -130,6 +135,15 @@ export function SubjectCard({ summary }: { summary: StudentSubjectSummary }) {
         </div>
         <ProjectionNoteLine proj={proj} />
       </div>
+    </div>
+  )
+}
+
+/** Bordered per-subject detail card (#210). */
+export function SubjectCard({ summary }: { summary: StudentSubjectSummary }) {
+  return (
+    <div className="bg-white border border-slate-200 rounded-xl p-4">
+      <SubjectBreakdown summary={summary} />
     </div>
   )
 }
@@ -181,48 +195,17 @@ export function StudentSummaryCard({
           {t('print.total_points', { count: semesterPoints })}
         </span>
       </div>
-      <dl className="mt-3 pt-3 border-t border-slate-100 space-y-1 text-sm">
-        {filtered.length === 0 ? (
-          <div className="text-slate-400">{t('student_detail.no_grades')}</div>
-        ) : (
-          filtered.map((s) => {
-            const proj = computeProjection(
-              s.category_averages,
-              s.category_weights,
-            )
-            const note = projectionNote(proj, t)
-            const failing =
-              proj.status === 'fail' || proj.status === 'impossible'
-            return (
-              <div
-                key={s.subject_id}
-                className="flex items-baseline justify-between gap-2"
-              >
-                <dt className="text-slate-600 truncate">
-                  {subjectLabel(s, t)}
-                </dt>
-                <dd className="flex items-baseline gap-2 tabular-nums whitespace-nowrap">
-                  {note && (
-                    <span
-                      className={`text-xs ${failing ? 'text-rose-600' : 'text-slate-400'}`}
-                    >
-                      {note}
-                    </span>
-                  )}
-                  <span
-                    className={`font-semibold ${failing ? 'text-rose-600' : 'text-slate-900'}`}
-                  >
-                    {proj.weightedTotal === null
-                      ? '—'
-                      : formatScore(proj.weightedTotal)}
-                    {failing ? '*' : ''}
-                  </span>
-                </dd>
-              </div>
-            )
-          })
-        )}
-      </dl>
+      {filtered.length === 0 ? (
+        <div className="mt-3 pt-3 border-t border-slate-100 text-sm text-slate-400">
+          {t('student_detail.no_grades')}
+        </div>
+      ) : (
+        <div className="mt-3 pt-3 border-t border-slate-100 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
+          {filtered.map((s) => (
+            <SubjectBreakdown key={s.subject_id} summary={s} />
+          ))}
+        </div>
+      )}
     </div>
   )
 }
