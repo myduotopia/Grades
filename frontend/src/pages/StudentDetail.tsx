@@ -4,6 +4,10 @@ import { useParams, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { ArchivedSemesterBanner } from '../components/ArchivedSemesterBanner'
+import {
+  StudentSummaryCard,
+  SubjectCard,
+} from '../components/StudentGradeCard'
 import { useSemesters } from '../hooks/useSemesters'
 import { PageContainer } from '../layout/PageContainer'
 import { PageHeader } from '../layout/PageHeader'
@@ -13,25 +17,9 @@ import {
   type StudentPointResetRow,
   type StudentPointRow,
   type StudentPointsView,
-  type StudentSubjectSummary,
 } from '../lib/api'
-import {
-  computeProjection,
-  formatScore,
-  type Projection,
-  projectionNote,
-} from '../lib/gradeMath'
 
 const POINTS_PAGE_SIZE = 20
-
-// Canonical category order for the per-subject cards (#210).
-const CATEGORY_ORDER: readonly string[] = [
-  'major_exam',
-  'quiz',
-  'homework',
-  'attendance',
-  'extra',
-]
 
 const SELECT_CLS =
   'border border-slate-300 rounded-lg px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-amber-500'
@@ -96,30 +84,7 @@ export function StudentDetail() {
 
   return (
     <PageContainer>
-      <PageHeader
-        title={headerTitle}
-        subtitle={detail?.email || undefined}
-        actions={
-          (detail || gradesView) && (
-            <div className="flex flex-wrap items-center gap-2">
-              {gradesView && (
-                <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-800 text-sm font-medium border border-emerald-200">
-                  {t('student_detail.met_count', {
-                    count: gradesView.met_count_total,
-                  })}
-                </span>
-              )}
-              {detail && (
-                <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-50 text-amber-800 text-sm font-medium border border-amber-200">
-                  {t('student_detail.semester_points', {
-                    count: detail.semester_points,
-                  })}
-                </span>
-              )}
-            </div>
-          )
-        }
-      />
+      <PageHeader title={headerTitle} subtitle={detail?.email || undefined} />
 
       {isArchived && (
         <ArchivedSemesterBanner
@@ -133,6 +98,21 @@ export function StudentDetail() {
 
       {detailQ.isLoading && (
         <div className="text-center text-slate-400 py-12">{t('common.loading')}</div>
+      )}
+
+      {/* 成績總覽卡 — 班級/姓名/座號 + 達標次數 + 總點數 + 各科總分 (#210) */}
+      {detail && gradesView && (
+        <section className="mb-6">
+          <StudentSummaryCard
+            classroomGrade={detail.classroom_grade}
+            classroomName={detail.classroom_name}
+            seatNumber={detail.seat_number}
+            name={detail.name}
+            metCount={gradesView.met_count_total}
+            semesterPoints={detail.semester_points}
+            subjects={gradesView.subjects}
+          />
+        </section>
       )}
 
       {/* Section · 加權成績摘要 */}
@@ -208,105 +188,6 @@ export function StudentDetail() {
         </section>
       )}
     </PageContainer>
-  )
-}
-
-function SubjectCard({ summary }: { summary: StudentSubjectSummary }) {
-  const { t } = useTranslation()
-  const label = summary.subject_system_key
-    ? t(`subject.${summary.subject_system_key}`)
-    : (summary.subject_display_name ?? '—')
-  const proj = computeProjection(
-    summary.category_averages,
-    summary.category_weights,
-  )
-  // Non-extra categories present, in canonical order, with their 比重.
-  const cats = CATEGORY_ORDER.filter(
-    (c) => c !== 'extra' && c in summary.category_averages,
-  )
-  const hasExtra = 'extra' in summary.category_averages
-  // 額外加分 contributes avg × weight / 100 on top, not its raw average.
-  const extraBonus =
-    (summary.category_averages['extra'] ?? 0) *
-    (summary.category_weights['extra'] ?? 0) /
-    100
-
-  return (
-    <div className="bg-white border border-slate-200 rounded-xl p-4">
-      <div className="text-xs text-slate-500 uppercase tracking-wider">
-        {label}
-      </div>
-      <dl className="mt-2 space-y-1 text-sm text-slate-600">
-        {cats.map((k) => {
-          const w = summary.category_weights[k] ?? 0
-          return (
-            <div key={k} className="flex justify-between gap-2">
-              <dt className="truncate">
-                {t(`category.${k}`)}
-                {w > 0 && (
-                  <span className="ml-1 text-xs text-slate-400">
-                    {t('grades.weight_suffix', { weight: w })}
-                  </span>
-                )}
-              </dt>
-              <dd className="font-mono tabular-nums">
-                {summary.category_averages[k].toFixed(1)}
-              </dd>
-            </div>
-          )
-        })}
-        {hasExtra && (
-          <div className="flex justify-between gap-2 text-emerald-700">
-            <dt className="truncate">{t('grades.extra_bonus')}</dt>
-            <dd className="font-mono tabular-nums">+{extraBonus.toFixed(1)}</dd>
-          </div>
-        )}
-      </dl>
-      <div className="mt-3 pt-3 border-t border-slate-100">
-        <div className="flex items-baseline justify-between gap-2">
-          <span className="text-xs text-slate-500">
-            {t('grades.weighted_total')}
-          </span>
-          <ProjectionTotal proj={proj} />
-        </div>
-        <ProjectionNoteLine proj={proj} />
-      </div>
-    </div>
-  )
-}
-
-/** The big 加權總分 number — ALWAYS the real current total; red + `*` only when
- * 及格 is impossible / the student is failing (#210). */
-function ProjectionTotal({ proj }: { proj: Projection }) {
-  const { t } = useTranslation()
-  const base = 'text-2xl font-semibold tabular-nums'
-  if (proj.weightedTotal === null) {
-    return <span className={`${base} text-slate-400`}>—</span>
-  }
-  const failing = proj.status === 'fail' || proj.status === 'impossible'
-  return (
-    <span
-      className={`${base} ${failing ? 'text-rose-600' : 'text-slate-900'}`}
-      title={failing ? projectionNote(proj, t) : undefined}
-    >
-      {formatScore(proj.weightedTotal)}
-      {failing ? '*' : ''}
-    </span>
-  )
-}
-
-/** 備註 line under the total: the 段考 projection / pass状態 note (#210). */
-function ProjectionNoteLine({ proj }: { proj: Projection }) {
-  const { t } = useTranslation()
-  const note = projectionNote(proj, t)
-  if (!note) return null
-  const danger = proj.status === 'fail' || proj.status === 'impossible'
-  return (
-    <div
-      className={`mt-1 text-xs text-right ${danger ? 'text-rose-600' : 'text-slate-400'}`}
-    >
-      {note}
-    </div>
   )
 }
 

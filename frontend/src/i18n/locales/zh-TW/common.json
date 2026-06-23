@@ -435,11 +435,22 @@
       "clear": "取消選取",
       "promote": "升年級",
       "demote": "降年級",
+      "print_cards": "列印成績卡",
       "select_row_aria": "勾選 {{name}}",
       "max_grade_skipped": "{{count}} 個已是 12 年級，未調整",
       "min_grade_skipped": "{{count}} 個已是 1 年級，未調整",
       "applied": "已調整 {{count}} 個班級"
     }
+  },
+  "print": {
+    "title": "列印學生成績卡",
+    "print_button": "列印",
+    "pick_subjects": "選擇要列印的科目：",
+    "empty": "沒有可列印的資料。",
+    "total_points": "總點數 {{count}} 點",
+    "grade_suffix": "年",
+    "class_suffix": "班",
+    "seat_suffix": "號"
   },
   "students": {
     "title": "學生名單",
