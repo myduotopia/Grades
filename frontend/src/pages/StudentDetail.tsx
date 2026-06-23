@@ -19,6 +19,7 @@ import {
   computeProjection,
   formatScore,
   type Projection,
+  projectionNote,
 } from '../lib/gradeMath'
 
 const POINTS_PAGE_SIZE = 20
@@ -261,53 +262,51 @@ function SubjectCard({ summary }: { summary: StudentSubjectSummary }) {
           </div>
         )}
       </dl>
-      <div className="mt-3 pt-3 border-t border-slate-100 flex items-baseline justify-between gap-2">
-        <span className="text-xs text-slate-500">
-          {t('grades.weighted_total')}
-        </span>
-        <ProjectionTotal proj={proj} />
+      <div className="mt-3 pt-3 border-t border-slate-100">
+        <div className="flex items-baseline justify-between gap-2">
+          <span className="text-xs text-slate-500">
+            {t('grades.weighted_total')}
+          </span>
+          <ProjectionTotal proj={proj} />
+        </div>
+        <ProjectionNoteLine proj={proj} />
       </div>
     </div>
   )
 }
 
-/** Bottom-line of a subject card: real total (pass/fail), gray projection of the
- * 段考 average needed, or a red total + `*` when 及格 is impossible (#210). */
+/** The big 加權總分 number — ALWAYS the real current total; red + `*` only when
+ * 及格 is impossible / the student is failing (#210). */
 function ProjectionTotal({ proj }: { proj: Projection }) {
   const { t } = useTranslation()
   const base = 'text-2xl font-semibold tabular-nums'
-  if (proj.status === 'none') {
+  if (proj.weightedTotal === null) {
     return <span className={`${base} text-slate-400`}>—</span>
   }
-  if (proj.status === 'projected') {
-    const need = Math.ceil((proj.requiredExam ?? 0) * 10) / 10
-    return (
-      <span className="text-base font-semibold text-slate-400">
-        {t('grades.required_exam', { score: need })}
-      </span>
-    )
-  }
-  if (proj.status === 'safe') {
-    return (
-      <span className={`${base} text-slate-400`}>
-        {formatScore(proj.weightedTotal)}
-      </span>
-    )
-  }
-  if (proj.status === 'fail' || proj.status === 'impossible') {
-    return (
-      <span
-        className={`${base} text-rose-600`}
-        title={t('grades.cannot_pass')}
-      >
-        {formatScore(proj.weightedTotal)}*
-      </span>
-    )
-  }
+  const failing = proj.status === 'fail' || proj.status === 'impossible'
   return (
-    <span className={`${base} text-slate-900`}>
+    <span
+      className={`${base} ${failing ? 'text-rose-600' : 'text-slate-900'}`}
+      title={failing ? projectionNote(proj, t) : undefined}
+    >
       {formatScore(proj.weightedTotal)}
+      {failing ? '*' : ''}
     </span>
+  )
+}
+
+/** 備註 line under the total: the 段考 projection / pass状態 note (#210). */
+function ProjectionNoteLine({ proj }: { proj: Projection }) {
+  const { t } = useTranslation()
+  const note = projectionNote(proj, t)
+  if (!note) return null
+  const danger = proj.status === 'fail' || proj.status === 'impossible'
+  return (
+    <div
+      className={`mt-1 text-xs text-right ${danger ? 'text-rose-600' : 'text-slate-400'}`}
+    >
+      {note}
+    </div>
   )
 }
 
