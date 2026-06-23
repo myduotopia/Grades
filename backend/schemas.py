@@ -366,12 +366,18 @@ class StudentSubjectSummary(BaseModel):
     weighted_total: float | None
     # Per-category average for this student × subject, keyed by system_key.
     category_averages: dict[str, float]
+    # Per-category weight (整數百分比) for this subject, keyed by system_key.
+    # Lets the frontend show 比重 and compute the pass projection (#210).
+    category_weights: dict[str, int]
 
 
 class StudentGradesView(BaseModel):
     semester_id: UUID | None
     subjects: list[StudentSubjectSummary]
     grades: list[StudentGradeRow]
+    # Total 達標 count across the whole semester (live + archived snapshots),
+    # one per qualifying grade record (#210).
+    met_count_total: int = 0
 
 
 class StudentPointRow(BaseModel):
