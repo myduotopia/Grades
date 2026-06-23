@@ -245,6 +245,29 @@ export interface StudentGradesView {
   met_count_total: number
 }
 
+export interface GradeCardSubject {
+  subject_id: string
+  subject_system_key: string | null
+  subject_display_name: string | null
+}
+
+export interface StudentGradeCard {
+  student_id: string
+  seat_number: number
+  name: string | null
+  subjects: StudentSubjectSummary[]
+  met_count_total: number
+  semester_points: number
+}
+
+export interface ClassGradeCardsView {
+  semester_id: string | null
+  classroom_grade: number
+  classroom_name: string
+  subjects: GradeCardSubject[]
+  cards: StudentGradeCard[]
+}
+
 export interface StudentPointRow {
   id: string
   points: number
@@ -930,6 +953,12 @@ export const api = {
       const qs = semesterId ? `?semester_id=${semesterId}` : ''
       return request<ClassroomGradesView>(
         `/api/classrooms/${classroomId}/grades${qs}`,
+      )
+    },
+    gradeCards: (classroomId: string, semesterId?: string) => {
+      const qs = semesterId ? `?semester_id=${semesterId}` : ''
+      return request<ClassGradeCardsView>(
+        `/api/classrooms/${classroomId}/grade-cards${qs}`,
       )
     },
     downloadTemplate: (classroomId: string) =>

@@ -153,6 +153,18 @@ export function Classes() {
           >
             ↓ {t('classes.bulk.demote')}
           </button>
+          <button
+            onClick={() =>
+              window.open(
+                `/classes/print?ids=${[...selected].join(',')}`,
+                '_blank',
+                'noopener',
+              )
+            }
+            className={SECONDARY_BTN}
+          >
+            🖨 {t('classes.bulk.print_cards')}
+          </button>
         </div>
       )}
 

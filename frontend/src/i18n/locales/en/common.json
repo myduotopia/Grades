@@ -435,11 +435,22 @@
       "clear": "Clear",
       "promote": "Promote grade",
       "demote": "Demote grade",
+      "print_cards": "Print grade cards",
       "select_row_aria": "Select {{name}}",
       "max_grade_skipped": "{{count}} already at grade 12, skipped",
       "min_grade_skipped": "{{count}} already at grade 1, skipped",
       "applied": "{{count}} classes updated"
     }
+  },
+  "print": {
+    "title": "Print student grade cards",
+    "print_button": "Print",
+    "pick_subjects": "Choose subjects to print:",
+    "empty": "Nothing to print.",
+    "total_points": "{{count}} pts total",
+    "grade_suffix": "G",
+    "class_suffix": "",
+    "seat_suffix": " ·"
   },
   "students": {
     "title": "Students",
