@@ -380,6 +380,31 @@ class StudentGradesView(BaseModel):
     met_count_total: int = 0
 
 
+# --- Print grade cards for a whole class (#210 follow-up) -------------------
+class GradeCardSubject(BaseModel):
+    subject_id: UUID
+    subject_system_key: str | None
+    subject_display_name: str | None
+
+
+class StudentGradeCard(BaseModel):
+    student_id: UUID
+    seat_number: int
+    name: str | None
+    subjects: list[StudentSubjectSummary]
+    met_count_total: int
+    semester_points: int
+
+
+class ClassGradeCardsView(BaseModel):
+    semester_id: UUID | None
+    classroom_grade: int
+    classroom_name: str
+    # Distinct subjects present in the class (drives the print subject picker).
+    subjects: list[GradeCardSubject]
+    cards: list[StudentGradeCard]
+
+
 class StudentPointRow(BaseModel):
     id: UUID
     points: int

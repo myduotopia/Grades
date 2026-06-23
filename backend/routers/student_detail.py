@@ -28,8 +28,12 @@ from models.grading import (
     StudentStandard,
 )
 from routers.grades import AUTO_AWARD_CATEGORY_KEYS
+from routers.points import _latest_reset_map_for_classroom
 from schemas import (
+    ClassGradeCardsView,
+    GradeCardSubject,
     StudentDetailOut,
+    StudentGradeCard,
     StudentGradeRow,
     StudentGradesView,
     StudentPointResetRow,
@@ -148,6 +152,73 @@ def get_student_detail(
     )
 
 
+def _build_subject_summaries(
+    by_subject: dict[UUID, dict[str, list[float]]],
+    subject_meta: dict[UUID, tuple[str | None, str | None]],
+    weight_by: dict[UUID, dict[str, int]],
+) -> list[StudentSubjectSummary]:
+    """Per-subject weighted summaries for one student (#210). NO renormalise:
+    categories with no grades simply lose their weight; 額外加分 adds on top,
+    capped at 100. Mirrors gradeMath.ts and the class by-student view."""
+    summaries: list[StudentSubjectSummary] = []
+    for subj_id, by_cat in by_subject.items():
+        sys_key, disp = subject_meta[subj_id]
+        cat_avg: dict[str, float] = {
+            ck: round(sum(scores) / len(scores), 2)
+            for ck, scores in by_cat.items()
+        }
+        weights_map = weight_by.get(subj_id, {})
+        applicable = [
+            (ck, w)
+            for ck, w in weights_map.items()
+            if ck != "extra" and ck in cat_avg and w > 0
+        ]
+        weighted = None
+        if applicable:
+            base = sum((cat_avg[ck] * w) / 100.0 for ck, w in applicable)
+            extra_avg = cat_avg.get("extra")
+            extra_w = weights_map.get("extra", 0)
+            bonus = (
+                (extra_avg * extra_w / 100.0)
+                if extra_avg is not None and extra_w > 0
+                else 0.0
+            )
+            weighted = min(100.0, round(base + bonus, 2))
+        summaries.append(
+            StudentSubjectSummary(
+                subject_id=subj_id,
+                subject_system_key=sys_key,
+                subject_display_name=disp,
+                weighted_total=weighted,
+                category_averages=cat_avg,
+                category_weights=weights_map,
+            )
+        )
+    return summaries
+
+
+def _count_met(
+    all_grades: list[tuple],
+    std_by_subject: dict[UUID, float],
+    snap_thresholds: dict[tuple[UUID, UUID], float],
+) -> int:
+    """達標 count for one student over (Grade, category_system_key, subject_id)
+    rows spanning live + snapshot buckets (#210). Live grades use the live
+    StudentStandard threshold; archived grades use the frozen SnapshotStandard
+    threshold keyed by (snapshot_id, subject_id)."""
+    n = 0
+    for grade, cat_key, subject_id in all_grades:
+        if cat_key not in AUTO_AWARD_CATEGORY_KEYS:
+            continue
+        if grade.snapshot_id is None:
+            threshold = std_by_subject.get(subject_id)
+        else:
+            threshold = snap_thresholds.get((grade.snapshot_id, subject_id))
+        if threshold is not None and float(grade.score) >= threshold:
+            n += 1
+    return n
+
+
 @router.get("/api/students/{student_id}/grades", response_model=StudentGradesView)
 def get_student_grades(
     student_id: UUID,
@@ -212,41 +283,7 @@ def get_student_grades(
             float(grade.score)
         )
 
-    summaries: list[StudentSubjectSummary] = []
-    for subj_id, by_cat in by_subject.items():
-        sys_key, disp = subject_meta[subj_id]
-        cat_avg: dict[str, float] = {
-            ck: round(sum(scores) / len(scores), 2)
-            for ck, scores in by_cat.items()
-        }
-        # Weighted total: NO renormalisation (mirrors gradeMath.ts and the
-        # class by-student view). Categories with no grades simply lose their
-        # weight — a student with only 作業/出席 entered must NOT show an
-        # inflated total just because the empty 段考 was dropped (#210).
-        # Extra (額外加分) adds on top, capped at 100.
-        weights_map = weight_by.get(subj_id, {})
-        applicable = [
-            (ck, w)
-            for ck, w in weights_map.items()
-            if ck != "extra" and ck in cat_avg and w > 0
-        ]
-        weighted = None
-        if applicable:
-            base = sum((cat_avg[ck] * w) / 100.0 for ck, w in applicable)
-            extra_avg = cat_avg.get("extra")
-            extra_w = weights_map.get("extra", 0)
-            bonus = (extra_avg * extra_w / 100.0) if extra_avg is not None and extra_w > 0 else 0.0
-            weighted = min(100.0, round(base + bonus, 2))
-        summaries.append(
-            StudentSubjectSummary(
-                subject_id=subj_id,
-                subject_system_key=sys_key,
-                subject_display_name=disp,
-                weighted_total=weighted,
-                category_averages=cat_avg,
-                category_weights=weights_map,
-            )
-        )
+    summaries = _build_subject_summaries(by_subject, subject_meta, weight_by)
 
     grade_rows: list[StudentGradeRow] = []
     for grade, item, subj, cat in rows:
@@ -297,22 +334,208 @@ def get_student_grades(
             SnapshotStandard.student_id == student.id,
         )
     }
-    met_count_total = 0
-    for grade, cat_key, subject_id in all_grades:
-        if cat_key not in AUTO_AWARD_CATEGORY_KEYS:
-            continue
-        if grade.snapshot_id is None:
-            threshold = standards_by_subject.get(subject_id)
-        else:
-            threshold = snap_thresholds.get((grade.snapshot_id, subject_id))
-        if threshold is not None and float(grade.score) >= threshold:
-            met_count_total += 1
+    met_count_total = _count_met(
+        all_grades, standards_by_subject, snap_thresholds
+    )
 
     return StudentGradesView(
         semester_id=sem.id,
         subjects=summaries,
         grades=grade_rows,
         met_count_total=met_count_total,
+    )
+
+
+@router.get(
+    "/api/classrooms/{classroom_id}/grade-cards",
+    response_model=ClassGradeCardsView,
+)
+def get_classroom_grade_cards(
+    classroom_id: UUID,
+    user_id: Annotated[UUID, Depends(require_user_id)],
+    db: Annotated[Session, Depends(get_db)],
+    semester_id: Annotated[UUID | None, Query()] = None,
+) -> ClassGradeCardsView:
+    """One grade card per student for a whole class — used by the print page
+    (#210 follow-up). Bundles, per student: weighted per-subject summaries,
+    本學期達標次數 (live + snapshots), and cumulative 總點數. All roster-wide
+    queries are batched (no N+1)."""
+    classroom = (
+        db.query(Classroom)
+        .filter(Classroom.id == classroom_id, Classroom.user_id == user_id)
+        .one_or_none()
+    )
+    if classroom is None:
+        raise _not_found("classroom")
+
+    students = (
+        db.query(Student)
+        .filter(
+            Student.classroom_id == classroom_id,
+            Student.user_id == user_id,
+        )
+        .order_by(Student.seat_number.asc())
+        .all()
+    )
+    roster_ids = [s.id for s in students]
+
+    # 總點數 per student (cumulative, reset-aware) — bulk, one query.
+    points_by_student: dict[UUID, int] = {sid: 0 for sid in roster_ids}
+    if roster_ids:
+        last_reset = _latest_reset_map_for_classroom(db, user_id, classroom_id)
+        for sid, pts, ts in (
+            db.query(
+                PointRecord.student_id,
+                PointRecord.points,
+                PointRecord.created_at,
+            )
+            .filter(
+                PointRecord.user_id == user_id,
+                PointRecord.student_id.in_(roster_ids),
+            )
+            .all()
+        ):
+            floor = last_reset.get(sid)
+            if floor is not None and ts <= floor:
+                continue
+            points_by_student[sid] = points_by_student.get(sid, 0) + int(pts)
+
+    sem = _resolve_semester(db, user_id, semester_id)
+    if sem is None or not roster_ids:
+        return ClassGradeCardsView(
+            semester_id=sem.id if sem else None,
+            classroom_grade=classroom.grade,
+            classroom_name=classroom.name,
+            subjects=[],
+            cards=[
+                StudentGradeCard(
+                    student_id=s.id,
+                    seat_number=s.seat_number,
+                    name=s.name,
+                    subjects=[],
+                    met_count_total=0,
+                    semester_points=points_by_student.get(s.id, 0),
+                )
+                for s in students
+            ],
+        )
+
+    # Per-subject category weights (user-scoped, all subjects).
+    weight_by: dict[UUID, dict[str, int]] = {}
+    for w, cat in (
+        db.query(SubjectCategoryWeight, Category)
+        .join(Category, SubjectCategoryWeight.category_id == Category.id)
+        .filter(SubjectCategoryWeight.user_id == user_id)
+        .all()
+    ):
+        weight_by.setdefault(w.subject_id, {})[cat.system_key] = w.weight
+
+    # Live grades for the whole roster in this semester → per student×subject.
+    by_student: dict[UUID, dict[UUID, dict[str, list[float]]]] = {}
+    subject_meta: dict[UUID, tuple[str | None, str | None]] = {}
+    for sid, subj_id, subj_sys, subj_disp, cat_key, score in (
+        db.query(
+            Grade.student_id,
+            Subject.id,
+            Subject.system_key,
+            Subject.display_name,
+            Category.system_key,
+            Grade.score,
+        )
+        .join(Item, Grade.item_id == Item.id)
+        .join(Subject, Item.subject_id == Subject.id)
+        .join(Category, Item.category_id == Category.id)
+        .filter(
+            Grade.user_id == user_id,
+            Grade.snapshot_id.is_(None),
+            Item.semester_id == sem.id,
+            Grade.student_id.in_(roster_ids),
+        )
+        .all()
+    ):
+        subject_meta[subj_id] = (subj_sys, subj_disp)
+        by_student.setdefault(sid, {}).setdefault(subj_id, {}).setdefault(
+            cat_key, []
+        ).append(float(score))
+
+    # Live thresholds per (student, subject) for the 達標 count.
+    std_by_student: dict[UUID, dict[UUID, float]] = {}
+    for st in (
+        db.query(StudentStandard)
+        .filter(
+            StudentStandard.user_id == user_id,
+            StudentStandard.student_id.in_(roster_ids),
+        )
+        .all()
+    ):
+        std_by_student.setdefault(st.student_id, {})[st.subject_id] = float(
+            st.threshold
+        )
+
+    # Frozen snapshot thresholds per student, keyed by (snapshot_id, subject).
+    snap_by_student: dict[UUID, dict[tuple[UUID, UUID], float]] = {}
+    for sn in (
+        db.query(SnapshotStandard)
+        .filter(
+            SnapshotStandard.user_id == user_id,
+            SnapshotStandard.student_id.in_(roster_ids),
+        )
+        .all()
+    ):
+        snap_by_student.setdefault(sn.student_id, {})[
+            (sn.snapshot_id, sn.subject_id)
+        ] = float(sn.threshold)
+
+    # All grades (live + snapshot) in this semester for the 達標 count.
+    met_grades: dict[UUID, list[tuple]] = {}
+    for grade, cat_key, subj_id in (
+        db.query(Grade, Category.system_key, Item.subject_id)
+        .join(Item, Grade.item_id == Item.id)
+        .join(Category, Item.category_id == Category.id)
+        .filter(
+            Grade.user_id == user_id,
+            Item.semester_id == sem.id,
+            Grade.student_id.in_(roster_ids),
+        )
+        .all()
+    ):
+        met_grades.setdefault(grade.student_id, []).append(
+            (grade, cat_key, subj_id)
+        )
+
+    cards = [
+        StudentGradeCard(
+            student_id=s.id,
+            seat_number=s.seat_number,
+            name=s.name,
+            subjects=_build_subject_summaries(
+                by_student.get(s.id, {}), subject_meta, weight_by
+            ),
+            met_count_total=_count_met(
+                met_grades.get(s.id, []),
+                std_by_student.get(s.id, {}),
+                snap_by_student.get(s.id, {}),
+            ),
+            semester_points=points_by_student.get(s.id, 0),
+        )
+        for s in students
+    ]
+
+    subjects = [
+        GradeCardSubject(
+            subject_id=sid,
+            subject_system_key=meta[0],
+            subject_display_name=meta[1],
+        )
+        for sid, meta in subject_meta.items()
+    ]
+
+    return ClassGradeCardsView(
+        semester_id=sem.id,
+        classroom_grade=classroom.grade,
+        classroom_name=classroom.name,
+        subjects=subjects,
+        cards=cards,
     )
 
 
