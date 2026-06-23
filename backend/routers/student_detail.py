@@ -20,7 +20,13 @@ from auth import require_user_id
 from database import get_db
 from models.classroom import Classroom, Student
 from models.curriculum import Category, Item, Semester, Subject, SubjectCategoryWeight
-from models.grading import Grade, PointRecord, PointReset, StudentStandard
+from models.grading import (
+    Grade,
+    PointRecord,
+    PointReset,
+    SnapshotStandard,
+    StudentStandard,
+)
 from routers.grades import AUTO_AWARD_CATEGORY_KEYS
 from schemas import (
     StudentDetailOut,
@@ -213,18 +219,20 @@ def get_student_grades(
             ck: round(sum(scores) / len(scores), 2)
             for ck, scores in by_cat.items()
         }
-        # Weighted total: re-normalise so categories with no grades don't
-        # eat into the 100%. Extra adds on top, capped at 100.
+        # Weighted total: NO renormalisation (mirrors gradeMath.ts and the
+        # class by-student view). Categories with no grades simply lose their
+        # weight — a student with only 作業/出席 entered must NOT show an
+        # inflated total just because the empty 段考 was dropped (#210).
+        # Extra (額外加分) adds on top, capped at 100.
         weights_map = weight_by.get(subj_id, {})
         applicable = [
             (ck, w)
             for ck, w in weights_map.items()
             if ck != "extra" and ck in cat_avg and w > 0
         ]
-        total_w = sum(w for _, w in applicable)
         weighted = None
-        if total_w > 0:
-            base = sum((cat_avg[ck] * w) / total_w for ck, w in applicable)
+        if applicable:
+            base = sum((cat_avg[ck] * w) / 100.0 for ck, w in applicable)
             extra_avg = cat_avg.get("extra")
             extra_w = weights_map.get("extra", 0)
             bonus = (extra_avg * extra_w / 100.0) if extra_avg is not None and extra_w > 0 else 0.0
@@ -236,6 +244,7 @@ def get_student_grades(
                 subject_display_name=disp,
                 weighted_total=weighted,
                 category_averages=cat_avg,
+                category_weights=weights_map,
             )
         )
 
@@ -263,10 +272,47 @@ def get_student_grades(
             )
         )
 
+    # Total 達標 count for the whole semester (#210). Counts EVERY qualifying
+    # grade record — one per 段考/小考 grade whose score >= the student's
+    # threshold for that subject — regardless of whether it has since been
+    # archived into a snapshot. Each grade lives in exactly one bucket
+    # (create_snapshot moves live grades into the snapshot bucket), so live +
+    # snapshot grades never double-count.
+    all_grades = (
+        db.query(Grade, Category.system_key, Item.subject_id)
+        .join(Item, Grade.item_id == Item.id)
+        .join(Category, Item.category_id == Category.id)
+        .filter(
+            Grade.student_id == student.id,
+            Grade.user_id == user_id,
+            Item.semester_id == sem.id,
+        )
+        .all()
+    )
+    # Frozen per-(snapshot, subject) thresholds for archived grades (#160).
+    snap_thresholds = {
+        (s.snapshot_id, s.subject_id): float(s.threshold)
+        for s in db.query(SnapshotStandard).filter(
+            SnapshotStandard.user_id == user_id,
+            SnapshotStandard.student_id == student.id,
+        )
+    }
+    met_count_total = 0
+    for grade, cat_key, subject_id in all_grades:
+        if cat_key not in AUTO_AWARD_CATEGORY_KEYS:
+            continue
+        if grade.snapshot_id is None:
+            threshold = standards_by_subject.get(subject_id)
+        else:
+            threshold = snap_thresholds.get((grade.snapshot_id, subject_id))
+        if threshold is not None and float(grade.score) >= threshold:
+            met_count_total += 1
+
     return StudentGradesView(
         semester_id=sem.id,
         subjects=summaries,
         grades=grade_rows,
+        met_count_total=met_count_total,
     )
 
 
