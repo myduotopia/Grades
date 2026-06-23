@@ -26,6 +26,7 @@ import {
   computeProjection,
   formatScore,
   mean,
+  projectionNote,
   subjectsInView,
 } from '../lib/gradeMath'
 
@@ -407,38 +408,38 @@ function ByStudentTable({
     weightLookup[w.subject_id][w.category_system_key] = w.weight
   }
 
-  // Weighted-total cell for the single-subject view: shows the real total once
-  // 段考 is in, otherwise the gray 段考 average needed to pass, or a red total +
-  // `*` when 及格 is impossible / already failing (#210).
+  // 加權總分 cell (single-subject view): ALWAYS the real total from current
+  // scores. 段考 not entered yet is fine — the projection lives in the 備註
+  // column. Red + `*` only when 及格 is impossible / the student is failing.
   function projectionCell(
     byCat: Record<string, number> | undefined,
     subjId: string,
   ) {
     const proj = computeProjection(byCat ?? {}, weightLookup[subjId] ?? {})
-    if (proj.status === 'none') {
+    if (proj.weightedTotal === null) {
       return <span className="text-slate-400">—</span>
     }
-    if (proj.status === 'projected') {
-      const need = Math.ceil((proj.requiredExam ?? 0) * 10) / 10
-      return (
-        <span className="text-slate-400">
-          {t('grades.required_exam', { score: need })}
-        </span>
-      )
-    }
-    if (proj.status === 'safe') {
-      return (
-        <span className="text-slate-400">{formatScore(proj.weightedTotal)}</span>
-      )
-    }
-    if (proj.status === 'fail' || proj.status === 'impossible') {
-      return (
-        <span className="text-rose-600" title={t('grades.cannot_pass')}>
-          {formatScore(proj.weightedTotal)}*
-        </span>
-      )
-    }
-    return <span className="text-slate-900">{formatScore(proj.weightedTotal)}</span>
+    const failing = proj.status === 'fail' || proj.status === 'impossible'
+    return (
+      <span
+        className={failing ? 'text-rose-600' : 'text-slate-900'}
+        title={failing ? projectionNote(proj, t) : undefined}
+      >
+        {formatScore(proj.weightedTotal)}
+        {failing ? '*' : ''}
+      </span>
+    )
+  }
+
+  // 備註 cell: the projection / pass状態 note next to the total (#210).
+  function noteCell(byCat: Record<string, number> | undefined, subjId: string) {
+    const proj = computeProjection(byCat ?? {}, weightLookup[subjId] ?? {})
+    const note = projectionNote(proj, t)
+    if (!note) return <span className="text-slate-300">—</span>
+    const danger = proj.status === 'fail' || proj.status === 'impossible'
+    return (
+      <span className={danger ? 'text-rose-600' : 'text-slate-500'}>{note}</span>
+    )
   }
 
   // Precompute (overall, per-subject-total) for each student so sort doesn't
@@ -520,7 +521,7 @@ function ByStudentTable({
 
   const totalCols =
     pickedSubjectId
-      ? 2 + pickedCategories.length + 1 // seat + name + cats + weighted total
+      ? 2 + pickedCategories.length + 2 // seat + name + cats + total + 備註
       : 2 + subjects.length + 1 // seat + name + subjects + overall
 
   return (
@@ -600,6 +601,11 @@ function ByStudentTable({
                   {arrow('overall')}
                 </button>
               </th>
+              {pickedSubjectId && (
+                <th className="px-4 py-3 text-left font-medium min-w-[8rem]">
+                  {t('grades.note_col')}
+                </th>
+              )}
             </tr>
           </thead>
           <tbody>
@@ -652,6 +658,11 @@ function ByStudentTable({
                       </span>
                     )}
                   </td>
+                  {pickedSubjectId && (
+                    <td className="px-4 py-2.5 text-xs min-w-[8rem]">
+                      {noteCell(pickedRow?.byCategory, pickedSubjectId)}
+                    </td>
+                  )}
                 </tr>
               )
             })}
@@ -701,6 +712,9 @@ function ByStudentTable({
                   ),
                 )}
               </td>
+              {pickedSubjectId && (
+                <td className="px-4 py-2.5 border-t-4 border-double border-slate-400" />
+              )}
             </tr>
           </tbody>
         </table>
@@ -710,7 +724,7 @@ function ByStudentTable({
         {pickedSubjectId && (
           <>
             {' '}
-            <span className="text-rose-600">*</span> {t('grades.cannot_pass')}
+            <span className="text-rose-600">*</span> {t('grades.star_legend')}
           </>
         )}
       </p>
