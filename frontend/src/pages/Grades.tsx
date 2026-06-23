@@ -11,6 +11,7 @@ import toast from 'react-hot-toast'
 
 import { ArchivedSemesterBanner } from '../components/ArchivedSemesterBanner'
 import { StandardsMatrix } from '../components/StandardsMatrix'
+import { StudentNameLink } from '../components/StudentNameLink'
 import { PageContainer } from '../layout/PageContainer'
 import { PageHeader } from '../layout/PageHeader'
 import { useSemesterView } from '../state/SemesterView'
@@ -624,14 +625,7 @@ function ByStudentTable({
                     {s.seat_number}
                   </td>
                   <td className="px-4 py-2.5 text-slate-700 min-w-[6rem] max-w-[10rem] truncate">
-                    <a
-                      href={`/students/${s.id}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="hover:text-amber-700 hover:underline"
-                    >
-                      {s.name || <span className="text-slate-400">—</span>}
-                    </a>
+                    <StudentNameLink id={s.id} name={s.name} />
                   </td>
                   {!pickedSubjectId && subjects.map((sub) => (
                     <td
@@ -1135,9 +1129,7 @@ function BySubjectView({
                     {s.seat_number}
                   </td>
                   <td className="px-4 py-2.5 text-slate-700 min-w-[6rem] max-w-[10rem] truncate">
-                    {s.name || (
-                      <span className="text-slate-400">—</span>
-                    )}
+                    <StudentNameLink id={s.id} name={s.name} />
                   </td>
                   {items.map((i) => {
                     const isEditing = editingItemId === i.id

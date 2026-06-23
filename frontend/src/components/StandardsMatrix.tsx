@@ -9,6 +9,7 @@ import {
   type StudentBrief,
   type Subject,
 } from '../lib/api'
+import { StudentNameLink } from './StudentNameLink'
 
 const PRIMARY_BTN =
   'inline-flex items-center px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white text-sm font-medium shadow-sm transition-colors disabled:bg-slate-300 disabled:shadow-none disabled:cursor-not-allowed'
@@ -320,7 +321,7 @@ export function StandardsMatrix({
                       {s.seat_number}
                     </td>
                     <td className="px-3 py-2 text-slate-900 min-w-[6rem] max-w-[10rem] truncate">
-                      {s.name || '—'}
+                      <StudentNameLink id={s.id} name={s.name} />
                     </td>
                     {orderedSubjects.map((subj) => {
                       const v = cellValue(s.id, subj.id)
