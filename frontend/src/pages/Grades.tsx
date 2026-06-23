@@ -23,6 +23,7 @@ import {
 import { classroomDisplayName } from '../lib/classroomFormat'
 import {
   buildMatrix,
+  computeProjection,
   formatScore,
   mean,
   subjectsInView,
@@ -399,6 +400,47 @@ function ByStudentTable({
     return CATEGORY_ORDER.filter((c) => seen.has(c))
   })()
 
+  // subject_id → category_system_key → weight, for the pass projection (#210).
+  const weightLookup: Record<string, Record<string, number>> = {}
+  for (const w of view.subject_category_weights) {
+    weightLookup[w.subject_id] ??= {}
+    weightLookup[w.subject_id][w.category_system_key] = w.weight
+  }
+
+  // Weighted-total cell for the single-subject view: shows the real total once
+  // 段考 is in, otherwise the gray 段考 average needed to pass, or a red total +
+  // `*` when 及格 is impossible / already failing (#210).
+  function projectionCell(
+    byCat: Record<string, number> | undefined,
+    subjId: string,
+  ) {
+    const proj = computeProjection(byCat ?? {}, weightLookup[subjId] ?? {})
+    if (proj.status === 'none') {
+      return <span className="text-slate-400">—</span>
+    }
+    if (proj.status === 'projected') {
+      const need = Math.ceil((proj.requiredExam ?? 0) * 10) / 10
+      return (
+        <span className="text-slate-400">
+          {t('grades.required_exam', { score: need })}
+        </span>
+      )
+    }
+    if (proj.status === 'safe') {
+      return (
+        <span className="text-slate-400">{formatScore(proj.weightedTotal)}</span>
+      )
+    }
+    if (proj.status === 'fail' || proj.status === 'impossible') {
+      return (
+        <span className="text-rose-600" title={t('grades.cannot_pass')}>
+          {formatScore(proj.weightedTotal)}*
+        </span>
+      )
+    }
+    return <span className="text-slate-900">{formatScore(proj.weightedTotal)}</span>
+  }
+
   // Precompute (overall, per-subject-total) for each student so sort doesn't
   // re-walk the matrix on every comparison.
   const enriched = view.students.map((s) => {
@@ -601,11 +643,13 @@ function ByStudentTable({
                       {formatScore(pickedRow?.byCategory[c])}
                     </td>
                   ))}
-                  <td className="px-4 py-2.5 text-slate-900 font-semibold tabular-nums max-w-[8rem] truncate">
-                    {formatScore(
-                      pickedSubjectId
-                        ? pickedRow?.weightedTotal
-                        : overall,
+                  <td className="px-4 py-2.5 font-semibold tabular-nums max-w-[8rem] truncate">
+                    {pickedSubjectId ? (
+                      projectionCell(pickedRow?.byCategory, pickedSubjectId)
+                    ) : (
+                      <span className="text-slate-900">
+                        {formatScore(overall)}
+                      </span>
                     )}
                   </td>
                 </tr>
@@ -663,6 +707,12 @@ function ByStudentTable({
       </div>
       <p className="px-4 py-3 text-xs text-slate-500 border-t border-slate-200 bg-slate-50">
         {t('grades.formula_hint')}
+        {pickedSubjectId && (
+          <>
+            {' '}
+            <span className="text-rose-600">*</span> {t('grades.cannot_pass')}
+          </>
+        )}
       </p>
     </div>
   )

@@ -34,6 +34,10 @@ export type StudentSubjectMatrix = Record<
 >
 
 const EXTRA_KEY = 'extra'
+const EXAM_KEY = 'major_exam'
+
+/** Total a student must reach to be considered 及格 (issue #210). */
+export const PASS_THRESHOLD = 60
 
 export function buildMatrix(
   view: ClassroomGradesView,
@@ -103,6 +107,122 @@ function computeSubjectBreakdown(
     weightedTotal = Math.min(100, weightedTotal + extraBonus)
   }
   return { byCategory: byCategoryAvg, weightedTotal, extraBonus }
+}
+
+/**
+ * Pass projection for one (student, subject) — issue #210.
+ *
+ * Same no-renormalise model as `computeSubjectBreakdown`: 段考 (major_exam) is
+ * the assessment teachers enter last, so before it lands we tell the teacher
+ * the minimum 段考 average needed to reach `PASS_THRESHOLD`. Empty non-exam
+ * categories count as 0 (lose their weight) — a student is NOT shown an
+ * inflated total just because 段考 is still blank.
+ *
+ *  - `pass` / `fail`  — 段考 entered; total is the real weighted total.
+ *  - `safe`           — 段考 blank but already 及格 even with 0 on 段考.
+ *  - `projected`      — 段考 blank; needs 0 < requiredExam ≤ 100 to pass.
+ *  - `impossible`     — 段考 blank but even 100 on 段考 can't reach 60 (or 段考
+ *                       entered and failing is covered by `fail`).
+ *  - `none`           — no weighted category has any score yet.
+ */
+export type ProjectionStatus =
+  | 'pass'
+  | 'fail'
+  | 'safe'
+  | 'projected'
+  | 'impossible'
+  | 'none'
+
+export interface Projection {
+  /** Current (段考 entered) or best-case (段考 blank, impossible) weighted
+   * total. `null` when projecting (`projected`) or when there's no data. */
+  weightedTotal: number | null
+  examRecorded: boolean
+  /** Minimum 段考 average needed to reach `PASS_THRESHOLD`; null unless the
+   * status is `projected`, `safe`, or `impossible`. */
+  requiredExam: number | null
+  status: ProjectionStatus
+}
+
+export function computeProjection(
+  byCategoryAvg: Record<string, number>,
+  weights: Record<string, number>,
+): Projection {
+  const examW = weights[EXAM_KEY] ?? 0
+  const examEntered = byCategoryAvg[EXAM_KEY] !== undefined
+
+  // base = entered non-extra, non-exam categories × their weight / 100.
+  let base = 0
+  let hasNonExam = false
+  for (const c of Object.keys(byCategoryAvg)) {
+    if (c === EXTRA_KEY || c === EXAM_KEY) continue
+    const w = weights[c] ?? 0
+    if (w <= 0) continue
+    hasNonExam = true
+    base += (byCategoryAvg[c] * w) / 100
+  }
+  const extraAvg = byCategoryAvg[EXTRA_KEY] ?? 0
+  const extraWeight = weights[EXTRA_KEY] ?? 0
+  const bonus = (extraAvg * extraWeight) / 100
+
+  // 段考 entered and weighted → real total, pass/fail.
+  if (examEntered && examW > 0) {
+    const total = Math.min(
+      100,
+      base + (byCategoryAvg[EXAM_KEY] * examW) / 100 + bonus,
+    )
+    return {
+      weightedTotal: total,
+      examRecorded: true,
+      requiredExam: null,
+      status: total >= PASS_THRESHOLD ? 'pass' : 'fail',
+    }
+  }
+
+  // 段考 blank but the subject weights it → project the needed average.
+  if (!examEntered && examW > 0) {
+    const required = ((PASS_THRESHOLD - base - bonus) * 100) / examW
+    if (required <= 0) {
+      return {
+        weightedTotal: Math.min(100, base + bonus),
+        examRecorded: false,
+        requiredExam: 0,
+        status: 'safe',
+      }
+    }
+    if (required > 100) {
+      // Even a perfect 段考 can't reach 60 — show the best-case total.
+      return {
+        weightedTotal: Math.min(100, base + examW + bonus),
+        examRecorded: false,
+        requiredExam: required,
+        status: 'impossible',
+      }
+    }
+    return {
+      weightedTotal: null,
+      examRecorded: false,
+      requiredExam: required,
+      status: 'projected',
+    }
+  }
+
+  // No 段考 weight (e.g. 非主科) — just the current total, pass/fail.
+  if (!hasNonExam) {
+    return {
+      weightedTotal: null,
+      examRecorded: examEntered,
+      requiredExam: null,
+      status: 'none',
+    }
+  }
+  const total = Math.min(100, base + bonus)
+  return {
+    weightedTotal: total,
+    examRecorded: examEntered,
+    requiredExam: null,
+    status: total >= PASS_THRESHOLD ? 'pass' : 'fail',
+  }
 }
 
 /** Subjects that have any item in the data, in canonical built-in order with
