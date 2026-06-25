@@ -1,9 +1,13 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { ItemNameCombobox } from './ItemNameCombobox'
 import { SignedNumberInput } from './SignedNumberInput'
 
-const PRESETS = [-10, -5, -3, -1, 1, 3, 5, 10] as const
+// Quick-amount chips per mode (#215). 加點 is always positive (1..500),
+// 扣點 always negative (-1..-500).
+const ADD_PRESETS = [1, 5, 10, 20, 30, 40, 50, 100] as const
+const DEDUCT_PRESETS = [-1, -5, -10, -20, -30, -40, -50, -100] as const
 
 const PRIMARY_BTN =
   'inline-flex items-center px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white text-sm font-medium shadow-sm transition-colors disabled:bg-slate-300 disabled:cursor-not-allowed'
@@ -12,48 +16,60 @@ const SECONDARY_BTN =
   'inline-flex items-center px-4 py-2 rounded-lg bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-medium shadow-sm transition-colors disabled:opacity-60'
 
 /**
- * Confirm-and-pick-points modal used by both /points (whole-class batch)
- * and /points/:classroomId (single-student). When `editableReason` is true,
- * the reason text is a free input (used by the "+ 自訂" button); otherwise
- * it's a read-only label and we just show preset + manual point chips.
+ * Add / deduct points modal (#215). The teacher picks a reason — typed fresh
+ * or chosen from previously-used reasons via the combobox — and an amount,
+ * independently. A brand-new reason is auto-filed by the backend on submit.
+ *
+ * `mode` locks the sign: 'add' clamps the amount to 1..500 with + chips,
+ * 'deduct' clamps to -500..-1 with − chips. `applyMode` only changes copy
+ * (single student vs whole class).
  */
-export function QuickPointModal({
-  initialReason,
-  initialPoints,
-  editableReason,
+export function PointEntryModal({
+  mode,
   applyMode,
+  reasonSuggestions,
   pending,
   onClose,
   onConfirm,
 }: {
-  initialReason: string
-  initialPoints: number
-  editableReason: boolean
-  /** 'class' = adds to every student in the class; 'student' = single. */
+  mode: 'add' | 'deduct'
   applyMode: 'class' | 'student'
+  reasonSuggestions: string[]
   pending: boolean
   onClose: () => void
   onConfirm: (reason: string, points: number) => void
 }) {
   const { t } = useTranslation()
-  const [reason, setReason] = useState(initialReason)
-  const [pts, setPts] = useState<number>(initialPoints)
+  const presets = mode === 'add' ? ADD_PRESETS : DEDUCT_PRESETS
+  const [reason, setReason] = useState('')
+  const [pts, setPts] = useState<number>(presets[0])
 
+  // Reset the amount default when the mode flips (the parent remounts via key
+  // in practice, but stay defensive).
   useEffect(() => {
-    setReason(initialReason)
-    setPts(initialPoints)
-  }, [initialReason, initialPoints])
+    setPts(presets[0])
+    setReason('')
+  }, [mode]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Reason can be blank in the "+ 自訂" flow — the teacher might just want
-  // to add raw points without categorising them. Reasons coming in from a
-  // saved reason chip are never blank by construction.
-  const canSubmit = pts !== 0 && !pending
+  // Reason can stay blank — the row just displays as 「—」. Amount must be a
+  // valid non-zero value within the mode's sign.
+  const canSubmit =
+    !pending && pts !== 0 && (mode === 'add' ? pts > 0 : pts < 0)
 
   function submit(e: React.FormEvent) {
     e.preventDefault()
     if (!canSubmit) return
     onConfirm(reason.trim(), pts)
   }
+
+  const title =
+    applyMode === 'class'
+      ? mode === 'add'
+        ? t('points.entry_modal.title_add_class')
+        : t('points.entry_modal.title_deduct_class')
+      : mode === 'add'
+        ? t('points.entry_modal.title_add_student')
+        : t('points.entry_modal.title_deduct_student')
 
   return (
     <div
@@ -66,44 +82,37 @@ export function QuickPointModal({
         className="bg-white rounded-2xl shadow-xl border border-slate-200 p-6 w-full max-w-sm"
       >
         <h2 className="text-lg font-semibold tracking-tight mb-4 text-slate-900">
-          {applyMode === 'class'
-            ? t('points.quick_modal.title_apply_class')
-            : t('points.quick_modal.title_apply_student')}
+          {title}
         </h2>
 
         <label className="block mb-3">
           <span className="block text-sm font-medium text-slate-700 mb-1">
-            {t('points.quick_modal.reason_label')}
+            {t('points.entry_modal.reason_label')}
           </span>
-          {editableReason ? (
-            <input
-              autoFocus
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
-              maxLength={50}
-              placeholder={t('points.quick_modal.reason_placeholder')}
-              className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
-            />
-          ) : (
-            <div className="px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-sm text-slate-900">
-              {reason}
-            </div>
-          )}
+          <ItemNameCombobox
+            value={reason}
+            onChange={setReason}
+            suggestions={reasonSuggestions}
+            maxLength={50}
+            placeholder={t('points.entry_modal.reason_placeholder')}
+          />
         </label>
 
         <label className="block mb-3">
           <span className="block text-sm font-medium text-slate-700 mb-1">
-            {t('points.quick_modal.points_label')}
+            {t('points.entry_modal.points_label')}
           </span>
           <SignedNumberInput
             value={pts}
             onChange={setPts}
+            min={mode === 'add' ? 1 : -500}
+            max={mode === 'add' ? 500 : -1}
             className="w-full border border-slate-300 rounded-lg px-3 py-2 text-base text-right font-semibold tabular-nums focus:outline-none focus:ring-2 focus:ring-amber-500"
           />
         </label>
 
         <div className="flex flex-wrap gap-1.5 mb-4">
-          {PRESETS.map((n) => (
+          {presets.map((n) => (
             <button
               key={n}
               type="button"
@@ -128,16 +137,12 @@ export function QuickPointModal({
           >
             {t('common.cancel')}
           </button>
-          <button
-            type="submit"
-            disabled={!canSubmit}
-            className={PRIMARY_BTN}
-          >
+          <button type="submit" disabled={!canSubmit} className={PRIMARY_BTN}>
             {pending
               ? t('common.saving')
-              : applyMode === 'class'
-                ? t('points.quick_modal.confirm_class')
-                : t('points.quick_modal.confirm_student')}
+              : mode === 'add'
+                ? t('points.entry_modal.confirm_add')
+                : t('points.entry_modal.confirm_deduct')}
           </button>
         </div>
       </form>

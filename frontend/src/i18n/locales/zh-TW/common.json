@@ -58,6 +58,10 @@
     "no_match": "沒有符合的學生。",
     "select_all": "全選",
     "batch_apply": "批次加扣點（{{count}} 位）",
+    "add": "加點",
+    "deduct": "扣點",
+    "batch_add": "批次加點（{{count}} 位）",
+    "batch_deduct": "批次扣點（{{count}} 位）",
     "goto_classes": "前往班級管理",
     "back": "返回班級列表",
     "custom": "自訂",
@@ -78,6 +82,17 @@
       "points_label": "點數",
       "confirm_class": "套用到全班",
       "confirm_student": "確認"
+    },
+    "entry_modal": {
+      "title_add_student": "為這位學生加點",
+      "title_deduct_student": "為這位學生扣點",
+      "title_add_class": "全班加點",
+      "title_deduct_class": "全班扣點",
+      "reason_label": "原因",
+      "reason_placeholder": "輸入或選擇原因…",
+      "points_label": "點數",
+      "confirm_add": "確認加點",
+      "confirm_deduct": "確認扣點"
     },
     "toast": {
       "applied_class": "已為 {{count}} 位學生 {{delta}} 點，原因「{{reason}}」",
