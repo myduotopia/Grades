@@ -58,6 +58,10 @@
     "no_match": "No matching students.",
     "select_all": "Select all",
     "batch_apply": "Batch apply ({{count}})",
+    "add": "Add",
+    "deduct": "Deduct",
+    "batch_add": "Batch add ({{count}})",
+    "batch_deduct": "Batch deduct ({{count}})",
     "goto_classes": "Go to classes",
     "back": "Back",
     "custom": "Custom",
@@ -78,6 +82,17 @@
       "points_label": "Points",
       "confirm_class": "Apply to class",
       "confirm_student": "Confirm"
+    },
+    "entry_modal": {
+      "title_add_student": "Add points for this student",
+      "title_deduct_student": "Deduct points for this student",
+      "title_add_class": "Add points for the whole class",
+      "title_deduct_class": "Deduct points for the whole class",
+      "reason_label": "Reason",
+      "reason_placeholder": "Type or pick a reason…",
+      "points_label": "Points",
+      "confirm_add": "Confirm add",
+      "confirm_deduct": "Confirm deduct"
     },
     "toast": {
       "applied_class": "{{count}} students {{delta}} pts, reason \"{{reason}}\"",
