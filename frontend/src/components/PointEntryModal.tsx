@@ -74,11 +74,17 @@ export function PointEntryModal({
   return (
     <div
       className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50"
-      onClick={onClose}
+      // Dismiss only when the press STARTS on the backdrop itself (#217). Using
+      // onClick here closed the modal when a text-selection drag began inside an
+      // input and released out on the backdrop — the click fires on the common
+      // ancestor (this div), which onClick can't distinguish from a real
+      // backdrop click. onMouseDown + the target check fixes that.
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose()
+      }}
     >
       <form
         onSubmit={submit}
-        onClick={(e) => e.stopPropagation()}
         className="bg-white rounded-2xl shadow-xl border border-slate-200 p-6 w-full max-w-sm"
       >
         <h2 className="text-lg font-semibold tracking-tight mb-4 text-slate-900">
