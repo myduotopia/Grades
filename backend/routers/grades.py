@@ -29,6 +29,7 @@ from fastapi import (
 )
 from fastapi.responses import StreamingResponse
 from openpyxl import Workbook, load_workbook
+from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.worksheet.datavalidation import DataValidation
 from sqlalchemy.orm import Session
 
@@ -107,6 +108,40 @@ _CATEGORY_KEY_TO_NAME_ZH: dict[str, str] = {
 }
 
 MEETING_STANDARD_REASON = "達成標準"
+
+# ---------- Excel export labels / ordering (#221) ----------
+# Backend stores only system_key for built-in subjects (zh labels live in the
+# frontend i18n), so the export carries its own zh map. Custom subjects use
+# their display_name.
+_SUBJECT_ZH: dict[str, str] = {
+    "chinese": "國語",
+    "math": "數學",
+    "english": "英語",
+    "science": "自然",
+    "social_studies": "社會",
+    "music": "音樂",
+    "art": "美術",
+    "pe": "體育",
+    "integrated": "綜合",
+}
+# Canonical column order for built-in subjects; custom subjects follow, sorted
+# by display_name.
+_SUBJECT_ORDER: list[str] = [
+    "chinese", "math", "english", "science", "social_studies",
+    "music", "art", "pe", "integrated",
+]
+# The 6 columns each subject expands into. First 5 are category averages keyed
+# by category system_key; the last is the weighted total.
+_EXPORT_CATEGORY_COLS: list[tuple[str, str]] = [
+    ("major_exam", "段考"),
+    ("quiz", "小考"),
+    ("homework", "作業"),
+    ("attendance", "出席"),
+    ("extra", "額外"),
+]
+_EXPORT_SUB_HEADERS: list[str] = [
+    label for _, label in _EXPORT_CATEGORY_COLS
+] + ["加權"]
 
 # Excel layout: 3 metadata rows above the scores.
 #   Row 1: 類別 (dropdown)
@@ -213,6 +248,222 @@ def download_template(
         ),
         headers={
             "Content-Disposition": 'attachment; filename="grades_template.xlsx"',
+        },
+    )
+
+
+# ---------- class grades export (#221) ----------
+
+
+def _subject_label(system_key: str | None, display_name: str | None) -> str:
+    if system_key:
+        return _SUBJECT_ZH.get(system_key, system_key)
+    return display_name or "—"
+
+
+def _sort_subjects(subjects: list) -> list:
+    """Canonical order: built-ins by _SUBJECT_ORDER, then custom by label."""
+    def key(s):
+        if s.subject_system_key in _SUBJECT_ORDER:
+            return (0, _SUBJECT_ORDER.index(s.subject_system_key), "")
+        return (1, 0, _subject_label(s.subject_system_key, s.subject_display_name))
+
+    return sorted(subjects, key=key)
+
+
+def _safe_sheet_title(raw: str, used: set[str]) -> str:
+    """Excel sheet titles: ≤31 chars, none of []:*?/\\, unique within the book."""
+    title = raw
+    for ch in "[]:*?/\\":
+        title = title.replace(ch, " ")
+    title = title.strip()[:31] or "Sheet"
+    base, n = title, 2
+    while title in used:
+        suffix = f" ({n})"
+        title = base[: 31 - len(suffix)] + suffix
+        n += 1
+    used.add(title)
+    return title
+
+
+def _write_class_sheet(ws, view, subject_filter: set[UUID] | None, sem_label: str) -> None:
+    """Render one class's grade cards onto a worksheet (#221)."""
+    bold = Font(bold=True)
+    center = Alignment(horizontal="center", vertical="center")
+    header_fill = PatternFill("solid", fgColor="F1F5F9")  # slate-100
+
+    # Subjects shown: data-bearing in this class (view.subjects), optionally
+    # narrowed to the teacher's picker selection. A no-data subject never
+    # appears (view.subjects only lists subjects that have grades).
+    subjects = [
+        s for s in _sort_subjects(view.subjects)
+        if subject_filter is None or s.subject_id in subject_filter
+    ]
+
+    n_cols = 2 + 6 * len(subjects) + 2  # 座號,姓名 + 6/subject + 達標,總點數
+
+    # Row 1: title (merged across the whole table).
+    title = f"{view.classroom_grade}年{view.classroom_name}"
+    if sem_label:
+        title += f"　{sem_label}"
+    title += "　成績總表"
+    ws.cell(row=1, column=1, value=title).font = Font(bold=True, size=14)
+    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=max(1, n_cols))
+
+    # Rows 2-3: 座號 / 姓名 merged vertically.
+    for col, label in ((1, "座號"), (2, "姓名")):
+        ws.merge_cells(start_row=2, start_column=col, end_row=3, end_column=col)
+        c = ws.cell(row=2, column=col, value=label)
+        c.font = bold
+        c.alignment = center
+        c.fill = header_fill
+
+    # Subject group header (row 2, spanning 6) + sub-headers (row 3).
+    col = 3
+    for s in subjects:
+        ws.merge_cells(start_row=2, start_column=col, end_row=2, end_column=col + 5)
+        gc = ws.cell(
+            row=2, column=col,
+            value=_subject_label(s.subject_system_key, s.subject_display_name),
+        )
+        gc.font = bold
+        gc.alignment = center
+        gc.fill = header_fill
+        for i, sub in enumerate(_EXPORT_SUB_HEADERS):
+            sc = ws.cell(row=3, column=col + i, value=sub)
+            sc.font = bold
+            sc.alignment = center
+            sc.fill = header_fill
+        col += 6
+
+    # 達標次數 / 總點數 trailing summary, merged vertically.
+    summary_cols = {}
+    for label in ("達標次數", "總點數"):
+        ws.merge_cells(start_row=2, start_column=col, end_row=3, end_column=col)
+        c = ws.cell(row=2, column=col, value=label)
+        c.font = bold
+        c.alignment = center
+        c.fill = header_fill
+        summary_cols[label] = col
+        col += 1
+
+    # Student rows.
+    averages: dict[int, list[float]] = {}
+    row = 4
+    for card in view.cards:
+        by_subject = {s.subject_id: s for s in card.subjects}
+        ws.cell(row=row, column=1, value=card.seat_number).alignment = center
+        ws.cell(row=row, column=2, value=card.name or "—")
+        col = 3
+        for s in subjects:
+            summary = by_subject.get(s.subject_id)
+            for cat_key, _ in _EXPORT_CATEGORY_COLS:
+                val = summary.category_averages.get(cat_key) if summary else None
+                _put_number(ws, row, col, val, averages)
+                col += 1
+            wt = summary.weighted_total if summary else None
+            _put_number(ws, row, col, wt, averages)
+            col += 1
+        ws.cell(row=row, column=summary_cols["達標次數"], value=card.met_count_total)
+        ws.cell(row=row, column=summary_cols["總點數"], value=card.semester_points)
+        row += 1
+
+    # 班級平均 row (averages over students that have a value; summary cols blank).
+    avg_row = row
+    ws.merge_cells(start_row=avg_row, start_column=1, end_row=avg_row, end_column=2)
+    ac = ws.cell(row=avg_row, column=1, value="班級平均")
+    ac.font = bold
+    ac.alignment = center
+    ac.fill = header_fill
+    for c_idx, vals in averages.items():
+        if vals:
+            cell = ws.cell(row=avg_row, column=c_idx, value=round(sum(vals) / len(vals), 1))
+            cell.number_format = "0.0"
+            cell.font = bold
+
+    # Cosmetics.
+    ws.column_dimensions["A"].width = 6
+    ws.column_dimensions["B"].width = 12
+    ws.freeze_panes = "C4"
+
+
+def _put_number(ws, row: int, col: int, value, averages: dict[int, list[float]]) -> None:
+    """Write a numeric grade cell (blank when None) and feed the column average."""
+    if value is None:
+        return
+    cell = ws.cell(row=row, column=col, value=float(value))
+    cell.number_format = "0.0"
+    cell.alignment = Alignment(horizontal="center")
+    averages.setdefault(col, []).append(float(value))
+
+
+@router.get("/api/grades/export.xlsx", response_class=StreamingResponse)
+def export_grades_excel(
+    user_id: Annotated[UUID, Depends(require_user_id)],
+    db: Annotated[Session, Depends(get_db)],
+    ids: Annotated[str, Query()],
+    subjects: Annotated[str | None, Query()] = None,
+    semester_id: Annotated[UUID | None, Query()] = None,
+) -> StreamingResponse:
+    """Export selected classes' grades to one workbook, one sheet per class
+    (#221). `ids` / `subjects` are comma-separated UUIDs. Reuses the grade-card
+    computation so the numbers match the on-screen 成績總覽卡."""
+    # Local import: student_detail imports from this module, so importing it at
+    # module load would create a cycle.
+    from routers.student_detail import build_class_grade_cards
+
+    def _parse_uuids(raw: str) -> list[UUID]:
+        out = []
+        for part in raw.split(","):
+            part = part.strip()
+            if not part:
+                continue
+            try:
+                out.append(UUID(part))
+            except ValueError:
+                raise _bad_request("errors.grades.bad_id", "Invalid id in request.")
+        return out
+
+    classroom_ids = _parse_uuids(ids)
+    if not classroom_ids:
+        raise _bad_request("errors.grades.no_ids", "No classes selected.")
+    subject_filter: set[UUID] | None = (
+        set(_parse_uuids(subjects)) if subjects else None
+    )
+
+    views = []
+    for cid in classroom_ids:
+        classroom = _get_owned_classroom(db, user_id, cid)  # 404 if not owned
+        views.append(build_class_grade_cards(db, user_id, classroom, semester_id))
+
+    # Semester label for the sheet titles (all classes share the same semester).
+    sem_label = ""
+    sem_uuid = next((v.semester_id for v in views if v.semester_id), None)
+    if sem_uuid:
+        sem = db.get(Semester, sem_uuid)
+        if sem:
+            sem_label = f"{sem.academic_year}學年度第{sem.term}學期"
+
+    wb = Workbook()
+    wb.remove(wb.active)  # drop the default empty sheet
+    used: set[str] = set()
+    for view in views:
+        raw = f"{view.classroom_grade}年{view.classroom_name}"
+        ws = wb.create_sheet(_safe_sheet_title(raw, used))
+        _write_class_sheet(ws, view, subject_filter, sem_label)
+    if not wb.sheetnames:
+        wb.create_sheet("成績")
+
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return StreamingResponse(
+        buf,
+        media_type=(
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        ),
+        headers={
+            "Content-Disposition": 'attachment; filename="class_grades.xlsx"',
         },
     )
 

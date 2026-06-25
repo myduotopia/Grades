@@ -966,6 +966,19 @@ export const api = {
         `/api/classrooms/${classroomId}/grades/template.xlsx`,
         'grades_template.xlsx',
       ),
+    // Export selected classes' grades to one workbook, one sheet per class
+    // (#221). `subjectIds` empty = all data-bearing subjects.
+    exportExcel: (
+      ids: string[],
+      subjectIds: string[],
+      semesterId: string | undefined,
+      filename: string,
+    ) => {
+      const qs = new URLSearchParams({ ids: ids.join(',') })
+      if (subjectIds.length) qs.set('subjects', subjectIds.join(','))
+      if (semesterId) qs.set('semester_id', semesterId)
+      return downloadFile(`/api/grades/export.xlsx?${qs.toString()}`, filename)
+    },
     preview: (classroomId: string, file: File) => {
       const fd = new FormData()
       fd.append('file', file)
