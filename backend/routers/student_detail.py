@@ -368,6 +368,20 @@ def get_classroom_grade_cards(
     if classroom is None:
         raise _not_found("classroom")
 
+    return build_class_grade_cards(db, user_id, classroom, semester_id)
+
+
+def build_class_grade_cards(
+    db: Session,
+    user_id: UUID,
+    classroom: Classroom,
+    semester_id: UUID | None = None,
+) -> ClassGradeCardsView:
+    """Per-student grade cards for one class — shared by the grade-cards
+    endpoint and the Excel export (#221). The caller has already resolved and
+    access-checked `classroom`. All roster-wide queries are batched (no N+1)."""
+    classroom_id = classroom.id
+
     students = (
         db.query(Student)
         .filter(

@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Link, useNavigate } from 'react-router-dom'
 
 import { ActionCard } from '../components/ActionCard'
+import { GradeExcelExportModal } from '../components/GradeExcelExportModal'
 import { GradeImportModal } from '../components/GradeImportModal'
 import { StudentImportModal } from '../components/StudentImportModal'
 import {
@@ -15,6 +16,7 @@ import { PageContainer } from '../layout/PageContainer'
 import { PageHeader } from '../layout/PageHeader'
 import { ApiError, type Classroom } from '../lib/api'
 import { classroomDisplayName, gradeLabel } from '../lib/classroomFormat'
+import { useSemesterView } from '../state/SemesterView'
 
 type ModalState =
   | { kind: 'closed' }
@@ -43,6 +45,8 @@ export function Classes() {
   )
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [toast, setToast] = useState<string | null>(null)
+  const [exportOpen, setExportOpen] = useState(false)
+  const { viewed } = useSemesterView()
 
   useEffect(() => {
     localStorage.setItem(VIEW_KEY, view)
@@ -164,6 +168,12 @@ export function Classes() {
             className={SECONDARY_BTN}
           >
             🖨 {t('classes.bulk.print_cards')}
+          </button>
+          <button
+            onClick={() => setExportOpen(true)}
+            className={SECONDARY_BTN}
+          >
+            📊 {t('classes.bulk.download_excel')}
           </button>
         </div>
       )}
@@ -296,6 +306,19 @@ export function Classes() {
         <GradeImportModal
           classroomId={modal.classroomId}
           onClose={() => setModal({ kind: 'closed' })}
+        />
+      )}
+
+      {exportOpen && selected.size > 0 && (
+        <GradeExcelExportModal
+          ids={[...selected]}
+          semesterId={viewed?.id}
+          filename={
+            viewed
+              ? `班級成績_${viewed.academic_year}-${viewed.term}.xlsx`
+              : '班級成績.xlsx'
+          }
+          onClose={() => setExportOpen(false)}
         />
       )}
     </PageContainer>

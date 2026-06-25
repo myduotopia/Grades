@@ -451,10 +451,21 @@
       "promote": "Promote grade",
       "demote": "Demote grade",
       "print_cards": "Print grade cards",
+      "download_excel": "Download Excel",
       "select_row_aria": "Select {{name}}",
       "max_grade_skipped": "{{count}} already at grade 12, skipped",
       "min_grade_skipped": "{{count}} already at grade 1, skipped",
       "applied": "{{count}} classes updated"
+    },
+    "export": {
+      "title": "Download class grades (Excel)",
+      "subtitle": "{{count}} class(es) selected — one worksheet per class.",
+      "select_subjects": "Choose subjects",
+      "select_all": "Select all",
+      "clear_all": "Clear",
+      "download": "Download Excel",
+      "exporting": "Generating…",
+      "no_subjects": "The selected classes have no grades to export."
     }
   },
   "print": {
