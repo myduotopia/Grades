@@ -9,6 +9,27 @@ import { SignedNumberInput } from './SignedNumberInput'
 const ADD_PRESETS = [1, 5, 10, 20, 30, 40, 50, 100] as const
 const DEDUCT_PRESETS = [-1, -5, -10, -20, -30, -40, -50, -100] as const
 
+// Remember the last reason used per mode so the next open pre-selects it
+// (#219). Kept in localStorage so it survives reloads and is shared across the
+// student-card, batch, and /points-index flows.
+const lastReasonKey = (mode: 'add' | 'deduct') => `points.last_reason.${mode}`
+
+function lastReason(mode: 'add' | 'deduct'): string {
+  try {
+    return localStorage.getItem(lastReasonKey(mode)) ?? ''
+  } catch {
+    return ''
+  }
+}
+
+function rememberReason(mode: 'add' | 'deduct', reason: string): void {
+  try {
+    localStorage.setItem(lastReasonKey(mode), reason)
+  } catch {
+    // Ignore storage failures (private mode / quota) — pre-select is a nicety.
+  }
+}
+
 const PRIMARY_BTN =
   'inline-flex items-center px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white text-sm font-medium shadow-sm transition-colors disabled:bg-slate-300 disabled:cursor-not-allowed'
 
@@ -41,14 +62,16 @@ export function PointEntryModal({
 }) {
   const { t } = useTranslation()
   const presets = mode === 'add' ? ADD_PRESETS : DEDUCT_PRESETS
-  const [reason, setReason] = useState('')
+  // Pre-fill the reason with the last one used in THIS mode (#219). Add and
+  // deduct remember separately, shared across all flows via localStorage.
+  const [reason, setReason] = useState(() => lastReason(mode))
   const [pts, setPts] = useState<number>(presets[0])
 
-  // Reset the amount default when the mode flips (the parent remounts via key
-  // in practice, but stay defensive).
+  // Reset defaults when the mode flips (the parent remounts via key in
+  // practice, but stay defensive).
   useEffect(() => {
     setPts(presets[0])
-    setReason('')
+    setReason(lastReason(mode))
   }, [mode]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Reason can stay blank — the row just displays as 「—」. Amount must be a
@@ -59,7 +82,10 @@ export function PointEntryModal({
   function submit(e: React.FormEvent) {
     e.preventDefault()
     if (!canSubmit) return
-    onConfirm(reason.trim(), pts)
+    const trimmed = reason.trim()
+    // Remember a non-blank reason so next time this mode pre-selects it (#219).
+    if (trimmed) rememberReason(mode, trimmed)
+    onConfirm(trimmed, pts)
   }
 
   const title =
