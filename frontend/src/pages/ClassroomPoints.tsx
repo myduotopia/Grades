@@ -4,8 +4,8 @@ import { Link, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { ArchivedSemesterBanner } from '../components/ArchivedSemesterBanner'
-import { QuickPointModal } from '../components/QuickPointModal'
-import { useMe } from '../hooks/useMe'
+import { PointEntryModal } from '../components/PointEntryModal'
+import { meKey, useMe } from '../hooks/useMe'
 import { PageContainer } from '../layout/PageContainer'
 import { PageHeader } from '../layout/PageHeader'
 import { useSemesterView } from '../state/SemesterView'
@@ -21,12 +21,12 @@ import { reasonLabel } from '../lib/pointReasons'
 type View = 'list' | 'card'
 const VIEW_KEY = 'points.classroom_view'
 
+type PointMode = 'add' | 'deduct'
+
 interface ModalState {
   studentId: string
   studentLabel: string
-  reason: string
-  points: number
-  editableReason: boolean
+  mode: PointMode
 }
 
 export function ClassroomPoints() {
@@ -46,6 +46,9 @@ export function ClassroomPoints() {
   const reasons: PointReason[] = (meQ.data?.point_reasons ?? []).filter(
     (r) => !r.system_key,
   )
+  // Reason names offered in the add/deduct combobox (#215). Reasons are just
+  // names now — the amount is chosen per entry, so we ignore default_points.
+  const reasonSuggestions = reasons.map((r) => reasonLabel(r, t))
   const students = studentsQ.data?.data ?? []
   const view = studentsQ.data
 
@@ -60,7 +63,7 @@ export function ClassroomPoints() {
   // is enabled only when ≥1 student is checked; "select all" toggles the
   // full filtered set so a search-narrowed list can be batch-applied.
   const [selected, setSelected] = useState<Set<string>>(new Set())
-  const [batchOpen, setBatchOpen] = useState(false)
+  const [batchMode, setBatchMode] = useState<PointMode | null>(null)
   function toggleSelected(studentId: string) {
     setSelected((prev) => {
       const next = new Set(prev)
@@ -138,6 +141,9 @@ export function ClassroomPoints() {
       setTimeout(() => setToast(null), 3000)
       qc.invalidateQueries({ queryKey: ['points-students', classroomId] })
       qc.invalidateQueries({ queryKey: ['points-classrooms'] })
+      // A newly-typed reason was auto-filed server-side (#215) — refresh the
+      // saved reason list so it appears in the combobox next time.
+      qc.invalidateQueries({ queryKey: meKey })
       setModal(null)
     },
     onError: (err) => {
@@ -158,7 +164,7 @@ export function ClassroomPoints() {
         student_ids: Array.from(selected),
       }),
     onSuccess: (data, vars) => {
-      setBatchOpen(false)
+      setBatchMode(null)
       setSelected(new Set())
       setToast(
         t('points.toast.applied_batch', {
@@ -171,6 +177,7 @@ export function ClassroomPoints() {
       setTimeout(() => setToast(null), 3500)
       qc.invalidateQueries({ queryKey: ['points-students', classroomId] })
       qc.invalidateQueries({ queryKey: ['points-classrooms'] })
+      qc.invalidateQueries({ queryKey: meKey })
     },
     onError: (err) => {
       setToast(
@@ -182,14 +189,12 @@ export function ClassroomPoints() {
     },
   })
 
-  function openCustom(studentId: string, studentLabel: string) {
-    setModal({
-      studentId,
-      studentLabel,
-      reason: '',
-      points: 1,
-      editableReason: true,
-    })
+  function openEntry(
+    studentId: string,
+    studentLabel: string,
+    mode: PointMode,
+  ) {
+    setModal({ studentId, studentLabel, mode })
   }
 
   // Confirm dialog state for the two reset flows (single student / whole class).
@@ -407,10 +412,18 @@ export function ClassroomPoints() {
             <button
               type="button"
               disabled={isArchived || selected.size === 0}
-              onClick={() => setBatchOpen(true)}
-              className="inline-flex items-center px-3 py-1.5 rounded-md bg-amber-500 hover:bg-amber-600 text-white text-sm font-medium shadow-sm disabled:bg-slate-300 disabled:cursor-not-allowed"
+              onClick={() => setBatchMode('add')}
+              className="inline-flex items-center px-3 py-1.5 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium shadow-sm disabled:bg-slate-300 disabled:cursor-not-allowed"
             >
-              {t('points.batch_apply', { count: selected.size })}
+              {t('points.batch_add', { count: selected.size })}
+            </button>
+            <button
+              type="button"
+              disabled={isArchived || selected.size === 0}
+              onClick={() => setBatchMode('deduct')}
+              className="inline-flex items-center px-3 py-1.5 rounded-md bg-rose-600 hover:bg-rose-700 text-white text-sm font-medium shadow-sm disabled:bg-slate-300 disabled:cursor-not-allowed"
+            >
+              {t('points.batch_deduct', { count: selected.size })}
             </button>
             <div className="flex items-center gap-1">
             <button
@@ -486,42 +499,19 @@ export function ClassroomPoints() {
                       </span>
                     </div>
                     <div className="flex flex-wrap gap-1.5">
-                      {reasons.map((r) => (
-                        <button
-                          key={r.id}
-                          disabled={isArchived || addMut.isPending}
-                          onClick={() =>
-                            addMut.mutate({
-                              studentId: s.student_id,
-                              reason: reasonLabel(r, t),
-                              points: r.default_points,
-                            })
-                          }
-                          className={`inline-flex items-center gap-1.5 text-sm font-medium px-3.5 py-2 rounded-full border disabled:opacity-40 disabled:cursor-not-allowed ${
-                            r.default_points >= 0
-                              ? 'bg-sky-50 border-sky-200 text-sky-800 hover:bg-sky-100'
-                              : 'bg-rose-50 border-rose-200 text-rose-800 hover:bg-rose-100'
-                          }`}
-                          title={`${reasonLabel(r, t)} ${
-                            r.default_points >= 0
-                              ? `+${r.default_points}`
-                              : r.default_points
-                          }`}
-                        >
-                          {reasonLabel(r, t)}
-                          <span className="font-mono tabular-nums">
-                            {r.default_points >= 0
-                              ? `+${r.default_points}`
-                              : r.default_points}
-                          </span>
-                        </button>
-                      ))}
                       <button
-                        disabled={isArchived}
-                        onClick={() => openCustom(s.student_id, label)}
-                        className="inline-flex items-center text-sm font-medium px-3.5 py-2 rounded-full bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                        disabled={isArchived || addMut.isPending}
+                        onClick={() => openEntry(s.student_id, label, 'add')}
+                        className="inline-flex items-center text-sm font-medium px-3.5 py-2 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 hover:bg-emerald-100 disabled:opacity-40 disabled:cursor-not-allowed"
                       >
-                        + {t('points.custom')}
+                        {t('points.add')}
+                      </button>
+                      <button
+                        disabled={isArchived || addMut.isPending}
+                        onClick={() => openEntry(s.student_id, label, 'deduct')}
+                        className="inline-flex items-center text-sm font-medium px-3.5 py-2 rounded-full bg-rose-50 border border-rose-200 text-rose-800 hover:bg-rose-100 disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        {t('points.deduct')}
                       </button>
                       <button
                         disabled={
@@ -537,7 +527,7 @@ export function ClassroomPoints() {
                             current: s.semester_points,
                           })
                         }
-                        className="inline-flex items-center text-sm font-medium px-3.5 py-2 rounded-full bg-white border border-rose-200 text-rose-700 hover:bg-rose-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                        className="inline-flex items-center text-sm font-medium px-3.5 py-2 rounded-full bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
                       >
                         {t('points.reset_student')}
                       </button>
@@ -608,35 +598,23 @@ export function ClassroomPoints() {
                         </td>
                         <td className="px-4 py-2.5">
                           <div className="flex flex-wrap gap-1.5">
-                            {reasons.map((r) => (
-                              <button
-                                key={r.id}
-                                disabled={isArchived || addMut.isPending}
-                                onClick={() =>
-                                  addMut.mutate({
-                                    studentId: s.student_id,
-                                    reason: reasonLabel(r, t),
-                                    points: r.default_points,
-                                  })
-                                }
-                                className={`text-sm font-medium px-3 py-1.5 rounded-lg border disabled:opacity-40 disabled:cursor-not-allowed ${
-                                  r.default_points >= 0
-                                    ? 'bg-sky-50 border-sky-200 text-sky-800 hover:bg-sky-100'
-                                    : 'bg-rose-50 border-rose-200 text-rose-800 hover:bg-rose-100'
-                                }`}
-                              >
-                                {reasonLabel(r, t)}{' '}
-                                {r.default_points >= 0
-                                  ? `+${r.default_points}`
-                                  : r.default_points}
-                              </button>
-                            ))}
                             <button
-                              disabled={isArchived}
-                              onClick={() => openCustom(s.student_id, label)}
-                              className="text-sm font-medium px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                              disabled={isArchived || addMut.isPending}
+                              onClick={() =>
+                                openEntry(s.student_id, label, 'add')
+                              }
+                              className="text-sm font-medium px-3 py-1.5 rounded-lg border bg-emerald-50 border-emerald-200 text-emerald-800 hover:bg-emerald-100 disabled:opacity-40 disabled:cursor-not-allowed"
                             >
-                              + {t('points.custom')}
+                              {t('points.add')}
+                            </button>
+                            <button
+                              disabled={isArchived || addMut.isPending}
+                              onClick={() =>
+                                openEntry(s.student_id, label, 'deduct')
+                              }
+                              className="text-sm font-medium px-3 py-1.5 rounded-lg border bg-rose-50 border-rose-200 text-rose-800 hover:bg-rose-100 disabled:opacity-40 disabled:cursor-not-allowed"
+                            >
+                              {t('points.deduct')}
                             </button>
                             <button
                               disabled={
@@ -668,18 +646,6 @@ export function ClassroomPoints() {
         </>
       )}
 
-      {!isArchived && reasons.length === 0 && (
-        <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          {t('points.no_reasons')}
-          <Link
-            to="/admin/reasons"
-            className="ml-2 underline font-medium"
-          >
-            {t('points.manage_reasons')}
-          </Link>
-        </div>
-      )}
-
       {toast && (
         <div className="fixed bottom-6 right-6 px-4 py-3 rounded-lg bg-slate-900 text-white text-sm shadow-lg z-50">
           {toast}
@@ -687,11 +653,11 @@ export function ClassroomPoints() {
       )}
 
       {modal && (
-        <QuickPointModal
-          initialReason={modal.reason}
-          initialPoints={modal.points}
-          editableReason={modal.editableReason}
+        <PointEntryModal
+          key={`student-${modal.mode}`}
+          mode={modal.mode}
           applyMode="student"
+          reasonSuggestions={reasonSuggestions}
           pending={addMut.isPending}
           onClose={() => setModal(null)}
           onConfirm={(reason, points) =>
@@ -704,15 +670,15 @@ export function ClassroomPoints() {
         />
       )}
 
-      {batchOpen && (
-        <QuickPointModal
-          initialReason=""
-          initialPoints={1}
-          editableReason={true}
+      {batchMode && (
+        <PointEntryModal
+          key={`batch-${batchMode}`}
+          mode={batchMode}
           applyMode="class"
+          reasonSuggestions={reasonSuggestions}
           pending={batchMut.isPending}
           onClose={() => {
-            if (!batchMut.isPending) setBatchOpen(false)
+            if (!batchMut.isPending) setBatchMode(null)
           }}
           onConfirm={(reason, points) =>
             batchMut.mutate({ reason, points })

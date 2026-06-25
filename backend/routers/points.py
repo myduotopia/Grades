@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from typing import Annotated
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func
@@ -23,6 +23,7 @@ from database import get_db
 from models.classroom import Classroom, Student
 from models.curriculum import Semester
 from models.grading import PointRecord, PointReset
+from models.settings import UserSettings
 from schemas import (
     ClassPointsBatch,
     ClassPointsBatchResult,
@@ -91,6 +92,36 @@ def _get_current_semester(db: Session, user_id: UUID) -> Semester:
     if sem is None:
         raise _archived_forbidden()
     return sem
+
+
+def _ensure_saved_reason(db: Session, user_id: UUID, name: str) -> None:
+    """Upsert a manual-point reason NAME into UserSettings.point_reasons (#215).
+
+    The 加點/扣點 modals let a teacher type a brand-new reason; we auto-file it
+    so it shows up in the dropdown next time. No-op for blank/too-long names or
+    names already present (case-insensitive match against existing rows,
+    including system ones). New rows store default_points=0 — point amounts are
+    chosen per-entry now, not pre-stored on the reason.
+
+    Caller is expected to commit (we only stage the change so it lands in the
+    same transaction as the PointRecord write).
+    """
+    name = name.strip()
+    if not name or len(name) > 50:
+        return
+    settings = db.get(UserSettings, user_id)
+    existing = (
+        list(settings.point_reasons)
+        if settings and settings.point_reasons
+        else []
+    )
+    if any(e.get("name", "").strip().lower() == name.lower() for e in existing):
+        return
+    existing.append({"id": str(uuid4()), "name": name, "default_points": 0})
+    if settings is None:
+        db.add(UserSettings(user_id=user_id, point_reasons=existing))
+    else:
+        settings.point_reasons = existing
 
 
 def _latest_reset(
@@ -315,6 +346,7 @@ def add_student_point(
         source_grade_id=None,
     )
     db.add(record)
+    _ensure_saved_reason(db, user_id, body.reason)
     db.commit()
     db.refresh(record)
     return ManualPointOut(
@@ -371,6 +403,7 @@ def add_classroom_points_batch(
                 source_grade_id=None,
             )
         )
+    _ensure_saved_reason(db, user_id, reason)
     db.commit()
     return ClassPointsBatchResult(written=len(students))
 

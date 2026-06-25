@@ -81,14 +81,16 @@ class PointReasonsUpdate(BaseModel):
 
 
 class ManualPointCreate(BaseModel):
-    points: int = Field(ge=-100, le=100)
-    # Empty string is allowed — the "+ 自訂" UI lets the teacher add points
-    # without categorising them; the row just displays as 「—」.
+    # ±500 range (#215): the 加點/扣點 modals let teachers enter up to 500 per
+    # action. Zero is still rejected in the router (errors.points.zero).
+    points: int = Field(ge=-500, le=500)
+    # Empty string is allowed — a teacher may add points without categorising
+    # them; the row just displays as 「—」.
     reason: str = Field(default="", max_length=200)
 
 
 class ClassPointsBatch(BaseModel):
-    points: int = Field(ge=-100, le=100)
+    points: int = Field(ge=-500, le=500)
     reason: str = Field(default="", max_length=200)
     # Optional subset (#173): when present, only these students in the
     # classroom get the point row. None = apply to every student in the
