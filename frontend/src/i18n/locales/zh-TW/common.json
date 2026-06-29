@@ -35,6 +35,7 @@
     "admin_subjects": "科目權重設定",
     "admin_items": "成績項目管理",
     "points": "點數管理",
+    "lottery": "抽獎系統",
     "admin_reasons": "點數原因",
     "admin_semesters": "學期管理",
     "snapshots": "成績封存區",
@@ -109,6 +110,42 @@
     "reset_confirm_student": "將為「{{label}}」新增一筆反向紀錄（目前 {{current}}），讓累計點數回到 0。歷史紀錄不會被刪除。",
     "reset_confirm_class": "將為全班共 {{count}} 位學生各自寫入一筆反向紀錄，使累計點數回到 0。歷史紀錄不會被刪除。",
     "reset_confirm_action": "確認歸零"
+  },
+  "lottery": {
+    "title": "抽獎系統",
+    "subtitle": "勾選要參加抽獎的班級，依點數加權抽出幸運兒。機率公式：學生點數 ÷ 班級總點數 × 100%。",
+    "section": {
+      "classes": "選擇參加班級（可複選）",
+      "mode": "多班抽獎方式",
+      "draw": "開始抽獎",
+      "winners": "中獎名單"
+    },
+    "mode": {
+      "a": "各班機會均等",
+      "a_hint": "先公平地隨機抽中一個班，再用「點數 ÷ 該班總點數」抽出學生。每個班被抽中的機會一樣，點數低的小班學生也有機會。",
+      "b": "全部混在一起",
+      "b_hint": "所有班級學生丟進同一個池子，機率 = 學生點數 ÷ 所有選取班級的總點數。點數高的班整體中獎機會較大。"
+    },
+    "select_all": "全選",
+    "clear": "清除",
+    "draw_button": "抽出一位",
+    "reset": "重新開始",
+    "pool_count": "候選人數：{{count}}",
+    "seat_label": "{{seat}}號",
+    "latest_winner": "最新中獎",
+    "class_meta": "{{count}} 位・{{total}} 點",
+    "col": {
+      "student": "學生",
+      "class": "班級",
+      "points": "點數",
+      "chance": "中獎機率"
+    },
+    "winner_index": "第 {{index}} 位",
+    "empty": {
+      "no_selection": "請先勾選至少一個班級。",
+      "no_eligible": "選取的班級裡沒有點數大於 0 的學生，無法抽獎。"
+    },
+    "exhausted": "候選名單已抽完，按「重新開始」可重新放回所有人。"
   },
   "point_reason": {
     "poor_order": "上課秩序不佳",

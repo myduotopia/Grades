@@ -35,6 +35,7 @@
     "admin_subjects": "Subject weights",
     "admin_items": "Grade items",
     "points": "Points",
+    "lottery": "Lottery",
     "admin_reasons": "Point reasons",
     "admin_semesters": "Semesters",
     "snapshots": "Archived grades",
@@ -109,6 +110,42 @@
     "reset_confirm_student": "A reverse record will be added for {{label}} (currently {{current}}), bringing their total points to 0. History is preserved.",
     "reset_confirm_class": "A reverse record will be added for each of the {{count}} students, bringing their total points to 0. History is preserved.",
     "reset_confirm_action": "Confirm reset"
+  },
+  "lottery": {
+    "title": "Lottery",
+    "subtitle": "Pick the classes to enter, then draw a points-weighted winner. Formula: student points ÷ class total points × 100%.",
+    "section": {
+      "classes": "Participating classes (multi-select)",
+      "mode": "Multi-class draw mode",
+      "draw": "Draw",
+      "winners": "Winners"
+    },
+    "mode": {
+      "a": "Equal chance per class",
+      "a_hint": "First pick a class uniformly at random, then a student by points ÷ that class's total. Every class is equally likely, so students in small/low-point classes still get a shot.",
+      "b": "One combined pool",
+      "b_hint": "All students share one pool; chance = student points ÷ total points of all selected classes. Higher-point classes get a larger overall share."
+    },
+    "select_all": "Select all",
+    "clear": "Clear",
+    "draw_button": "Draw one",
+    "reset": "Start over",
+    "pool_count": "Candidates: {{count}}",
+    "seat_label": "No. {{seat}}",
+    "latest_winner": "Latest winner",
+    "class_meta": "{{count}} students · {{total}} pts",
+    "col": {
+      "student": "Student",
+      "class": "Class",
+      "points": "Points",
+      "chance": "Win chance"
+    },
+    "winner_index": "#{{index}}",
+    "empty": {
+      "no_selection": "Select at least one class first.",
+      "no_eligible": "No students with points above 0 in the selected classes — nothing to draw."
+    },
+    "exhausted": "All candidates have been drawn. Click \"Start over\" to put everyone back."
   },
   "point_reason": {
     "poor_order": "Poor class order",
