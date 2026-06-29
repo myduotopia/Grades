@@ -629,7 +629,7 @@ function ByStudentTable({
       </div>
       <div className="overflow-x-auto">
         <table className="min-w-full text-sm">
-          <thead className="bg-slate-50 border-b border-slate-200 text-slate-600">
+          <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 text-xs">
             <tr>
               <th className="px-4 py-3 text-left w-16">
                 <button onClick={() => toggleSort('seat')} className={headerBtn}>
@@ -637,7 +637,7 @@ function ByStudentTable({
                   {arrow('seat')}
                 </button>
               </th>
-              <th className="px-4 py-3 text-left font-medium min-w-[6rem] max-w-[10rem]">
+              <th className="px-4 py-3 text-left font-medium w-[180px]">
                 {t('students.col.name')}
               </th>
               {!pickedSubjectId && subjects.map((sub) => (
@@ -749,7 +749,7 @@ function ByStudentTable({
                   <td className="px-4 py-2.5 text-slate-900 font-medium w-16">
                     {s.seat_number}
                   </td>
-                  <td className="px-4 py-2.5 text-slate-700 min-w-[6rem] max-w-[10rem] truncate">
+                  <td className="px-4 py-2.5 text-slate-700 w-[180px] truncate">
                     <StudentNameLink id={s.id} name={s.name} />
                   </td>
                   {!pickedSubjectId && subjects.map((sub) => (
@@ -1302,16 +1302,19 @@ function BySubjectView({
 
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
         <div className="overflow-auto max-h-[70vh]">
-          <table className="min-w-full text-sm">
-            <thead className="bg-slate-50 border-b border-slate-200 text-slate-600">
+          {/* border-separate (not preflight's default border-collapse) so the
+              sticky frozen columns don't overlap the first scrolling column in
+              Chrome (#231). Row borders therefore live on the cells, not <tr>. */}
+          <table className="min-w-full text-sm border-separate border-spacing-0">
+            <thead className="bg-slate-50 text-slate-600 text-xs">
               <tr>
                 {/* Seat + name freeze on horizontal scroll; header row freezes
                     on vertical scroll (#226). Corner cells need the highest
                     z-index so they win on both axes. */}
-                <th className="px-4 py-1 h-10 text-left font-medium w-16 sticky left-0 top-0 z-30 bg-slate-50">
+                <th className="px-4 py-1 h-10 text-left font-medium w-16 sticky left-0 top-0 z-30 bg-slate-50 border-b border-slate-200">
                   {t('students.col.seat')}
                 </th>
-                <th className="px-4 py-1 h-10 text-left font-medium min-w-[6rem] max-w-[10rem] sticky left-16 top-0 z-30 bg-slate-50">
+                <th className="px-4 py-1 h-10 text-left font-medium w-[180px] sticky left-16 top-0 z-30 bg-slate-50 border-b border-slate-200">
                   {t('students.col.name')}
                 </th>
                 {items.map((i) => {
@@ -1324,7 +1327,7 @@ function BySubjectView({
                   return (
                     <th
                       key={i.id}
-                      className={`px-3 py-1 h-10 align-middle text-left font-medium max-w-[8rem] overflow-hidden sticky top-0 z-20 ${headerBg}`}
+                      className={`px-3 py-1 h-10 align-middle text-left font-medium max-w-[8rem] overflow-hidden sticky top-0 z-20 border-b border-slate-200 ${headerBg}`}
                       title={`${t(`category.${i.category_system_key}`)} · ${i.name}`}
                     >
                       <div className="flex items-start gap-1">
@@ -1431,22 +1434,27 @@ function BySubjectView({
                 const isRowEditing = editingStudentId === s.id
                 // Sticky seat/name cells need an opaque bg matching the row.
                 const stickyBg = isRowEditing ? 'bg-violet-50' : 'bg-white'
+                // Under border-separate the row line must live on the cells, not
+                // <tr> (#231). Last row has no bottom border (the footer's own
+                // top double-rule stands alone).
+                const isLastRow = si === sortedStudents.length - 1
+                const rowBorder = isLastRow
+                  ? ''
+                  : (si + 1) % 5 === 0
+                    ? 'border-b-2 border-slate-300'
+                    : 'border-b border-slate-100'
                 return (
                   <tr
                     key={s.id}
-                    className={`${
-                      (si + 1) % 5 === 0
-                        ? 'border-b-2 border-slate-300'
-                        : 'border-b border-slate-100'
-                    } last:border-b-0 ${isRowEditing ? 'bg-violet-50' : ''}`}
+                    className={isRowEditing ? 'bg-violet-50' : ''}
                   >
                     <td
-                      className={`px-4 py-2.5 text-slate-900 font-medium w-16 sticky left-0 z-10 ${stickyBg}`}
+                      className={`px-4 py-2.5 text-slate-900 font-medium w-16 sticky left-0 z-10 ${stickyBg} ${rowBorder}`}
                     >
                       {s.seat_number}
                     </td>
                     <td
-                      className={`px-4 py-2.5 text-slate-700 min-w-[6rem] max-w-[10rem] sticky left-16 z-10 ${stickyBg}`}
+                      className={`px-4 py-2.5 text-slate-700 w-[180px] sticky left-16 z-10 ${stickyBg} ${rowBorder}`}
                     >
                       <div className="flex items-center gap-1">
                         <span className="truncate min-w-0 flex-1">
@@ -1471,7 +1479,7 @@ function BySubjectView({
                       if (isColEditing) {
                         const v = drafts[s.id]
                         return (
-                          <td key={i.id} className="px-2 py-1 bg-violet-50">
+                          <td key={i.id} className={`px-2 py-1 bg-violet-50 ${rowBorder}`}>
                             <input
                               ref={(el) => {
                                 if (el) inputRefs.current.set(s.id, el)
@@ -1497,7 +1505,7 @@ function BySubjectView({
                       if (isRowEditing) {
                         const v = rowDrafts[i.id]
                         return (
-                          <td key={i.id} className="px-2 py-1 bg-violet-50">
+                          <td key={i.id} className={`px-2 py-1 bg-violet-50 ${rowBorder}`}>
                             <input
                               type="number"
                               inputMode="decimal"
@@ -1517,7 +1525,7 @@ function BySubjectView({
                       return (
                         <td
                           key={i.id}
-                          className={`px-3 py-2.5 text-slate-700 max-w-[8rem] truncate ${catBg}`}
+                          className={`px-3 py-2.5 text-slate-700 max-w-[8rem] truncate ${catBg} ${rowBorder}`}
                         >
                           {formatScore(lookup[s.id]?.[i.id])}
                         </td>
