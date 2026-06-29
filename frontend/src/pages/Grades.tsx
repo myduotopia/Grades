@@ -53,6 +53,65 @@ const CATEGORY_CELL_BG: Record<string, string> = {
   quiz: 'bg-sky-50/40',
 }
 
+// 平時 (coursework) categories that feed 原始平時 — they share one header
+// colour with the 原始平時 column in the single-subject view (#226).
+const PLAIN_CATEGORY_KEYS: readonly string[] = ['quiz', 'homework', 'attendance']
+const PLAIN_HEADER_BG = 'bg-sky-50'
+const PLAIN_CELL_BG = 'bg-sky-50/40'
+
+/** Header background for a category column in the single-subject breakdown:
+ *  段考 amber, the 平時 trio (小考/作業/出席率) sky to match 原始平時 (#226). */
+function singleSubjectHeaderBg(cat: string): string {
+  if (cat === 'major_exam') return CATEGORY_HEADER_BG.major_exam
+  if (PLAIN_CATEGORY_KEYS.includes(cat)) return PLAIN_HEADER_BG
+  return ''
+}
+function singleSubjectCellBg(cat: string): string {
+  if (cat === 'major_exam') return CATEGORY_CELL_BG.major_exam
+  if (PLAIN_CATEGORY_KEYS.includes(cat)) return PLAIN_CELL_BG
+  return ''
+}
+
+/** Copy one column's values for all (visible) students to the clipboard,
+ *  newline-separated in row order, blank for missing — ready to paste into a
+ *  spreadsheet column (#226). Values are rounded to 1 decimal like the cells. */
+function copyColumnValues(values: (number | null | undefined)[]): Promise<void> {
+  const text = values
+    .map((v) =>
+      v === null || v === undefined ? '' : String(Math.round(v * 10) / 10),
+    )
+    .join('\n')
+  return navigator.clipboard.writeText(text)
+}
+
+/** Small clipboard button shown in score column headers (#226). */
+function ColumnCopyButton({
+  getValues,
+  className,
+}: {
+  getValues: () => (number | null | undefined)[]
+  className?: string
+}) {
+  const { t } = useTranslation()
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation()
+        copyColumnValues(getValues()).then(
+          () => toast.success(t('grades.copied')),
+          () => toast.error(t('grades.copy_failed')),
+        )
+      }}
+      title={t('grades.copy_column')}
+      aria-label={t('grades.copy_column')}
+      className={`text-slate-400 hover:text-amber-700 ${className ?? ''}`}
+    >
+      📋
+    </button>
+  )
+}
+
 function orderItemsForBySubject<
   T extends { category_system_key: string; activated_at?: string | null; name: string },
 >(items: T[]): T[] {
@@ -491,7 +550,18 @@ function ByStudentTable({
         }
         return row.overall
       }
-      // subject column
+      // Single-subject category column / 原始平時 column (#226).
+      if (pickedSubjectId && sortKey.startsWith('cat:')) {
+        const v = row.row[pickedSubjectId]?.byCategory[sortKey.slice(4)]
+        return typeof v === 'number' ? v : null
+      }
+      if (pickedSubjectId && sortKey === 'raw_plain') {
+        return rawPlainScore(
+          row.row[pickedSubjectId]?.byCategory ?? {},
+          weightLookup[pickedSubjectId] ?? {},
+        )
+      }
+      // subject column (all-subjects mode)
       const v = row.row[sortKey]?.weightedTotal
       return typeof v === 'number' ? v : null
     }
@@ -573,40 +643,89 @@ function ByStudentTable({
               {!pickedSubjectId && subjects.map((sub) => (
                 <th
                   key={sub.id}
-                  className="px-4 py-3 text-left max-w-[8rem]"
+                  className="px-3 py-3 text-left max-w-[8rem]"
                 >
-                  <button
-                    onClick={() => toggleSort(sub.id)}
-                    className={headerBtn}
-                  >
-                    {subjectLabel(sub, t)}
-                    {arrow(sub.id)}
-                  </button>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => toggleSort(sub.id)}
+                      className={headerBtn}
+                    >
+                      {subjectLabel(sub, t)}
+                      {arrow(sub.id)}
+                    </button>
+                    <ColumnCopyButton
+                      getValues={() =>
+                        sorted.map((e) => e.row[sub.id]?.weightedTotal)
+                      }
+                    />
+                  </div>
                 </th>
               ))}
               {pickedSubjectId && pickedCategories.map((c) => (
                 <th
                   key={c}
-                  className="px-4 py-3 text-left max-w-[8rem]"
+                  className={`px-3 py-3 text-left max-w-[8rem] ${singleSubjectHeaderBg(c)}`}
                 >
-                  {t(`category.${c}`)}
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => toggleSort(`cat:${c}`)}
+                      className={headerBtn}
+                    >
+                      {t(`category.${c}`)}
+                      {arrow(`cat:${c}`)}
+                    </button>
+                    <ColumnCopyButton
+                      getValues={() =>
+                        sorted.map((e) => e.row[pickedSubjectId]?.byCategory[c])
+                      }
+                    />
+                  </div>
                 </th>
               ))}
               {pickedSubjectId && (
-                <th className="px-4 py-3 text-left max-w-[8rem] bg-sky-50">
-                  {t('grades.raw_plain_total')}
+                <th className={`px-3 py-3 text-left max-w-[8rem] ${PLAIN_HEADER_BG}`}>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => toggleSort('raw_plain')}
+                      className={headerBtn}
+                    >
+                      {t('grades.raw_plain_total')}
+                      {arrow('raw_plain')}
+                    </button>
+                    <ColumnCopyButton
+                      getValues={() =>
+                        sorted.map((e) =>
+                          rawPlainScore(
+                            e.row[pickedSubjectId]?.byCategory ?? {},
+                            weightLookup[pickedSubjectId] ?? {},
+                          ),
+                        )
+                      }
+                    />
+                  </div>
                 </th>
               )}
-              <th className="px-4 py-3 text-left max-w-[8rem]">
-                <button
-                  onClick={() => toggleSort('overall')}
-                  className={headerBtn}
-                >
-                  {pickedSubjectId
-                    ? t('grades.weighted_total')
-                    : t('grades.overall_avg')}
-                  {arrow('overall')}
-                </button>
+              <th className="px-3 py-3 text-left max-w-[8rem]">
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => toggleSort('overall')}
+                    className={headerBtn}
+                  >
+                    {pickedSubjectId
+                      ? t('grades.weighted_total')
+                      : t('grades.overall_avg')}
+                    {arrow('overall')}
+                  </button>
+                  <ColumnCopyButton
+                    getValues={() =>
+                      sorted.map((e) =>
+                        pickedSubjectId
+                          ? e.row[pickedSubjectId]?.weightedTotal
+                          : e.overall,
+                      )
+                    }
+                  />
+                </div>
               </th>
               {pickedSubjectId && (
                 <th className="px-4 py-3 text-left font-medium min-w-[8rem]">
@@ -644,7 +763,7 @@ function ByStudentTable({
                   {pickedSubjectId && pickedCategories.map((c) => (
                     <td
                       key={c}
-                      className="px-4 py-2.5 text-slate-700 tabular-nums max-w-[8rem] truncate"
+                      className={`px-4 py-2.5 text-slate-700 tabular-nums max-w-[8rem] truncate ${singleSubjectCellBg(c)}`}
                     >
                       {formatScore(pickedRow?.byCategory[c])}
                     </td>
@@ -706,7 +825,7 @@ function ByStudentTable({
                 pickedCategories.map((c) => (
                   <td
                     key={c}
-                    className="px-4 py-2.5 tabular-nums border-t-4 border-double border-slate-400"
+                    className={`px-4 py-2.5 tabular-nums border-t-4 border-double border-slate-400 ${singleSubjectCellBg(c)}`}
                   >
                     {formatScore(
                       colMean((e) => e.row[pickedSubjectId]?.byCategory[c]),
@@ -777,13 +896,25 @@ function BySubjectView({
   const qc = useQueryClient()
   const [, setParams] = useSearchParams()
   const [pickedId, setPickedId] = useState<string>(subjects[0]?.id ?? '')
-  // One item at a time can be in edit mode.
+  // One item at a time can be in column-edit mode.
   const [editingItemId, setEditingItemId] = useState<string | null>(null)
   // drafts[student_id] = score | null (null = blank → delete)
   const [drafts, setDrafts] = useState<Record<string, number | null>>({})
   const [saveErr, setSaveErr] = useState<string | null>(null)
   // student_id → input ref, populated while a column is in edit mode.
   const inputRefs = useRef<Map<string, HTMLInputElement>>(new Map())
+
+  // Sort by one item's scores (#226): null = 座號 order. Column-edit and
+  // row-edit are mutually exclusive; sorting is frozen while either is active.
+  const [sortItemId, setSortItemId] = useState<string | null>(null)
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  // Row-edit (#226): edit every item score for ONE student at once.
+  const [editingStudentId, setEditingStudentId] = useState<string | null>(null)
+  // rowDrafts[item_id] = score | null for the student being row-edited.
+  const [rowDrafts, setRowDrafts] = useState<Record<string, number | null>>({})
+  // Rendered student order (after sort) — kept in a ref so the column-edit
+  // keyboard-nav / paste handlers (defined below) follow what's on screen.
+  const renderOrderRef = useRef<typeof view.students>(view.students)
 
   // If the page was deep-linked with ?edit=<item_id>, switch the subject
   // picker to that item's subject and open inline-edit for it. Done in an
@@ -828,7 +959,7 @@ function BySubjectView({
     e: React.KeyboardEvent<HTMLInputElement>,
     studentIdx: number,
   ) {
-    const students = view.students
+    const students = renderOrderRef.current
     const max = students.length - 1
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
@@ -862,6 +993,69 @@ function BySubjectView({
   for (const g of grades) {
     lookup[g.student_id] ??= {}
     lookup[g.student_id][g.item_id] = g.score
+  }
+
+  // Student render order (#226): seat order by default, or by one item's
+  // score. Missing scores always sort to the bottom regardless of direction.
+  const sortDirMul = sortDir === 'asc' ? 1 : -1
+  const sortedStudents = sortItemId
+    ? [...view.students].sort((a, b) => {
+        const av = lookup[a.id]?.[sortItemId]
+        const bv = lookup[b.id]?.[sortItemId]
+        const an = typeof av === 'number'
+        const bn = typeof bv === 'number'
+        if (!an && !bn) return a.seat_number - b.seat_number
+        if (!an) return 1
+        if (!bn) return -1
+        if (av === bv) return a.seat_number - b.seat_number
+        return ((av as number) - (bv as number)) * sortDirMul
+      })
+    : view.students
+  renderOrderRef.current = sortedStudents
+
+  // Sorting is frozen while editing so rows don't jump under the cursor.
+  const isEditingAny = editingItemId !== null || editingStudentId !== null
+  function toggleSortItem(itemId: string) {
+    if (isEditingAny) return
+    if (sortItemId === itemId) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setSortItemId(itemId)
+      setSortDir('asc')
+    }
+  }
+  function sortArrow(itemId: string) {
+    if (sortItemId !== itemId) {
+      return <span className="text-slate-300 ml-1">↕</span>
+    }
+    return (
+      <span className="text-slate-700 ml-1">{sortDir === 'asc' ? '▲' : '▼'}</span>
+    )
+  }
+
+  function startRowEdit(studentId: string) {
+    const next: Record<string, number | null> = {}
+    for (const i of items) {
+      const cur = lookup[studentId]?.[i.id]
+      next[i.id] = cur === undefined ? null : cur
+    }
+    setRowDrafts(next)
+    setEditingStudentId(studentId)
+    setSaveErr(null)
+  }
+  function cancelRowEdit() {
+    setRowDrafts({})
+    setEditingStudentId(null)
+    setSaveErr(null)
+  }
+  function setRowDraft(itemId: string, raw: string) {
+    if (raw === '') {
+      setRowDrafts((d) => ({ ...d, [itemId]: null }))
+      return
+    }
+    const n = Number(raw)
+    if (Number.isNaN(n)) return
+    setRowDrafts((d) => ({ ...d, [itemId]: Math.max(0, Math.min(100, n)) }))
   }
 
   function startEdit(itemId: string) {
@@ -973,6 +1167,48 @@ function BySubjectView({
     },
   })
 
+  // Row-edit save (#226): one bulk call per CHANGED item, each carrying just
+  // this student's entry. The bulk endpoint upserts only the listed entry, so
+  // other students are untouched. Items are already active → no 段考 409.
+  const saveRowMut = useMutation({
+    mutationFn: async (studentId: string) => {
+      const changed = items.filter((i) => {
+        const cur = lookup[studentId]?.[i.id]
+        const curNorm = cur === undefined ? null : cur
+        const draft = rowDrafts[i.id]
+        const draftNorm = draft == null ? null : normaliseScore(String(draft))
+        return draftNorm !== curNorm
+      })
+      await Promise.all(
+        changed.map((i) => {
+          const draft = rowDrafts[i.id]
+          const score = draft == null ? null : normaliseScore(String(draft))
+          return api.gradeEntry.bulk({
+            item_id: i.id,
+            classroom_id: classroomId,
+            snapshot_id: snapshotId ?? undefined,
+            entries: [{ student_id: studentId, score }],
+          })
+        }),
+      )
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['grades'] })
+      qc.invalidateQueries({ queryKey: ['snapshot-grades'] })
+      setRowDrafts({})
+      setEditingStudentId(null)
+    },
+    onError: (err) => {
+      setSaveErr(
+        err instanceof ApiError && err.body?.message
+          ? err.body.message
+          : err instanceof Error
+            ? err.message
+            : 'unknown',
+      )
+    },
+  })
+
   function setDraft(studentId: string, raw: string) {
     // Allow blank → null; reject mid-typing non-numeric (don't clobber what
     // the user has so far). Final rounding happens on save via
@@ -1006,7 +1242,7 @@ function BySubjectView({
     setDrafts((d) => {
       const next = { ...d }
       for (let k = 0; k < lines.length; k++) {
-        const target = view.students[startIndex + k]
+        const target = renderOrderRef.current[startIndex + k]
         if (!target) break // pasted more rows than students
         next[target.id] = normaliseScore(lines[k])
       }
@@ -1034,46 +1270,85 @@ function BySubjectView({
             ))}
           </select>
         </label>
-        {snapshotId && (
-          <div className="ml-auto">
-            <RecomputeButton snapshotId={snapshotId} />
-          </div>
-        )}
+        <div className="ml-auto flex flex-wrap items-center gap-3">
+          {editingStudentId && (
+            <div className="flex items-center gap-2 bg-violet-50 border border-violet-200 rounded-lg px-3 py-1.5">
+              <span className="text-sm text-violet-800">
+                {t('grades.editing_row_banner', {
+                  name:
+                    view.students.find((s) => s.id === editingStudentId)?.name ??
+                    '',
+                })}
+              </span>
+              <button
+                onClick={() => saveRowMut.mutate(editingStudentId)}
+                disabled={saveRowMut.isPending}
+                className="px-2 py-0.5 rounded bg-amber-500 hover:bg-amber-600 text-white text-xs font-medium disabled:bg-slate-300"
+              >
+                {saveRowMut.isPending ? t('common.saving') : t('common.save')}
+              </button>
+              <button
+                onClick={cancelRowEdit}
+                disabled={saveRowMut.isPending}
+                className="px-2 py-0.5 rounded border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-medium disabled:opacity-60"
+              >
+                {t('common.cancel')}
+              </button>
+            </div>
+          )}
+          {snapshotId && <RecomputeButton snapshotId={snapshotId} />}
+        </div>
       </div>
 
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
-        <div className="overflow-x-auto">
+        <div className="overflow-auto max-h-[70vh]">
           <table className="min-w-full text-sm">
             <thead className="bg-slate-50 border-b border-slate-200 text-slate-600">
               <tr>
-                <th className="px-4 py-3 text-left font-medium w-16">
+                {/* Seat + name freeze on horizontal scroll; header row freezes
+                    on vertical scroll (#226). Corner cells need the highest
+                    z-index so they win on both axes. */}
+                <th className="px-4 py-3 text-left font-medium w-16 sticky left-0 top-0 z-30 bg-slate-50">
                   {t('students.col.seat')}
                 </th>
-                <th className="px-4 py-3 text-left font-medium min-w-[6rem] max-w-[10rem]">
+                <th className="px-4 py-3 text-left font-medium min-w-[6rem] max-w-[10rem] sticky left-16 top-0 z-30 bg-slate-50">
                   {t('students.col.name')}
                 </th>
                 {items.map((i) => {
                   const isEditing = editingItemId === i.id
                   const otherEditing =
                     editingItemId !== null && editingItemId !== i.id
-                  const catBg =
-                    CATEGORY_HEADER_BG[i.category_system_key] ?? ''
+                  const headerBg = isEditing
+                    ? 'bg-violet-50'
+                    : CATEGORY_HEADER_BG[i.category_system_key] ?? 'bg-slate-50'
                   return (
                     <th
                       key={i.id}
-                      className={`px-3 py-3 text-left font-medium max-w-[8rem] ${
-                        isEditing ? 'bg-violet-50' : catBg
-                      }`}
+                      className={`px-3 py-3 text-left font-medium max-w-[8rem] sticky top-0 z-20 ${headerBg}`}
                       title={`${t(`category.${i.category_system_key}`)} · ${i.name}`}
                     >
                       <div className="flex items-start gap-1">
-                        <div>
+                        <button
+                          onClick={() => toggleSortItem(i.id)}
+                          disabled={isEditingAny}
+                          className="text-left disabled:cursor-default"
+                          title={t('grades.sort_by_item')}
+                        >
                           <div className="text-[10px] text-slate-500 uppercase tracking-wide">
                             {t(`category.${i.category_system_key}`)}
                           </div>
-                          <div className="text-slate-700">{i.name}</div>
-                        </div>
-                        {!isEditing && !readOnly && (
+                          <div className="text-slate-700">
+                            {i.name}
+                            {sortArrow(i.id)}
+                          </div>
+                        </button>
+                        <ColumnCopyButton
+                          className="ml-0.5"
+                          getValues={() =>
+                            sortedStudents.map((s) => lookup[s.id]?.[i.id])
+                          }
+                        />
+                        {!isEditing && !readOnly && editingStudentId === null && (
                           <>
                             <button
                               onClick={() => startEdit(i.id)}
@@ -1144,26 +1419,93 @@ function BySubjectView({
               </tr>
             </thead>
             <tbody>
-              {view.students.map((s, si) => (
-                <tr
-                  key={s.id}
-                  className={`${
-                    (si + 1) % 5 === 0
-                      ? 'border-b-2 border-slate-300'
-                      : 'border-b border-slate-100'
-                  } last:border-b-0`}
-                >
-                  <td className="px-4 py-2.5 text-slate-900 font-medium w-16">
-                    {s.seat_number}
-                  </td>
-                  <td className="px-4 py-2.5 text-slate-700 min-w-[6rem] max-w-[10rem] truncate">
-                    <StudentNameLink id={s.id} name={s.name} />
-                  </td>
-                  {items.map((i) => {
-                    const isEditing = editingItemId === i.id
-                    const catBg =
-                      CATEGORY_CELL_BG[i.category_system_key] ?? ''
-                    if (!isEditing) {
+              {sortedStudents.map((s, si) => {
+                const isRowEditing = editingStudentId === s.id
+                // Sticky seat/name cells need an opaque bg matching the row.
+                const stickyBg = isRowEditing ? 'bg-violet-50' : 'bg-white'
+                return (
+                  <tr
+                    key={s.id}
+                    className={`${
+                      (si + 1) % 5 === 0
+                        ? 'border-b-2 border-slate-300'
+                        : 'border-b border-slate-100'
+                    } last:border-b-0 ${isRowEditing ? 'bg-violet-50' : ''}`}
+                  >
+                    <td
+                      className={`px-4 py-2.5 text-slate-900 font-medium w-16 sticky left-0 z-10 ${stickyBg}`}
+                    >
+                      {s.seat_number}
+                    </td>
+                    <td
+                      className={`px-4 py-2.5 text-slate-700 min-w-[6rem] max-w-[10rem] sticky left-16 z-10 ${stickyBg}`}
+                    >
+                      <div className="flex items-center gap-1">
+                        <span className="truncate min-w-0 flex-1">
+                          <StudentNameLink id={s.id} name={s.name} />
+                        </span>
+                        {!readOnly && editingItemId === null && !isRowEditing && (
+                          <button
+                            onClick={() => startRowEdit(s.id)}
+                            disabled={editingStudentId !== null}
+                            title={t('grades.edit_row')}
+                            aria-label={t('grades.edit_row')}
+                            className="shrink-0 text-slate-400 hover:text-amber-700 disabled:opacity-30 disabled:cursor-not-allowed"
+                          >
+                            ✎
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                    {items.map((i) => {
+                      const isColEditing = editingItemId === i.id
+                      const catBg = CATEGORY_CELL_BG[i.category_system_key] ?? ''
+                      if (isColEditing) {
+                        const v = drafts[s.id]
+                        return (
+                          <td key={i.id} className="px-2 py-1 bg-violet-50">
+                            <input
+                              ref={(el) => {
+                                if (el) inputRefs.current.set(s.id, el)
+                                else inputRefs.current.delete(s.id)
+                              }}
+                              type="number"
+                              inputMode="decimal"
+                              step={0.1}
+                              min={0}
+                              max={100}
+                              value={
+                                v === null || v === undefined ? '' : String(v)
+                              }
+                              onChange={(e) => setDraft(s.id, e.target.value)}
+                              onPaste={(e) => handlePaste(e, si)}
+                              onKeyDown={(e) => onCellKeyDown(e, si)}
+                              placeholder="—"
+                              className="w-16 border border-slate-300 rounded-md px-2 py-1 text-sm text-right focus:outline-none focus:ring-2 focus:ring-amber-500"
+                            />
+                          </td>
+                        )
+                      }
+                      if (isRowEditing) {
+                        const v = rowDrafts[i.id]
+                        return (
+                          <td key={i.id} className="px-2 py-1 bg-violet-50">
+                            <input
+                              type="number"
+                              inputMode="decimal"
+                              step={0.1}
+                              min={0}
+                              max={100}
+                              value={
+                                v === null || v === undefined ? '' : String(v)
+                              }
+                              onChange={(e) => setRowDraft(i.id, e.target.value)}
+                              placeholder="—"
+                              className="w-16 border border-slate-300 rounded-md px-2 py-1 text-sm text-right focus:outline-none focus:ring-2 focus:ring-amber-500"
+                            />
+                          </td>
+                        )
+                      }
                       return (
                         <td
                           key={i.id}
@@ -1172,36 +1514,14 @@ function BySubjectView({
                           {formatScore(lookup[s.id]?.[i.id])}
                         </td>
                       )
-                    }
-                    const v = drafts[s.id]
-                    return (
-                      <td key={i.id} className="px-2 py-1 bg-violet-50">
-                        <input
-                          ref={(el) => {
-                            if (el) inputRefs.current.set(s.id, el)
-                            else inputRefs.current.delete(s.id)
-                          }}
-                          type="number"
-                          inputMode="decimal"
-                          step={0.1}
-                          min={0}
-                          max={100}
-                          value={v === null || v === undefined ? '' : String(v)}
-                          onChange={(e) => setDraft(s.id, e.target.value)}
-                          onPaste={(e) => handlePaste(e, si)}
-                          onKeyDown={(e) => onCellKeyDown(e, si)}
-                          placeholder="—"
-                          className="w-16 border border-slate-300 rounded-md px-2 py-1 text-sm text-right focus:outline-none focus:ring-2 focus:ring-amber-500"
-                        />
-                      </td>
-                    )
-                  })}
-                </tr>
-              ))}
+                    })}
+                  </tr>
+                )
+              })}
               <tr className="bg-slate-50 font-semibold text-slate-700">
                 <td
                   colSpan={2}
-                  className="px-4 py-2.5 border-t-4 border-double border-slate-400"
+                  className="px-4 py-2.5 border-t-4 border-double border-slate-400 sticky left-0 z-10 bg-slate-50"
                 >
                   {t('grades.row_average')}
                 </td>

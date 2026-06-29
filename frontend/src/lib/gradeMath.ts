@@ -100,9 +100,9 @@ function computeSubjectBreakdown(
     }
     if (hasAny) weightedTotal = acc
   }
-  const extraAvg = byCategoryAvg[EXTRA_KEY] ?? 0
-  const extraWeight = weights[EXTRA_KEY] ?? 0
-  const extraBonus = (extraAvg * extraWeight) / 100
+  // 額外加分 (#226): the raw extra average is added flat on top of the
+  // weighted total (NOT scaled by any weight), then capped at 100.
+  const extraBonus = byCategoryAvg[EXTRA_KEY] ?? 0
   if (weightedTotal !== null) {
     weightedTotal = Math.min(100, weightedTotal + extraBonus)
   }
@@ -163,9 +163,8 @@ export function computeProjection(
     hasWeighted = true
     acc += (byCategoryAvg[c] * w) / 100
   }
-  const extraAvg = byCategoryAvg[EXTRA_KEY] ?? 0
-  const extraWeight = weights[EXTRA_KEY] ?? 0
-  const bonus = (extraAvg * extraWeight) / 100
+  // 額外加分 (#226): raw extra average added flat on top (NOT weighted).
+  const bonus = byCategoryAvg[EXTRA_KEY] ?? 0
   const weightedTotal = hasWeighted ? Math.min(100, acc + bonus) : null
 
   if (weightedTotal === null) {

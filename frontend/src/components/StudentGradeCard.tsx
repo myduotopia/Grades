@@ -90,10 +90,8 @@ export function SubjectBreakdown({
     (c) => c !== 'extra' && c in summary.category_averages,
   )
   const hasExtra = 'extra' in summary.category_averages
-  const extraBonus =
-    ((summary.category_averages['extra'] ?? 0) *
-      (summary.category_weights['extra'] ?? 0)) /
-    100
+  // 額外加分 (#226): flat raw bonus added on top of the weighted total.
+  const extraBonus = summary.category_averages['extra'] ?? 0
 
   return (
     <div>
