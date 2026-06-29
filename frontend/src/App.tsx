@@ -18,6 +18,7 @@ import { Grades } from './pages/Grades'
 import { Snapshots } from './pages/Snapshots'
 import { Home } from './pages/Home'
 import { Login } from './pages/Login'
+import { Lottery } from './pages/Lottery'
 import { Points } from './pages/Points'
 import { PrintGradeCards } from './pages/PrintGradeCards'
 import { Settings } from './pages/Settings'
@@ -76,6 +77,7 @@ function App() {
                 path="/points/:classroomId"
                 element={<ClassroomPoints />}
               />
+              <Route path="/lottery" element={<Lottery />} />
               <Route path="/settings" element={<Settings />} />
             </Route>
             {/* Chrome-free print page (no sidebar/header), still behind auth */}

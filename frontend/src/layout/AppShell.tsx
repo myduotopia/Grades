@@ -20,6 +20,7 @@ const NAV_PRIMARY: NavItem[] = [
   { to: '/', key: 'nav.home', icon: 'home' },
   { to: '/classes', key: 'nav.classes', icon: 'classes' },
   { to: '/points', key: 'nav.points', icon: 'classes' },
+  { to: '/lottery', key: 'nav.lottery', icon: 'classes' },
   { to: '/snapshots', key: 'nav.snapshots', icon: 'classes' },
   { to: '/alerts', key: 'nav.alerts', icon: 'alerts', badgeKey: 'alerts' },
 ]
