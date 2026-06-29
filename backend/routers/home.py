@@ -382,6 +382,9 @@ def _compute_missing(
         .filter(
             ClassroomItem.user_id == user_id,
             ClassroomItem.snapshot_id.is_(None),
+            # 額外加分 is a bonus, not a required submission — a student with no
+            # extra score is normal, so never flag it as 缺交 (#232).
+            Category.system_key != "extra",
         )
         .all()
     )
