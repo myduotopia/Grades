@@ -158,8 +158,10 @@ def _build_subject_summaries(
     weight_by: dict[UUID, dict[str, int]],
 ) -> list[StudentSubjectSummary]:
     """Per-subject weighted summaries for one student (#210). NO renormalise:
-    categories with no grades simply lose their weight; 額外加分 adds on top,
-    capped at 100. Mirrors gradeMath.ts and the class by-student view."""
+    categories with no grades simply lose their weight; 額外加分 adds its raw
+    average on top of the weighted total, capped at 100 (#226 — extra is a flat
+    bonus, NOT weighted; its category weight is always 0). Mirrors gradeMath.ts
+    and the class by-student view."""
     summaries: list[StudentSubjectSummary] = []
     for subj_id, by_cat in by_subject.items():
         sys_key, disp = subject_meta[subj_id]
@@ -176,13 +178,10 @@ def _build_subject_summaries(
         weighted = None
         if applicable:
             base = sum((cat_avg[ck] * w) / 100.0 for ck, w in applicable)
+            # 額外加分 (#226): the raw extra average is added straight on top of
+            # the weighted base (not scaled by any weight), then capped at 100.
             extra_avg = cat_avg.get("extra")
-            extra_w = weights_map.get("extra", 0)
-            bonus = (
-                (extra_avg * extra_w / 100.0)
-                if extra_avg is not None and extra_w > 0
-                else 0.0
-            )
+            bonus = extra_avg if extra_avg is not None else 0.0
             weighted = min(100.0, round(base + bonus, 2))
         summaries.append(
             StudentSubjectSummary(
