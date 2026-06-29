@@ -1308,10 +1308,10 @@ function BySubjectView({
                 {/* Seat + name freeze on horizontal scroll; header row freezes
                     on vertical scroll (#226). Corner cells need the highest
                     z-index so they win on both axes. */}
-                <th className="px-4 py-3 text-left font-medium w-16 sticky left-0 top-0 z-30 bg-slate-50">
+                <th className="px-4 py-1 h-10 text-left font-medium w-16 sticky left-0 top-0 z-30 bg-slate-50">
                   {t('students.col.seat')}
                 </th>
-                <th className="px-4 py-3 text-left font-medium min-w-[6rem] max-w-[10rem] sticky left-16 top-0 z-30 bg-slate-50">
+                <th className="px-4 py-1 h-10 text-left font-medium min-w-[6rem] max-w-[10rem] sticky left-16 top-0 z-30 bg-slate-50">
                   {t('students.col.name')}
                 </th>
                 {items.map((i) => {
@@ -1324,26 +1324,34 @@ function BySubjectView({
                   return (
                     <th
                       key={i.id}
-                      className={`px-3 py-3 text-left font-medium max-w-[8rem] sticky top-0 z-20 ${headerBg}`}
+                      className={`px-3 py-1 h-10 align-middle text-left font-medium max-w-[8rem] overflow-hidden sticky top-0 z-20 ${headerBg}`}
                       title={`${t(`category.${i.category_system_key}`)} · ${i.name}`}
                     >
                       <div className="flex items-start gap-1">
                         <button
                           onClick={() => toggleSortItem(i.id)}
                           disabled={isEditingAny}
-                          className="text-left disabled:cursor-default"
+                          className="min-w-0 text-left disabled:cursor-default"
                           title={t('grades.sort_by_item')}
                         >
-                          <div className="text-[10px] text-slate-500 uppercase tracking-wide">
-                            {t(`category.${i.category_system_key}`)}
-                          </div>
-                          <div className="text-slate-700">
-                            {i.name}
-                            {sortArrow(i.id)}
+                          {/* Definite width (w-20) caps the column: with
+                              `truncate`'s nowrap, a mere max-width would still
+                              let the column grow to the full name, so the name
+                              area must have a real width (#228). */}
+                          <div className="w-20">
+                            <div className="text-[10px] text-slate-500 uppercase tracking-wide truncate">
+                              {t(`category.${i.category_system_key}`)}
+                            </div>
+                            <div className="flex items-center text-slate-700">
+                              <span className="truncate" title={i.name}>
+                                {i.name}
+                              </span>
+                              {sortArrow(i.id)}
+                            </div>
                           </div>
                         </button>
                         <ColumnCopyButton
-                          className="ml-0.5"
+                          className="ml-0.5 shrink-0"
                           getValues={() =>
                             sortedStudents.map((s) => lookup[s.id]?.[i.id])
                           }
@@ -1355,7 +1363,7 @@ function BySubjectView({
                               disabled={otherEditing}
                               title={t('grades.edit_scores')}
                               aria-label={t('grades.edit_scores')}
-                              className="ml-1 text-slate-400 hover:text-amber-700 disabled:opacity-30 disabled:cursor-not-allowed"
+                              className="ml-1 shrink-0 text-slate-400 hover:text-amber-700 disabled:opacity-30 disabled:cursor-not-allowed"
                             >
                               ✎
                             </button>
@@ -1386,7 +1394,7 @@ function BySubjectView({
                                   ? t('grades.deactivate_blocked_tooltip')
                                   : t('grades.deactivate_tooltip')
                               }
-                              className="ml-0.5 text-slate-300 hover:text-rose-600 disabled:opacity-30 disabled:cursor-not-allowed"
+                              className="ml-0.5 shrink-0 text-slate-300 hover:text-rose-600 disabled:opacity-30 disabled:cursor-not-allowed"
                             >
                               ✕
                             </button>
