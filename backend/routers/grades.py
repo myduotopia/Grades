@@ -130,8 +130,9 @@ _SUBJECT_ORDER: list[str] = [
     "chinese", "math", "english", "science", "social_studies",
     "music", "art", "pe", "integrated",
 ]
-# The 6 columns each subject expands into. First 5 are category averages keyed
-# by category system_key; the last is the weighted total.
+# The 7 columns each subject expands into. First 5 are category averages keyed
+# by category system_key; then 原始平時 (raw coursework, before weighting) and
+# the weighted total.
 _EXPORT_CATEGORY_COLS: list[tuple[str, str]] = [
     ("major_exam", "段考"),
     ("quiz", "小考"),
@@ -141,7 +142,22 @@ _EXPORT_CATEGORY_COLS: list[tuple[str, str]] = [
 ]
 _EXPORT_SUB_HEADERS: list[str] = [
     label for _, label in _EXPORT_CATEGORY_COLS
-] + ["加權"]
+] + ["原始平時", "加權"]
+
+# 平時 (coursework) categories that feed 原始平時成績 (#223).
+_PLAIN_KEYS: tuple[str, ...] = ("quiz", "homework", "attendance")
+
+# Per-sub-column header fills (#223): 段考 stands apart from the 平時 group
+# (小考/作業/出席/額外/原始平時); 加權 is the result column.
+_FILL_EXAM = PatternFill("solid", fgColor="FEF3C7")   # amber-100
+_FILL_PLAIN = PatternFill("solid", fgColor="E0F2FE")  # sky-100
+_FILL_TOTAL = PatternFill("solid", fgColor="E2E8F0")  # slate-200
+# One fill per entry in _EXPORT_SUB_HEADERS (段考,小考,作業,出席,額外,原始平時,加權).
+_EXPORT_SUB_FILLS: list[PatternFill] = [
+    _FILL_EXAM,
+    _FILL_PLAIN, _FILL_PLAIN, _FILL_PLAIN, _FILL_PLAIN, _FILL_PLAIN,
+    _FILL_TOTAL,
+]
 
 # Excel layout: 3 metadata rows above the scores.
 #   Row 1: 類別 (dropdown)
@@ -286,6 +302,27 @@ def _safe_sheet_title(raw: str, used: set[str]) -> str:
     return title
 
 
+def _raw_plain_score(cat_avg: dict, weights: dict) -> float | None:
+    """原始平時成績 (#223): weight-renormalised average of the 平時 categories
+    (小考/作業/出席) plus 額外加分 as raw bonus. Only categories that have a score
+    AND weight > 0 count toward numerator and denominator (a missing one is
+    dropped from both, so the score isn't understated). None when there's no
+    平時 score. Not capped at 100 — it's a raw figure."""
+    num, den = 0.0, 0
+    for k in _PLAIN_KEYS:
+        avg, w = cat_avg.get(k), weights.get(k, 0)
+        if avg is not None and w > 0:
+            num += avg * w
+            den += w
+    if den == 0:
+        return None
+    score = num / den
+    extra = cat_avg.get("extra")
+    if extra is not None:
+        score += extra
+    return round(score, 2)
+
+
 def _write_class_sheet(ws, view, subject_filter: set[UUID] | None, sem_label: str) -> None:
     """Render one class's grade cards onto a worksheet (#221)."""
     bold = Font(bold=True)
@@ -300,7 +337,7 @@ def _write_class_sheet(ws, view, subject_filter: set[UUID] | None, sem_label: st
         if subject_filter is None or s.subject_id in subject_filter
     ]
 
-    n_cols = 2 + 6 * len(subjects) + 2  # 座號,姓名 + 6/subject + 達標,總點數
+    n_cols = 2 + 7 * len(subjects) + 2  # 座號,姓名 + 7/subject + 達標,總點數
 
     # Row 1: title (merged across the whole table).
     title = f"{view.classroom_grade}年{view.classroom_name}"
@@ -318,10 +355,11 @@ def _write_class_sheet(ws, view, subject_filter: set[UUID] | None, sem_label: st
         c.alignment = center
         c.fill = header_fill
 
-    # Subject group header (row 2, spanning 6) + sub-headers (row 3).
+    # Subject group header (row 2, spanning 7) + sub-headers (row 3, per-column
+    # fills so 段考 / 平時群組 / 加權 are visually distinct — #223).
     col = 3
     for s in subjects:
-        ws.merge_cells(start_row=2, start_column=col, end_row=2, end_column=col + 5)
+        ws.merge_cells(start_row=2, start_column=col, end_row=2, end_column=col + 6)
         gc = ws.cell(
             row=2, column=col,
             value=_subject_label(s.subject_system_key, s.subject_display_name),
@@ -333,8 +371,8 @@ def _write_class_sheet(ws, view, subject_filter: set[UUID] | None, sem_label: st
             sc = ws.cell(row=3, column=col + i, value=sub)
             sc.font = bold
             sc.alignment = center
-            sc.fill = header_fill
-        col += 6
+            sc.fill = _EXPORT_SUB_FILLS[i]
+        col += 7
 
     # 達標次數 / 總點數 trailing summary, merged vertically.
     summary_cols = {}
@@ -361,6 +399,13 @@ def _write_class_sheet(ws, view, subject_filter: set[UUID] | None, sem_label: st
                 val = summary.category_averages.get(cat_key) if summary else None
                 _put_number(ws, row, col, val, averages)
                 col += 1
+            # 原始平時成績 (before weighting), then the weighted total.
+            raw_plain = (
+                _raw_plain_score(summary.category_averages, summary.category_weights)
+                if summary else None
+            )
+            _put_number(ws, row, col, raw_plain, averages)
+            col += 1
             wt = summary.weighted_total if summary else None
             _put_number(ws, row, col, wt, averages)
             col += 1

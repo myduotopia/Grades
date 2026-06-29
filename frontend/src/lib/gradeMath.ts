@@ -226,6 +226,41 @@ export function computeProjection(
   }
 }
 
+// 平時 (coursework) categories that feed 原始平時成績 (#223).
+const PLAIN_KEYS = ['quiz', 'homework', 'attendance'] as const
+
+/**
+ * 原始平時成績 (#223) — the coursework score *before* the subject's category
+ * weights scale it down. It's the weight-renormalised average of the 平時
+ * categories (小考 / 作業 / 出席率) plus 額外加分 added as a raw bonus.
+ *
+ * Only categories that have a score AND weight > 0 count toward both the
+ * numerator and the denominator — a missing one is dropped from both, so the
+ * score isn't understated (缺項不灌水). 額外加分 is added at its raw value (not
+ * weighted). Returns null when there's no 平時 score at all, and is NOT capped
+ * at 100 — it's a raw figure. Mirrors backend `_raw_plain_score` exactly.
+ */
+export function rawPlainScore(
+  byCategoryAvg: Record<string, number>,
+  weights: Record<string, number>,
+): number | null {
+  let num = 0
+  let den = 0
+  for (const k of PLAIN_KEYS) {
+    const avg = byCategoryAvg[k]
+    const w = weights[k] ?? 0
+    if (avg !== undefined && w > 0) {
+      num += avg * w
+      den += w
+    }
+  }
+  if (den === 0) return null
+  let score = num / den
+  const extra = byCategoryAvg[EXTRA_KEY]
+  if (extra !== undefined) score += extra
+  return score
+}
+
 /** Pass-status note for the 備註 column / card (#210). Returns '' when there's
  * nothing useful to add (already passed, or no data). `t` is passed in so this
  * module stays i18n-free. */

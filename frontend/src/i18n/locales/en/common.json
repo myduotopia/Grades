@@ -633,6 +633,7 @@
     "overall_avg": "Overall avg",
     "row_average": "Class avg",
     "weighted_total": "Weighted total",
+    "raw_plain_total": "Raw coursework",
     "required_exam": "Exam ≥ {{score}} to pass",
     "note_col": "Note",
     "note_safe": "Passing without exam",
