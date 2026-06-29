@@ -28,6 +28,7 @@ import {
   formatScore,
   mean,
   projectionNote,
+  rawPlainScore,
   subjectsInView,
 } from '../lib/gradeMath'
 
@@ -522,7 +523,7 @@ function ByStudentTable({
 
   const totalCols =
     pickedSubjectId
-      ? 2 + pickedCategories.length + 2 // seat + name + cats + total + 備註
+      ? 2 + pickedCategories.length + 3 // seat + name + cats + 原始平時 + total + 備註
       : 2 + subjects.length + 1 // seat + name + subjects + overall
 
   return (
@@ -591,6 +592,11 @@ function ByStudentTable({
                   {t(`category.${c}`)}
                 </th>
               ))}
+              {pickedSubjectId && (
+                <th className="px-4 py-3 text-left max-w-[8rem] bg-sky-50">
+                  {t('grades.raw_plain_total')}
+                </th>
+              )}
               <th className="px-4 py-3 text-left max-w-[8rem]">
                 <button
                   onClick={() => toggleSort('overall')}
@@ -643,6 +649,16 @@ function ByStudentTable({
                       {formatScore(pickedRow?.byCategory[c])}
                     </td>
                   ))}
+                  {pickedSubjectId && (
+                    <td className="px-4 py-2.5 text-slate-700 tabular-nums max-w-[8rem] truncate bg-sky-50/40">
+                      {formatScore(
+                        rawPlainScore(
+                          pickedRow?.byCategory ?? {},
+                          weightLookup[pickedSubjectId] ?? {},
+                        ),
+                      )}
+                    </td>
+                  )}
                   <td className="px-4 py-2.5 font-semibold tabular-nums max-w-[8rem] truncate">
                     {pickedSubjectId ? (
                       projectionCell(pickedRow?.byCategory, pickedSubjectId)
@@ -697,6 +713,18 @@ function ByStudentTable({
                     )}
                   </td>
                 ))}
+              {pickedSubjectId && (
+                <td className="px-4 py-2.5 tabular-nums border-t-4 border-double border-slate-400 bg-sky-50/40">
+                  {formatScore(
+                    colMean((e) =>
+                      rawPlainScore(
+                        e.row[pickedSubjectId]?.byCategory ?? {},
+                        weightLookup[pickedSubjectId] ?? {},
+                      ),
+                    ),
+                  )}
+                </td>
+              )}
               <td className="px-4 py-2.5 tabular-nums border-t-4 border-double border-slate-400">
                 {formatScore(
                   colMean((e) =>
