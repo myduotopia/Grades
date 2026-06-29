@@ -633,6 +633,7 @@
     "overall_avg": "總平均",
     "row_average": "平均",
     "weighted_total": "加權總分",
+    "raw_plain_total": "原始平時",
     "required_exam": "段考 ≥ {{score}} 可及格",
     "note_col": "備註",
     "note_safe": "免段考即可及格",
