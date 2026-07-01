@@ -279,6 +279,18 @@ export function AdminSubjects() {
         }
       />
 
+      {/* 成績計算公式說明 (#235) */}
+      <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 px-5 py-4 text-slate-600">
+        <p className="font-medium text-slate-700 mb-2">
+          {t('admin_subjects.formula_title')}
+        </p>
+        <ul className="space-y-1 text-xs leading-relaxed list-disc pl-4">
+          <li>{t('admin_subjects.formula_raw_plain')}</li>
+          <li>{t('admin_subjects.formula_weighted')}</li>
+          <li>{t('admin_subjects.formula_notes')}</li>
+        </ul>
+      </div>
+
       {(subjectsQ.isLoading || weightsQ.isLoading || pointRulesQ.isLoading) && (
         <div className="text-center text-slate-400 py-16">
           {t('common.loading')}

@@ -100,9 +100,9 @@ function computeSubjectBreakdown(
     }
     if (hasAny) weightedTotal = acc
   }
-  // 額外加分 (#226): the raw extra average is added flat on top of the
-  // weighted total (NOT scaled by any weight), then capped at 100.
-  const extraBonus = byCategoryAvg[EXTRA_KEY] ?? 0
+  // 額外加分 (#235): folded into the 平時 group — scaled by the present 平時
+  // weight sum (see weightedExtraBonus), then added, capped at 100.
+  const extraBonus = weightedExtraBonus(byCategoryAvg, weights)
   if (weightedTotal !== null) {
     weightedTotal = Math.min(100, weightedTotal + extraBonus)
   }
@@ -163,8 +163,8 @@ export function computeProjection(
     hasWeighted = true
     acc += (byCategoryAvg[c] * w) / 100
   }
-  // 額外加分 (#226): raw extra average added flat on top (NOT weighted).
-  const bonus = byCategoryAvg[EXTRA_KEY] ?? 0
+  // 額外加分 (#235): folded into 平時 — scaled by the present 平時 weight sum.
+  const bonus = weightedExtraBonus(byCategoryAvg, weights)
   const weightedTotal = hasWeighted ? Math.min(100, acc + bonus) : null
 
   if (weightedTotal === null) {
@@ -258,6 +258,29 @@ export function rawPlainScore(
   const extra = byCategoryAvg[EXTRA_KEY]
   if (extra !== undefined) score += extra
   return score
+}
+
+/**
+ * 額外加分對「加權總分」的貢獻 (#235). 額外加分屬平時群組，隨「有分數的平時類別
+ * 權重總和」折算——與 rawPlainScore 的分母一致，讓
+ *   加權總分 = 原始平時 × 平時權重總和 ÷ 100 + 段考 × 段考權重 ÷ 100
+ * 成立。無額外加分、或該科完全沒有平時分數（權重和為 0）時，貢獻為 0。
+ * （原始平時本身仍以原始額外加分呈現，見 rawPlainScore。）
+ */
+export function weightedExtraBonus(
+  byCategoryAvg: Record<string, number>,
+  weights: Record<string, number>,
+): number {
+  const extra = byCategoryAvg[EXTRA_KEY]
+  if (extra === undefined) return 0
+  let plainWeightSum = 0
+  for (const k of PLAIN_KEYS) {
+    if (byCategoryAvg[k] !== undefined) {
+      const w = weights[k] ?? 0
+      if (w > 0) plainWeightSum += w
+    }
+  }
+  return (extra * plainWeightSum) / 100
 }
 
 /** Pass-status note for the 備註 column / card (#210). Returns '' when there's
