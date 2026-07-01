@@ -282,7 +282,11 @@
     "custom_badge": "Custom",
     "drag_to_reorder": "Drag to reorder",
     "sum_invalid_hint": "Each row (excluding bonus) must equal 100",
-    "formula_hint": "Bonus is added on top of the weighted total (capped at 100). Reward points = how many points to award when a student meets the standard on a major exam or quiz.",
+    "formula_title": "How grades are calculated",
+    "formula_raw_plain": "Raw coursework = (quiz×wt + homework×wt + attendance×wt) ÷ sum of the entered items' weights + bonus (raw)",
+    "formula_weighted": "Weighted total = raw coursework × coursework weight ÷ 100 + exam × exam weight ÷ 100 (capped at 100)",
+    "formula_notes": "Bonus belongs to coursework, so it's scaled by the coursework weight when it enters the weighted total; categories with no scores are not re-normalised.",
+    "formula_hint": "Reward points = points auto-awarded when a student's major-exam or quiz score ≥ the subject's standard.",
     "points_unit": "pts",
     "confirm_delete": "Delete subject \"{{name}}\"? This will also remove all exams and grades under it.",
     "col": {
@@ -687,7 +691,7 @@
     "weight_suffix": "({{weight}}%)",
     "pick_subject": "Pick subject:",
     "all_subjects": "All subjects",
-    "formula_hint": "Weighting: each category score × weight ÷ 100, summed; categories with no grades count as 0 (weights are NOT re-normalised). Extra bonus is added on top (capped at 100). The weighted total always reflects the scores entered so far; the Note column shows the minimum exam average still needed to pass (60).",
+    "formula_hint": "Weighting: each category score × weight ÷ 100, summed; categories with no grades count as 0 (weights are NOT re-normalised). Bonus belongs to coursework, so it's scaled by the coursework weight when added to the weighted total (capped at 100). The weighted total always reflects the scores entered so far; the Note column shows the minimum exam average still needed to pass (60).",
     "empty": "No grade data for this semester yet. Use 「Import grades」 on the class page to upload a file.",
     "view": {
       "by_student": "By student",

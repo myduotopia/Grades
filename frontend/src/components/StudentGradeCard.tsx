@@ -16,6 +16,7 @@ import {
   formatScore,
   type Projection,
   projectionNote,
+  weightedExtraBonus,
 } from '../lib/gradeMath'
 
 type TFn = (key: string, opts?: Record<string, unknown>) => string
@@ -90,8 +91,12 @@ export function SubjectBreakdown({
     (c) => c !== 'extra' && c in summary.category_averages,
   )
   const hasExtra = 'extra' in summary.category_averages
-  // 額外加分 (#226): flat raw bonus added on top of the weighted total.
-  const extraBonus = summary.category_averages['extra'] ?? 0
+  // 額外加分 (#235): folded into 平時 — its contribution to the weighted total
+  // is the raw extra scaled by the present 平時 weight sum.
+  const extraBonus = weightedExtraBonus(
+    summary.category_averages,
+    summary.category_weights,
+  )
 
   return (
     <div>
