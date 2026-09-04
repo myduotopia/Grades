@@ -11,6 +11,7 @@ import { AdminReasons } from './pages/AdminReasons'
 import { AdminSemesters } from './pages/AdminSemesters'
 import { AdminSubjects } from './pages/AdminSubjects'
 import { AuthCallback } from './pages/AuthCallback'
+import { ClassGroups } from './pages/ClassGroups'
 import { Classes } from './pages/Classes'
 import { ClassroomPoints } from './pages/ClassroomPoints'
 import { GradeEntry } from './pages/GradeEntry'
@@ -52,6 +53,10 @@ function App() {
               <Route
                 path="/classes/:classroomId/students"
                 element={<Students />}
+              />
+              <Route
+                path="/classes/:classroomId/groups"
+                element={<ClassGroups />}
               />
               <Route
                 path="/classes/:classroomId/grades"

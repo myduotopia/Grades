@@ -477,6 +477,7 @@
       "edit": "編輯",
       "delete": "刪除",
       "view_students": "查看學生",
+      "group_settings": "組別設定",
       "bulk_add_students": "批次新增學生",
       "import_grades": "匯入成績",
       "grade_entry": "線上輸入成績",
@@ -785,6 +786,40 @@
       "recompute_confirm_body": "將依據目前的標準分，重新計算這份封存內所有自動發點。手動加減點數不受影響。",
       "recompute_result": "已重算：發點 {{awarded}}、收回 {{revoked}}、不變 {{unchanged}}（共 {{total}} 筆成績）",
       "recompute_running": "計算中…"
+    }
+  },
+  "groups": {
+    "title": "組別設定",
+    "subtitle": "把班級分成小組，可指定組長並拖曳調整順序。同一位學生可以同時屬於多個組別。",
+    "list_heading": "組別",
+    "add": "+ 新增組別",
+    "delete": "刪除組別",
+    "empty": "還沒有任何組別。",
+    "empty_hint": "點「新增組別」建立第一組。",
+    "select_hint": "從左側選一個組別來編輯。",
+    "default_name": "第 {{n}} 組",
+    "field_name": "組名",
+    "field_color": "組別顏色",
+    "members_heading": "成員（{{count}} 位／全班 {{total}} 位）",
+    "members_hint": "勾選學生加入此組；拖曳 ⋮⋮ 調整組內順序；點星號設為組長。",
+    "no_students": "這個班級還沒有學生。",
+    "set_leader": "將 {{name}} 設為組長",
+    "drag_to_reorder": "拖曳調整順序",
+    "saved": "已儲存",
+    "deleted": "已刪除組別",
+    "confirm_delete": "確定要刪除「{{name}}」？組員本身不會被刪除。",
+    "confirm_discard": "這個組別有尚未儲存的變更，確定要放棄嗎？",
+    "color": {
+      "amber": "琥珀",
+      "rose": "玫瑰紅",
+      "sky": "天藍",
+      "emerald": "翡翠綠",
+      "violet": "紫羅蘭",
+      "slate": "石板灰"
+    },
+    "errors": {
+      "name_required": "請輸入組名",
+      "duplicate_name": "這個班級已有同名的組別"
     }
   }
 }
