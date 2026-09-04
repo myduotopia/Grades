@@ -813,3 +813,45 @@ class HomeAlertList(BaseModel):
 
 class HomeAlertViewedOut(BaseModel):
     viewed_at: datetime
+
+
+# ---------- student groups (#237) ----------
+
+class GroupMemberOut(BaseModel):
+    student_id: UUID
+    seat_number: int
+    name: str | None
+    sort_order: int
+
+
+class GroupOut(BaseModel):
+    id: UUID
+    classroom_id: UUID
+    name: str
+    color: str | None
+    leader_student_id: UUID | None
+    sort_order: int
+    members: list[GroupMemberOut]
+    created_at: datetime
+    updated_at: datetime
+
+
+class GroupList(BaseModel):
+    data: list[GroupOut]
+    meta: ListMeta
+
+
+class GroupWrite(BaseModel):
+    """Create/update body — identical shape, so one schema serves both.
+
+    `member_student_ids` is ORDERED: the array index becomes each member's
+    sort_order. The router replaces the whole membership set on write.
+    """
+    name: str = Field(min_length=1, max_length=100)
+    color: str | None = Field(default=None, max_length=20)
+    member_student_ids: list[UUID] = []
+    leader_student_id: UUID | None = None
+
+
+class GroupOrderUpdate(BaseModel):
+    group_ids: list[UUID]
