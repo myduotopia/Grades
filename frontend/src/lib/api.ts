@@ -187,6 +187,50 @@ export interface Student {
   updated_at: string
 }
 
+// ---------- student groups (#237) ----------
+
+export const GROUP_COLORS = [
+  'amber',
+  'rose',
+  'sky',
+  'emerald',
+  'violet',
+  'slate',
+] as const
+export type GroupColor = (typeof GROUP_COLORS)[number]
+
+export interface GroupMember {
+  student_id: string
+  seat_number: number
+  name: string | null
+  sort_order: number
+}
+
+export interface Group {
+  id: string
+  classroom_id: string
+  name: string
+  color: GroupColor | null
+  leader_student_id: string | null
+  sort_order: number
+  members: GroupMember[]
+  created_at: string
+  updated_at: string
+}
+
+export interface GroupList {
+  data: Group[]
+  meta: { total: number }
+}
+
+export interface GroupPayload {
+  name: string
+  color: GroupColor | null
+  /** Ordered — index becomes each member's sort_order. */
+  member_student_ids: string[]
+  leader_student_id: string | null
+}
+
 export interface StudentList {
   data: Student[]
   meta: { total: number }
@@ -754,6 +798,27 @@ export const api = {
       request<CategoryList>('/api/categories/weights', {
         method: 'PUT',
         body: JSON.stringify(body),
+      }),
+  },
+  groups: {
+    list: (classroomId: string) =>
+      request<GroupList>(`/api/classrooms/${classroomId}/groups`),
+    create: (classroomId: string, body: GroupPayload) =>
+      request<Group>(`/api/classrooms/${classroomId}/groups`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+    update: (id: string, body: GroupPayload) =>
+      request<Group>(`/api/groups/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(body),
+      }),
+    remove: (id: string) =>
+      request<void>(`/api/groups/${id}`, { method: 'DELETE' }),
+    updateOrder: (classroomId: string, groupIds: string[]) =>
+      request<GroupList>(`/api/classrooms/${classroomId}/groups/order`, {
+        method: 'PUT',
+        body: JSON.stringify({ group_ids: groupIds }),
       }),
   },
   students: {

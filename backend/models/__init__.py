@@ -15,6 +15,7 @@ from models.curriculum import (
     SubjectCategoryWeight,
 )
 from models.grading import Grade, PointRecord, PointRule, StudentStandard, SubjectPointRule
+from models.grouping import GROUP_COLOR_VALUES, StudentGroup, StudentGroupMember
 from models.settings import UserSettings
 
 __all__ = [
@@ -22,6 +23,7 @@ __all__ = [
     "Base",
     "Category",
     "Classroom",
+    "GROUP_COLOR_VALUES",
     "Grade",
     "Item",
     "PointRecord",
@@ -31,6 +33,8 @@ __all__ = [
     "SYSTEM_SUBJECT_KEYS",
     "Semester",
     "Student",
+    "StudentGroup",
+    "StudentGroupMember",
     "StudentStandard",
     "Subject",
     "SubjectCategoryWeight",

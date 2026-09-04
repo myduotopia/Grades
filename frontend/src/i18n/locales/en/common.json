@@ -477,6 +477,7 @@
       "edit": "Edit",
       "delete": "Delete",
       "view_students": "View students",
+      "group_settings": "Groups",
       "bulk_add_students": "Batch add students",
       "import_grades": "Import grades",
       "grade_entry": "Enter scores online",
@@ -785,6 +786,40 @@
       "recompute_confirm_body": "Re-applies auto-awards within this archive using its current thresholds. Manual point records are not affected.",
       "recompute_result": "Done: +{{awarded}} awarded, -{{revoked}} revoked, {{unchanged}} unchanged ({{total}} grades evaluated).",
       "recompute_running": "Computing…"
+    }
+  },
+  "groups": {
+    "title": "Groups",
+    "subtitle": "Split the class into small groups. Pick a leader and drag to reorder. A student can belong to more than one group.",
+    "list_heading": "Groups",
+    "add": "+ New group",
+    "delete": "Delete group",
+    "empty": "No groups yet.",
+    "empty_hint": "Click “New group” to create the first one.",
+    "select_hint": "Pick a group on the left to edit it.",
+    "default_name": "Group {{n}}",
+    "field_name": "Group name",
+    "field_color": "Group color",
+    "members_heading": "Members ({{count}} of {{total}})",
+    "members_hint": "Tick students to add them; drag ⋮⋮ to reorder within the group; click the star to set the leader.",
+    "no_students": "This class has no students yet.",
+    "set_leader": "Set {{name}} as leader",
+    "drag_to_reorder": "Drag to reorder",
+    "saved": "Saved",
+    "deleted": "Group deleted",
+    "confirm_delete": "Delete “{{name}}”? The students themselves are not deleted.",
+    "confirm_discard": "This group has unsaved changes. Discard them?",
+    "color": {
+      "amber": "Amber",
+      "rose": "Rose",
+      "sky": "Sky",
+      "emerald": "Emerald",
+      "violet": "Violet",
+      "slate": "Slate"
+    },
+    "errors": {
+      "name_required": "Group name is required",
+      "duplicate_name": "A group with this name already exists in this class"
     }
   }
 }

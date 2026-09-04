@@ -354,6 +354,13 @@ function RowActions({
       >
         {t('classes.actions.view_students')}
       </Link>
+      <Link
+        to={`/classes/${classroom.id}/groups`}
+        onClick={stop}
+        className="text-slate-700 hover:text-slate-900 font-medium"
+      >
+        {t('classes.actions.group_settings')}
+      </Link>
       <button
         onClick={(e) => {
           stop(e)
