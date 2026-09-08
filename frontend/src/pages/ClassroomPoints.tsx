@@ -1,6 +1,12 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useParams } from 'react-router-dom'
+
+import {
+  StudentGroupBadges,
+  useStudentGroupIndex,
+} from '../components/StudentGroupBadges'
+import { useGroups } from '../hooks/useGroups'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { ArchivedSemesterBanner } from '../components/ArchivedSemesterBanner'
@@ -42,6 +48,11 @@ export function ClassroomPoints() {
       api.points.listClassroomStudents(classroomId as string),
     enabled: !!classroomId,
   })
+  // Groups are optional — a class without them renders exactly as before.
+  const groupsQ = useGroups(classroomId)
+  const groups = groupsQ.data?.data ?? []
+  const groupIndex = useStudentGroupIndex(groups)
+  const hasGroups = groups.length > 0
 
   const reasons: PointReason[] = (meQ.data?.point_reasons ?? []).filter(
     (r) => !r.system_key,
@@ -498,6 +509,7 @@ export function ClassroomPoints() {
                           : s.semester_points}
                       </span>
                     </div>
+                    <StudentGroupBadges refs={groupIndex.get(s.student_id)} />
                     <div className="flex flex-wrap gap-1.5">
                       <button
                         disabled={isArchived || addMut.isPending}
@@ -548,6 +560,11 @@ export function ClassroomPoints() {
                     <th className="px-4 py-3 text-left font-medium">
                       {t('students.col.name')}
                     </th>
+                    {hasGroups && (
+                      <th className="px-4 py-3 text-left font-medium">
+                        {t('students.col.groups')}
+                      </th>
+                    )}
                     <th className="px-4 py-3 text-right font-medium w-28">
                       {t('points.col.semester_points')}
                     </th>
@@ -585,6 +602,13 @@ export function ClassroomPoints() {
                             {s.name || '—'}
                           </a>
                         </td>
+                        {hasGroups && (
+                          <td className="px-4 py-2.5">
+                            <StudentGroupBadges
+                              refs={groupIndex.get(s.student_id)}
+                            />
+                          </td>
+                        )}
                         <td
                           className={`px-4 py-2.5 text-right tabular-nums font-semibold ${
                             s.semester_points > 0
