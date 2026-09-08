@@ -535,6 +535,7 @@
       "seat": "Seat",
       "name": "Name",
       "email": "Email",
+      "groups": "Groups",
       "actions": "Actions"
     },
     "actions": {
@@ -802,6 +803,12 @@
     "members_heading": "Members ({{count}})",
     "members_hint": "Drag ⋮⋮ to reorder, click the star to set the leader, click ✕ to remove from this group.",
     "no_members": "No members yet — tick students in the list on the right.",
+    "col": {
+      "order": "#",
+      "seat": "Seat",
+      "name": "Name",
+      "leader": "Lead"
+    },
     "roster_heading": "Class roster ({{count}})",
     "roster_disabled_hint": "Pick a group on the left before ticking members.",
     "no_students": "This class has no students yet.",

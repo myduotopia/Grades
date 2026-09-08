@@ -493,11 +493,26 @@ export function ClassGroups() {
                       collisionDetection={closestCenter}
                       onDragEnd={onMemberDragEnd}
                     >
+                      {/* Column widths mirror SortableMemberRow exactly; keep
+                          the two in step when either changes. */}
+                      <div
+                        aria-hidden="true"
+                        className="flex items-center gap-3 px-2 pb-1.5 text-xs font-medium text-slate-400 uppercase tracking-wide border-b border-slate-100"
+                      >
+                        <span className="w-6" />
+                        <span className="w-5">{t('groups.col.order')}</span>
+                        <span className="w-8">{t('groups.col.seat')}</span>
+                        <span>{t('groups.col.name')}</span>
+                        <span className="ml-auto w-9 text-center">
+                          {t('groups.col.leader')}
+                        </span>
+                        <span className="w-8" />
+                      </div>
                       <SortableContext
                         items={draft.memberIds}
                         strategy={verticalListSortingStrategy}
                       >
-                        <ul className="space-y-1 max-h-[28rem] overflow-y-auto">
+                        <ul className="space-y-1 pt-1 max-h-[28rem] overflow-y-auto">
                           {draft.memberIds.map((id, index) => {
                             const s = studentById.get(id)
                             if (!s) return null

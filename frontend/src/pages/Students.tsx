@@ -4,8 +4,14 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { StudentImportModal } from '../components/StudentImportModal'
+import {
+  StudentGroupBadges,
+  useStudentGroupIndex,
+  type StudentGroupRef,
+} from '../components/StudentGroupBadges'
 import { PageContainer } from '../layout/PageContainer'
 import { PageHeader } from '../layout/PageHeader'
+import { useGroups } from '../hooks/useGroups'
 import {
   studentsKey,
   useStudents,
@@ -43,6 +49,11 @@ export function Students() {
     enabled: !!classroomId,
   })
   const { data, isLoading, isError, error, refetch } = useStudents(classroomId)
+  // Groups are optional: a class that never set them up shows no group column.
+  const groupsQ = useGroups(classroomId)
+  const groups = groupsQ.data?.data ?? []
+  const groupIndex = useStudentGroupIndex(groups)
+  const hasGroups = groups.length > 0
 
   const [view, setView] = useState<View>(
     (localStorage.getItem(VIEW_KEY) as View) || 'list',
@@ -168,6 +179,8 @@ export function Students() {
       {!isLoading && !isError && students.length > 0 && view === 'list' && (
         <StudentTable
           students={students}
+          groupIndex={groupIndex}
+          showGroups={hasGroups}
           onEdit={(s) => setModal({ kind: 'edit', student: s })}
         />
       )}
@@ -175,6 +188,7 @@ export function Students() {
       {!isLoading && !isError && students.length > 0 && view === 'card' && (
         <StudentCards
           students={students}
+          groupIndex={groupIndex}
           onEdit={(s) => setModal({ kind: 'edit', student: s })}
         />
       )}
@@ -211,9 +225,13 @@ export function Students() {
 
 function StudentTable({
   students,
+  groupIndex,
+  showGroups,
   onEdit,
 }: {
   students: Student[]
+  groupIndex: Map<string, StudentGroupRef[]>
+  showGroups: boolean
   onEdit: (s: Student) => void
 }) {
   const { t } = useTranslation()
@@ -229,6 +247,11 @@ function StudentTable({
               <th className="px-4 py-3 text-left font-medium">
                 {t('students.col.name')}
               </th>
+              {showGroups && (
+                <th className="px-4 py-3 text-left font-medium">
+                  {t('students.col.groups')}
+                </th>
+              )}
               <th className="px-4 py-3 text-left font-medium">
                 {t('students.col.email')}
               </th>
@@ -246,6 +269,11 @@ function StudentTable({
                 <td className="px-4 py-3 text-slate-700">
                   {s.name || <span className="text-slate-400">—</span>}
                 </td>
+                {showGroups && (
+                  <td className="px-4 py-3">
+                    <StudentGroupBadges refs={groupIndex.get(s.id)} />
+                  </td>
+                )}
                 <td className="px-4 py-3 text-slate-500 break-all">
                   {s.email || <span className="text-slate-400">—</span>}
                 </td>
@@ -270,9 +298,11 @@ function StudentTable({
 
 function StudentCards({
   students,
+  groupIndex,
   onEdit,
 }: {
   students: Student[]
+  groupIndex: Map<string, StudentGroupRef[]>
   onEdit: (s: Student) => void
 }) {
   const { t } = useTranslation()
@@ -294,6 +324,10 @@ function StudentCards({
               <p className="text-xs text-slate-500 truncate">
                 {s.email || '—'}
               </p>
+              <StudentGroupBadges
+                refs={groupIndex.get(s.id)}
+                className="mt-1.5"
+              />
             </div>
           </div>
           <div className="mt-auto pt-2 border-t border-slate-100 flex justify-end">

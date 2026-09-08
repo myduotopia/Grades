@@ -535,6 +535,7 @@
       "seat": "座號",
       "name": "姓名",
       "email": "Email",
+      "groups": "組別",
       "actions": "動作"
     },
     "actions": {
@@ -802,6 +803,12 @@
     "members_heading": "組員（{{count}} 位）",
     "members_hint": "拖曳 ⋮⋮ 調整組內順序；點星號設為組長；點 ✕ 移出此組。",
     "no_members": "還沒有組員，從右側名單勾選學生加入。",
+    "col": {
+      "order": "順序",
+      "seat": "座號",
+      "name": "姓名",
+      "leader": "組長"
+    },
     "roster_heading": "全班學生（{{count}} 位）",
     "roster_disabled_hint": "先從左側選一個組別，才能勾選組員。",
     "no_students": "這個班級還沒有學生。",
