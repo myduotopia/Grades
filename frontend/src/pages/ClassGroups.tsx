@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
@@ -36,18 +36,13 @@ import {
   GROUP_COLORS,
   type Group,
   type GroupColor,
+  type GroupPayload,
   type Student,
 } from '../lib/api'
 import { classroomDisplayName } from '../lib/classroomFormat'
 
-const PRIMARY_BTN =
-  'inline-flex items-center px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white text-sm font-medium shadow-sm transition-colors disabled:bg-slate-300 disabled:cursor-not-allowed'
-
 const SECONDARY_BTN =
   'inline-flex items-center px-4 py-2 rounded-lg bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-medium shadow-sm transition-colors disabled:opacity-60'
-
-const DANGER_BTN =
-  'inline-flex items-center px-4 py-2 rounded-lg bg-white border border-rose-200 hover:border-rose-300 hover:bg-rose-50 text-rose-600 text-sm font-medium transition-colors disabled:opacity-60'
 
 // Tailwind can only see class names it finds as complete literals, so the
 // palette must be a static map — never `bg-${color}-500`.
@@ -76,7 +71,7 @@ interface Draft {
   leaderId: string | null
 }
 
-const NEW = '__new__'
+type SaveState = 'idle' | 'saving' | 'saved' | 'failed'
 
 function draftFromGroup(g: Group): Draft {
   return {
@@ -87,14 +82,26 @@ function draftFromGroup(g: Group): Draft {
   }
 }
 
-function sameDraft(a: Draft, b: Draft) {
-  return (
-    a.name === b.name &&
-    a.color === b.color &&
-    a.leaderId === b.leaderId &&
-    a.memberIds.length === b.memberIds.length &&
-    a.memberIds.every((id, i) => id === b.memberIds[i])
-  )
+function toPayload(d: Draft): GroupPayload {
+  return {
+    name: d.name.trim(),
+    color: d.color,
+    member_student_ids: d.memberIds,
+    leader_student_id: d.leaderId,
+  }
+}
+
+/**
+ * Smallest "第 N 組" not already taken. Plain `groups.length + 1` collides
+ * after a delete (3 groups, remove #2, next add computes 「第 3 組」 again),
+ * and since the group is created the instant the button is clicked the user
+ * gets no chance to rename around the 409.
+ */
+function nextGroupName(taken: Set<string>, label: (n: number) => string) {
+  for (let n = 1; ; n += 1) {
+    const candidate = label(n)
+    if (!taken.has(candidate)) return candidate
+  }
 }
 
 export function ClassGroups() {
@@ -114,12 +121,11 @@ export function ClassGroups() {
   const deleteMut = useDeleteGroup(classroomId ?? '')
   const orderMut = useReorderGroups(classroomId ?? '')
 
-  // `NEW` = the unsaved new-group form; null = nothing selected.
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [draft, setDraft] = useState<Draft | null>(null)
-  const [baseline, setBaseline] = useState<Draft | null>(null)
+  const [nameInput, setNameInput] = useState('')
+  const [saveState, setSaveState] = useState<SaveState>('idle')
   const [errKey, setErrKey] = useState<string | null>(null)
-  const [toast, setToast] = useState<string | null>(null)
 
   const groups = useMemo(() => groupsQ.data?.data ?? [], [groupsQ.data])
   const students = useMemo(
@@ -135,20 +141,73 @@ export function ClassGroups() {
     return m
   }, [students])
 
-  const dirty = !!draft && !!baseline && !sameDraft(draft, baseline)
+  // Read inside the save loop, which must not close over a stale render.
+  const groupsRef = useRef(groups)
+  groupsRef.current = groups
 
-  useEffect(() => {
-    if (!toast) return
-    const id = setTimeout(() => setToast(null), 2500)
-    return () => clearTimeout(id)
-  }, [toast])
+  // Serialised, coalescing save queue. Rapid clicks (ticking five students in
+  // a row) must not race: writes are drained one at a time, and a second edit
+  // to the same group before its turn simply overwrites the queued draft. The
+  // queue is keyed by group id so switching groups mid-save still flushes the
+  // previous group's pending write instead of dropping it. Last-write-wins is
+  // correct because the API replaces the whole group on every write.
+  const selectedRef = useRef<string | null>(null)
+  selectedRef.current = selectedId
 
-  // If the selected group disappears (deleted elsewhere), drop the editor.
+  const pending = useRef(new Map<string, Draft>())
+  const draining = useRef(false)
+
+  const drain = useCallback(async () => {
+    if (draining.current) return
+    draining.current = true
+    setSaveState('saving')
+    try {
+      while (pending.current.size > 0) {
+        const [id, d] = pending.current.entries().next().value as [string, Draft]
+        pending.current.delete(id)
+        try {
+          await updateMut.mutateAsync({ id, body: toPayload(d) })
+          setErrKey(null)
+        } catch (err) {
+          if (err instanceof ApiError && err.status === 409) {
+            // Keep what the user typed so they can fix it in place; rolling
+            // back would silently discard their edit.
+            setErrKey('groups.errors.duplicate_name')
+          } else {
+            setErrKey('common.error_generic')
+            const server = groupsRef.current.find((g) => g.id === id)
+            if (server) {
+              const restored = draftFromGroup(server)
+              setDraft((cur) => (cur && id === selectedRef.current ? restored : cur))
+              if (id === selectedRef.current) setNameInput(restored.name)
+            }
+          }
+          setSaveState('failed')
+          return
+        }
+      }
+      setSaveState('saved')
+    } finally {
+      draining.current = false
+    }
+  }, [updateMut])
+
+  /** Apply a draft change locally (optimistic) and persist it. */
+  const commit = useCallback(
+    (next: Draft) => {
+      if (!selectedId) return
+      setDraft(next)
+      pending.current.set(selectedId, next)
+      void drain()
+    },
+    [selectedId, drain],
+  )
+
+  // Drop the editor if the selected group disappears (deleted in another tab).
   useEffect(() => {
-    if (selectedId && selectedId !== NEW && !groups.some((g) => g.id === selectedId)) {
+    if (selectedId && !groups.some((g) => g.id === selectedId)) {
       setSelectedId(null)
       setDraft(null)
-      setBaseline(null)
     }
   }, [groups, selectedId])
 
@@ -164,34 +223,42 @@ export function ClassGroups() {
     ? `${classroomDisplayName(classroom.grade, classroom.name, i18n.language)} · ${t('groups.title')}`
     : t('groups.title')
 
-  function confirmDiscard() {
-    if (!dirty) return true
-    return window.confirm(t('groups.confirm_discard'))
-  }
-
   function select(g: Group) {
-    if (!confirmDiscard()) return
     setErrKey(null)
+    setSaveState('idle')
     setSelectedId(g.id)
     const d = draftFromGroup(g)
     setDraft(d)
-    setBaseline(d)
+    setNameInput(d.name)
   }
 
-  function startNew() {
-    if (!confirmDiscard()) return
+  async function addGroup() {
     setErrKey(null)
-    setSelectedId(NEW)
-    const d: Draft = {
-      name: t('groups.default_name', { n: groups.length + 1 }),
-      color: GROUP_COLORS[groups.length % GROUP_COLORS.length],
-      memberIds: [],
-      leaderId: null,
+    const taken = new Set(groups.map((g) => g.name))
+    const name = nextGroupName(taken, (n) => t('groups.default_name', { n }))
+    setSaveState('saving')
+    try {
+      const created = await createMut.mutateAsync({
+        name,
+        color: GROUP_COLORS[groups.length % GROUP_COLORS.length],
+        member_student_ids: [],
+        leader_student_id: null,
+      })
+      select(created)
+      setSaveState('saved')
+    } catch {
+      setErrKey('common.error_generic')
+      setSaveState('failed')
     }
-    setDraft(d)
-    // Baseline differs from the draft so a brand-new group is dirty from the
-    // start — otherwise "save" would look like a no-op.
-    setBaseline({ name: '', color: null, memberIds: [], leaderId: null })
+  }
+
+  async function removeGroup(g: Group) {
+    if (!window.confirm(t('groups.confirm_delete', { name: g.name }))) return
+    await deleteMut.mutateAsync(g.id)
+    if (g.id === selectedId) {
+      setSelectedId(null)
+      setDraft(null)
+    }
   }
 
   function onGroupDragEnd(e: DragEndEvent) {
@@ -209,86 +276,43 @@ export function ClassGroups() {
     const from = draft.memberIds.indexOf(String(active.id))
     const to = draft.memberIds.indexOf(String(over.id))
     if (from < 0 || to < 0) return
-    setDraft({ ...draft, memberIds: arrayMove(draft.memberIds, from, to) })
+    commit({ ...draft, memberIds: arrayMove(draft.memberIds, from, to) })
   }
 
   function toggleMember(studentId: string) {
     if (!draft) return
     const has = draft.memberIds.includes(studentId)
-    const memberIds = has
-      ? draft.memberIds.filter((id) => id !== studentId)
-      : [...draft.memberIds, studentId]
-    // A leader who is no longer a member cannot stay leader (the API rejects it).
-    const leaderId =
-      has && draft.leaderId === studentId ? null : draft.leaderId
-    setDraft({ ...draft, memberIds, leaderId })
+    commit({
+      ...draft,
+      memberIds: has
+        ? draft.memberIds.filter((id) => id !== studentId)
+        : [...draft.memberIds, studentId],
+      // A leader who is no longer a member is rejected by the API.
+      leaderId: has && draft.leaderId === studentId ? null : draft.leaderId,
+    })
   }
 
   function toggleLeader(studentId: string) {
     if (!draft || !draft.memberIds.includes(studentId)) return
-    setDraft({
+    commit({
       ...draft,
       leaderId: draft.leaderId === studentId ? null : studentId,
     })
   }
 
-  async function onSave() {
+  function commitName() {
     if (!draft) return
-    setErrKey(null)
-    const body = {
-      name: draft.name.trim(),
-      color: draft.color,
-      member_student_ids: draft.memberIds,
-      leader_student_id: draft.leaderId,
-    }
-    if (!body.name) {
-      setErrKey('groups.errors.name_required')
+    const trimmed = nameInput.trim()
+    // An empty name cannot be saved; fall back to the last good one rather
+    // than nagging with an error.
+    if (!trimmed) {
+      setNameInput(draft.name)
       return
     }
-    try {
-      if (selectedId === NEW) {
-        const created = await createMut.mutateAsync(body)
-        setSelectedId(created.id)
-        const d = draftFromGroup(created)
-        setDraft(d)
-        setBaseline(d)
-      } else {
-        const saved = await updateMut.mutateAsync({
-          id: selectedId as string,
-          body,
-        })
-        const d = draftFromGroup(saved)
-        setDraft(d)
-        setBaseline(d)
-      }
-      setToast(t('groups.saved'))
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 409) {
-        setErrKey('groups.errors.duplicate_name')
-      } else {
-        setErrKey('common.error_generic')
-      }
-    }
+    if (trimmed === draft.name) return
+    commit({ ...draft, name: trimmed })
   }
 
-  async function onDelete() {
-    if (selectedId === NEW) {
-      setSelectedId(null)
-      setDraft(null)
-      setBaseline(null)
-      return
-    }
-    const g = groups.find((x) => x.id === selectedId)
-    if (!g) return
-    if (!window.confirm(t('groups.confirm_delete', { name: g.name }))) return
-    await deleteMut.mutateAsync(g.id)
-    setSelectedId(null)
-    setDraft(null)
-    setBaseline(null)
-    setToast(t('groups.deleted'))
-  }
-
-  const saving = createMut.isPending || updateMut.isPending
   const loading = groupsQ.isLoading || studentsQ.isLoading
   const failed = groupsQ.isError || studentsQ.isError
 
@@ -305,7 +329,9 @@ export function ClassGroups() {
 
       {failed && (
         <div className="bg-white border border-rose-200 rounded-xl p-6 text-center">
-          <p className="text-sm text-rose-600 mb-4">{t('common.error_generic')}</p>
+          <p className="text-sm text-rose-600 mb-4">
+            {t('common.error_generic')}
+          </p>
           <button
             className={SECONDARY_BTN}
             onClick={() => {
@@ -319,8 +345,8 @@ export function ClassGroups() {
       )}
 
       {!loading && !failed && (
-        <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-6 items-start">
-          {/* ---------- group list ---------- */}
+        <div className="grid grid-cols-1 lg:grid-cols-[240px_minmax(0,1fr)_300px] gap-6 items-start">
+          {/* ---------- column 1: group list ---------- */}
           <section className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
             <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-3">
               {t('groups.list_heading')}
@@ -345,7 +371,11 @@ export function ClassGroups() {
                         group={g}
                         active={g.id === selectedId}
                         handleTitle={t('groups.drag_to_reorder')}
+                        deleteLabel={t('groups.delete_group_aria', {
+                          name: g.name,
+                        })}
                         onSelect={() => select(g)}
+                        onDelete={() => removeGroup(g)}
                       />
                     ))}
                   </ul>
@@ -353,12 +383,16 @@ export function ClassGroups() {
               </DndContext>
             )}
 
-            <button className={SECONDARY_BTN} onClick={startNew}>
+            <button
+              className={SECONDARY_BTN}
+              onClick={addGroup}
+              disabled={createMut.isPending}
+            >
               {t('groups.add')}
             </button>
           </section>
 
-          {/* ---------- editor ---------- */}
+          {/* ---------- column 2: selected group ---------- */}
           <section className="bg-white border border-slate-200 rounded-xl p-5 lg:p-6 shadow-sm">
             {!draft ? (
               <p className="text-sm text-slate-500 py-8 text-center">
@@ -368,6 +402,13 @@ export function ClassGroups() {
               </p>
             ) : (
               <div className="space-y-6">
+                <div className="flex items-center justify-between gap-3">
+                  <h2 className="font-semibold text-slate-900 tracking-tight truncate">
+                    {draft.name}
+                  </h2>
+                  <SaveStatus state={saveState} />
+                </div>
+
                 <div>
                   <label
                     htmlFor="group-name"
@@ -377,11 +418,18 @@ export function ClassGroups() {
                   </label>
                   <input
                     id="group-name"
-                    value={draft.name}
+                    value={nameInput}
                     maxLength={100}
-                    onChange={(e) =>
-                      setDraft({ ...draft, name: e.target.value })
-                    }
+                    onChange={(e) => setNameInput(e.target.value)}
+                    onBlur={commitName}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault()
+                        e.currentTarget.blur()
+                      } else if (e.key === 'Escape') {
+                        setNameInput(draft.name)
+                      }
+                    }}
                     className="w-full max-w-xs px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
                   />
                 </div>
@@ -398,7 +446,7 @@ export function ClassGroups() {
                         aria-pressed={draft.color === c}
                         aria-label={t(`groups.color.${c}`)}
                         title={t(`groups.color.${c}`)}
-                        onClick={() => setDraft({ ...draft, color: c })}
+                        onClick={() => commit({ ...draft, color: c })}
                         className={`h-11 w-11 rounded-full ${COLOR_DOT[c]} transition-shadow focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-400 ${
                           draft.color === c
                             ? `ring-2 ring-offset-2 ${COLOR_RING[c]}`
@@ -413,78 +461,53 @@ export function ClassGroups() {
                   <h3 className="font-semibold text-slate-900 tracking-tight mb-1">
                     {t('groups.members_heading', {
                       count: draft.memberIds.length,
-                      total: students.length,
                     })}
                   </h3>
                   <p className="text-sm text-slate-500 mb-3">
                     {t('groups.members_hint')}
                   </p>
 
-                  {students.length === 0 ? (
-                    <p className="text-sm text-slate-500">
-                      {t('groups.no_students')}
+                  {draft.memberIds.length === 0 ? (
+                    <p className="text-sm text-slate-500 py-4">
+                      {t('groups.no_members')}
                     </p>
                   ) : (
-                    <>
-                      {/* selected — ordered + draggable */}
-                      <DndContext
-                        sensors={sensors}
-                        collisionDetection={closestCenter}
-                        onDragEnd={onMemberDragEnd}
+                    <DndContext
+                      sensors={sensors}
+                      collisionDetection={closestCenter}
+                      onDragEnd={onMemberDragEnd}
+                    >
+                      <SortableContext
+                        items={draft.memberIds}
+                        strategy={verticalListSortingStrategy}
                       >
-                        <SortableContext
-                          items={draft.memberIds}
-                          strategy={verticalListSortingStrategy}
-                        >
-                          <ul className="space-y-1 mb-3">
-                            {draft.memberIds.map((id, index) => {
-                              const s = studentById.get(id)
-                              if (!s) return null
-                              return (
-                                <SortableMemberRow
-                                  key={id}
-                                  id={id}
-                                  index={index}
-                                  student={s}
-                                  isLeader={draft.leaderId === id}
-                                  handleTitle={t('groups.drag_to_reorder')}
-                                  leaderLabel={t('groups.set_leader', {
-                                    name: s.name ?? String(s.seat_number),
-                                  })}
-                                  onToggle={() => toggleMember(id)}
-                                  onToggleLeader={() => toggleLeader(id)}
-                                />
-                              )
-                            })}
-                          </ul>
-                        </SortableContext>
-                      </DndContext>
-
-                      {/* not in this group */}
-                      <ul className="space-y-1 border-t border-slate-100 pt-3">
-                        {students
-                          .filter((s) => !draft.memberIds.includes(s.id))
-                          .map((s) => (
-                            <li key={s.id}>
-                              <label className="flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-slate-50 cursor-pointer min-h-[44px]">
-                                <span className="w-6" aria-hidden="true" />
-                                <input
-                                  type="checkbox"
-                                  checked={false}
-                                  onChange={() => toggleMember(s.id)}
-                                  className="h-4 w-4 rounded border-slate-300 text-amber-500 focus:ring-amber-500"
-                                />
-                                <span className="text-sm text-slate-500 tabular-nums w-8">
-                                  {String(s.seat_number).padStart(2, '0')}
-                                </span>
-                                <span className="text-sm text-slate-500 truncate">
-                                  {s.name || '—'}
-                                </span>
-                              </label>
-                            </li>
-                          ))}
-                      </ul>
-                    </>
+                        <ul className="space-y-1 max-h-[28rem] overflow-y-auto">
+                          {draft.memberIds.map((id, index) => {
+                            const s = studentById.get(id)
+                            if (!s) return null
+                            const who = s.name || String(s.seat_number)
+                            return (
+                              <SortableMemberRow
+                                key={id}
+                                id={id}
+                                index={index}
+                                student={s}
+                                isLeader={draft.leaderId === id}
+                                handleTitle={t('groups.drag_to_reorder')}
+                                leaderLabel={t('groups.set_leader', {
+                                  name: who,
+                                })}
+                                removeLabel={t('groups.remove_member_aria', {
+                                  name: who,
+                                })}
+                                onToggleLeader={() => toggleLeader(id)}
+                                onRemove={() => toggleMember(id)}
+                              />
+                            )
+                          })}
+                        </ul>
+                      </SortableContext>
+                    </DndContext>
                   )}
                 </div>
 
@@ -493,37 +516,86 @@ export function ClassGroups() {
                     {t(errKey)}
                   </p>
                 )}
-
-                <div className="flex flex-wrap gap-3 border-t border-slate-100 pt-4">
-                  <button
-                    className={PRIMARY_BTN}
-                    onClick={onSave}
-                    disabled={saving || !dirty}
-                  >
-                    {saving ? t('common.saving') : t('common.save')}
-                  </button>
-                  <button
-                    className={DANGER_BTN}
-                    onClick={onDelete}
-                    disabled={deleteMut.isPending}
-                  >
-                    {selectedId === NEW
-                      ? t('common.cancel')
-                      : t('groups.delete')}
-                  </button>
-                </div>
               </div>
+            )}
+          </section>
+
+          {/* ---------- column 3: class roster ---------- */}
+          <section className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+            <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-3">
+              {t('groups.roster_heading', { count: students.length })}
+            </h2>
+
+            {students.length === 0 ? (
+              <p className="text-sm text-slate-500">{t('groups.no_students')}</p>
+            ) : !draft ? (
+              <p className="text-sm text-slate-500">
+                {t('groups.roster_disabled_hint')}
+              </p>
+            ) : (
+              <ul className="space-y-0.5 max-h-[32rem] overflow-y-auto">
+                {students.map((s) => {
+                  const checked = draft.memberIds.includes(s.id)
+                  return (
+                    <li key={s.id}>
+                      <label
+                        className={`flex items-center gap-3 px-2 py-2 rounded-lg cursor-pointer min-h-[44px] transition-colors ${
+                          checked ? 'bg-amber-50' : 'hover:bg-slate-50'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleMember(s.id)}
+                          className="h-4 w-4 rounded border-slate-300 text-amber-500 focus:ring-amber-500"
+                        />
+                        <span className="text-sm text-slate-500 tabular-nums w-8">
+                          {String(s.seat_number).padStart(2, '0')}
+                        </span>
+                        <span
+                          className={`text-sm truncate ${
+                            checked ? 'text-slate-900' : 'text-slate-600'
+                          }`}
+                        >
+                          {s.name || '—'}
+                        </span>
+                      </label>
+                    </li>
+                  )
+                })}
+              </ul>
             )}
           </section>
         </div>
       )}
-
-      {toast && (
-        <div className="fixed bottom-6 right-6 bg-slate-900 text-white text-sm px-4 py-2.5 rounded-lg shadow-lg z-50">
-          {toast}
-        </div>
-      )}
     </PageContainer>
+  )
+}
+
+// ---------- save indicator ----------
+
+function SaveStatus({ state }: { state: SaveState }) {
+  const { t } = useTranslation()
+  if (state === 'idle') return null
+  const tone =
+    state === 'failed'
+      ? 'text-rose-600'
+      : state === 'saving'
+        ? 'text-slate-400'
+        : 'text-emerald-600'
+  const key =
+    state === 'failed'
+      ? 'groups.save_failed'
+      : state === 'saving'
+        ? 'groups.saving'
+        : 'groups.saved'
+  return (
+    <span
+      aria-live="polite"
+      className={`shrink-0 text-xs tabular-nums ${tone}`}
+    >
+      {t(key)}
+    </span>
   )
 }
 
@@ -533,15 +605,25 @@ function SortableGroupRow({
   group,
   active,
   handleTitle,
+  deleteLabel,
   onSelect,
+  onDelete,
 }: {
   group: Group
   active: boolean
   handleTitle: string
+  deleteLabel: string
   onSelect: () => void
+  onDelete: () => void
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-    useSortable({ id: group.id })
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: group.id })
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -560,7 +642,7 @@ function SortableGroupRow({
       <button
         onClick={onSelect}
         aria-current={active ? 'true' : undefined}
-        className={`flex-1 flex items-center gap-2 min-h-[44px] px-2 rounded-lg text-left text-sm transition-colors ${
+        className={`flex-1 min-w-0 flex items-center gap-2 min-h-[44px] px-2 rounded-lg text-left text-sm transition-colors ${
           active
             ? 'bg-amber-50 text-amber-900 font-medium'
             : 'text-slate-700 hover:bg-slate-50'
@@ -577,6 +659,15 @@ function SortableGroupRow({
           {group.members.length}
         </span>
       </button>
+      <button
+        type="button"
+        onClick={onDelete}
+        aria-label={deleteLabel}
+        title={deleteLabel}
+        className="shrink-0 h-11 w-8 rounded-lg text-slate-300 hover:text-rose-600 hover:bg-rose-50 transition-colors focus:outline-none focus:ring-2 focus:ring-rose-400"
+      >
+        ✕
+      </button>
     </li>
   )
 }
@@ -588,8 +679,9 @@ function SortableMemberRow({
   isLeader,
   handleTitle,
   leaderLabel,
-  onToggle,
+  removeLabel,
   onToggleLeader,
+  onRemove,
 }: {
   id: string
   index: number
@@ -597,11 +689,18 @@ function SortableMemberRow({
   isLeader: boolean
   handleTitle: string
   leaderLabel: string
-  onToggle: () => void
+  removeLabel: string
   onToggleLeader: () => void
+  onRemove: () => void
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-    useSortable({ id })
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id })
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -621,12 +720,6 @@ function SortableMemberRow({
       >
         ⋮⋮
       </span>
-      <input
-        type="checkbox"
-        checked
-        onChange={onToggle}
-        className="h-4 w-4 rounded border-slate-300 text-amber-500 focus:ring-amber-500"
-      />
       <span className="text-xs text-slate-400 tabular-nums w-5">
         {index + 1}
       </span>
@@ -642,13 +735,20 @@ function SortableMemberRow({
         aria-pressed={isLeader}
         aria-label={leaderLabel}
         title={leaderLabel}
-        className={`ml-auto h-8 w-8 rounded-full text-base leading-none transition-colors focus:outline-none focus:ring-2 focus:ring-amber-500 ${
-          isLeader
-            ? 'text-amber-500'
-            : 'text-slate-300 hover:text-slate-400'
+        className={`ml-auto shrink-0 h-11 w-9 rounded-full text-base leading-none transition-colors focus:outline-none focus:ring-2 focus:ring-amber-500 ${
+          isLeader ? 'text-amber-500' : 'text-slate-300 hover:text-slate-400'
         }`}
       >
         {isLeader ? '★' : '☆'}
+      </button>
+      <button
+        type="button"
+        onClick={onRemove}
+        aria-label={removeLabel}
+        title={removeLabel}
+        className="shrink-0 h-11 w-8 rounded-lg text-slate-300 hover:text-rose-600 hover:bg-rose-50 transition-colors focus:outline-none focus:ring-2 focus:ring-rose-400"
+      >
+        ✕
       </button>
     </li>
   )
