@@ -92,15 +92,23 @@ function toPayload(d: Draft): GroupPayload {
 }
 
 /**
- * Smallest "第 N 組" not already taken. Plain `groups.length + 1` collides
- * after a delete (3 groups, remove #2, next add computes 「第 3 組」 again),
- * and since the group is created the instant the button is clicked the user
- * gets no chance to rename around the 409.
+ * Smallest group number free in EVERY supported language, named in the current
+ * one. Two things this guards against:
+ *
+ * - Plain `groups.length + 1` collides after a delete (3 groups, remove #2,
+ *   next add computes 「第 3 組」 again). The group is created the instant the
+ *   button is clicked, so the user gets no chance to rename around the 409.
+ * - Checking only the current language lets a teacher who made 「第 1 組」 in
+ *   Chinese add a second group also numbered 1 ("Group 1") in English, sitting
+ *   right next to it.
+ *
+ * `labelsFor(n)` returns every locale's rendering of n, current locale first —
+ * that first entry is the name actually used.
  */
-function nextGroupName(taken: Set<string>, label: (n: number) => string) {
+function nextGroupName(taken: Set<string>, labelsFor: (n: number) => string[]) {
   for (let n = 1; ; n += 1) {
-    const candidate = label(n)
-    if (!taken.has(candidate)) return candidate
+    const candidates = labelsFor(n)
+    if (candidates.every((c) => !taken.has(c))) return candidates[0]
   }
 }
 
@@ -234,8 +242,16 @@ export function ClassGroups() {
 
   async function addGroup() {
     setErrKey(null)
+    // Every existing name, so a hand-typed "Group 3" also reserves n=3.
     const taken = new Set(groups.map((g) => g.name))
-    const name = nextGroupName(taken, (n) => t('groups.default_name', { n }))
+    // 'cimode' is i18next's own debug pseudo-language, not a real one.
+    const langs = (i18n.options.supportedLngs || ['zh-TW', 'en']).filter(
+      (l) => l !== 'cimode',
+    )
+    const name = nextGroupName(taken, (n) => [
+      t('groups.default_name', { n }),
+      ...langs.map((lng) => t('groups.default_name', { n, lng })),
+    ])
     setSaveState('saving')
     try {
       const created = await createMut.mutateAsync({
