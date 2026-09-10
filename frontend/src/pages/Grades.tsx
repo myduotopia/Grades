@@ -1091,8 +1091,13 @@ function BySubjectView({
     mutationFn: (itemId: string) =>
       api.classrooms.deactivateItem(classroomId, itemId, snapshotId),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['grades'] })
-      qc.invalidateQueries({ queryKey: ['snapshot-grades'] })
+      // Scope to the classroom/snapshot on screen. The bare ['grades'] /
+      // ['snapshot-grades'] prefixes matched every classroom's cache, so a
+      // change here forced a re-read of unrelated classrooms too (#247).
+      qc.invalidateQueries({ queryKey: ['grades', classroomId] })
+      if (snapshotId) {
+        qc.invalidateQueries({ queryKey: ['snapshot-grades', snapshotId] })
+      }
     },
     onError: (err) => {
       if (err instanceof ApiError && err.body?.message_key) {
@@ -1120,8 +1125,13 @@ function BySubjectView({
       })
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['grades'] })
-      qc.invalidateQueries({ queryKey: ['snapshot-grades'] })
+      // Scope to the classroom/snapshot on screen. The bare ['grades'] /
+      // ['snapshot-grades'] prefixes matched every classroom's cache, so a
+      // change here forced a re-read of unrelated classrooms too (#247).
+      qc.invalidateQueries({ queryKey: ['grades', classroomId] })
+      if (snapshotId) {
+        qc.invalidateQueries({ queryKey: ['snapshot-grades', snapshotId] })
+      }
       qc.invalidateQueries({ queryKey: ['item-grades', editingItemId] })
       setDrafts({})
       setEditingItemId(null)
@@ -1193,8 +1203,13 @@ function BySubjectView({
       )
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['grades'] })
-      qc.invalidateQueries({ queryKey: ['snapshot-grades'] })
+      // Scope to the classroom/snapshot on screen. The bare ['grades'] /
+      // ['snapshot-grades'] prefixes matched every classroom's cache, so a
+      // change here forced a re-read of unrelated classrooms too (#247).
+      qc.invalidateQueries({ queryKey: ['grades', classroomId] })
+      if (snapshotId) {
+        qc.invalidateQueries({ queryKey: ['snapshot-grades', snapshotId] })
+      }
       setRowDrafts({})
       setEditingStudentId(null)
     },

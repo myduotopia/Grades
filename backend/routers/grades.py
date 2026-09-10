@@ -855,6 +855,33 @@ def _commit_grades(
         _ensure_activation(db, user_id, classroom_id, item.id, None)
 
     # Upsert grades.
+    #
+    # Pre-fetch every existing live grade for this import in ONE query and
+    # look them up in a dict, instead of a SELECT per (student, item) pair —
+    # a 30-student × 5-column import was 150 sequential round trips (#247).
+    # Same bucket-query pattern as grade_entry.py's bulk upsert.
+    #
+    # (A single pg_insert(...).on_conflict_do_update() against
+    # uq_grade_item_student_snapshot would be faster still, but
+    # apply_auto_award below needs real ORM Grade objects, so keep the ORM
+    # path and revisit only if import is still slow.)
+    import_student_ids = [
+        r.student_id
+        for r in student_rows
+        if not r.errors and r.student_id is not None
+    ]
+    import_item_ids = [item.id for item in col_to_item.values()]
+    existing_by_key: dict[tuple[UUID, UUID], Grade] = {}
+    if import_student_ids and import_item_ids:
+        existing_by_key = {
+            (g.item_id, g.student_id): g
+            for g in db.query(Grade).filter(
+                Grade.item_id.in_(import_item_ids),
+                Grade.student_id.in_(import_student_ids),
+                Grade.snapshot_id.is_(None),  # import targets live (#169)
+            )
+        }
+
     written_grades: list[Grade] = []
     for r in student_rows:
         if r.errors or r.student_id is None:
@@ -863,15 +890,7 @@ def _commit_grades(
             item = col_to_item.get(col_idx)
             if item is None:
                 continue
-            existing_g = (
-                db.query(Grade)
-                .filter(
-                    Grade.item_id == item.id,
-                    Grade.student_id == r.student_id,
-                    Grade.snapshot_id.is_(None),  # import targets live (#169)
-                )
-                .one_or_none()
-            )
+            existing_g = existing_by_key.get((item.id, r.student_id))
             if existing_g is not None:
                 existing_g.score = Decimal(str(score))
                 written_grades.append(existing_g)
