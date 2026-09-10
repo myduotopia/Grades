@@ -8,32 +8,8 @@ import { supabase } from '../lib/supabase'
 import { ErrorBoundary } from '../components/ErrorBoundary'
 import { SemesterSwitcher } from '../components/SemesterSwitcher'
 import { api } from '../lib/api'
-
-type NavItem = {
-  to: string
-  key: string
-  icon: 'home' | 'classes' | 'categories' | 'alerts'
-  badgeKey?: 'alerts'
-}
-
-// Daily-use surfaces (homepage + the two roll-up admin views).
-const NAV_PRIMARY: NavItem[] = [
-  { to: '/', key: 'nav.home', icon: 'home' },
-  { to: '/classes', key: 'nav.classes', icon: 'classes' },
-  { to: '/points', key: 'nav.points', icon: 'classes' },
-  { to: '/lottery', key: 'nav.lottery', icon: 'classes' },
-  { to: '/snapshots', key: 'nav.snapshots', icon: 'classes' },
-  { to: '/alerts', key: 'nav.alerts', icon: 'alerts', badgeKey: 'alerts' },
-]
-
-// Configuration / settings — separated from the primary group by a divider.
-const NAV_SETTINGS: NavItem[] = [
-  { to: '/admin/subjects', key: 'nav.admin_subjects', icon: 'categories' },
-  { to: '/admin/items', key: 'nav.admin_items', icon: 'categories' },
-  { to: '/admin/reasons', key: 'nav.admin_reasons', icon: 'categories' },
-  { to: '/admin/semesters', key: 'nav.admin_semesters', icon: 'categories' },
-  { to: '/settings', key: 'nav.settings', icon: 'categories' },
-]
+import { NavIcon } from './NavIcon'
+import { NAV_PRIMARY, NAV_SETTINGS } from './navItems'
 
 const COLLAPSE_KEY = 'appshell.sidebar_collapsed'
 
@@ -281,45 +257,6 @@ function SignOutIcon() {
       <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
       <polyline points="16 17 21 12 16 7" />
       <line x1="21" y1="12" x2="9" y2="12" />
-    </svg>
-  )
-}
-
-function NavIcon({ kind }: { kind: 'home' | 'classes' | 'categories' | 'alerts' }) {
-  const common = 'shrink-0'
-  if (kind === 'alerts') {
-    return (
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={common}>
-        <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-        <line x1="12" y1="9" x2="12" y2="13" />
-        <line x1="12" y1="17" x2="12.01" y2="17" />
-      </svg>
-    )
-  }
-  if (kind === 'home') {
-    return (
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={common}>
-        <path d="M3 10.5L12 3l9 7.5V21a1 1 0 0 1-1 1h-5v-7h-6v7H4a1 1 0 0 1-1-1V10.5z" />
-      </svg>
-    )
-  }
-  if (kind === 'classes') {
-    return (
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={common}>
-        <rect x="3" y="5" width="18" height="14" rx="2" />
-        <path d="M3 10h18" />
-        <path d="M8 5v14" />
-      </svg>
-    )
-  }
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={common}>
-      <path d="M3 6h13" />
-      <path d="M3 12h13" />
-      <path d="M3 18h13" />
-      <circle cx="20" cy="6" r="1.5" />
-      <circle cx="20" cy="12" r="1.5" />
-      <circle cx="20" cy="18" r="1.5" />
     </svg>
   )
 }

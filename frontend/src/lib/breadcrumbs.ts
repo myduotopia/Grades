@@ -12,6 +12,8 @@
  * keeps the "what levels exist" decision in one place.
  */
 
+import { findNavSection, type NavItem } from '../layout/navItems'
+
 /** One rendered breadcrumb level. */
 export type Crumb = {
   key: string
@@ -35,11 +37,23 @@ export type CrumbSwitcherItem = {
   id: string
   label: string
   to: string
+  /** Sidebar glyph, so the section switcher reads like the sidebar (#254). */
+  icon?: NavItem['icon']
+  /** Draw a divider above this row (separates the settings group). */
+  dividerBefore?: boolean
 }
 
 /** A level before data has been attached. */
 export type CrumbSpec =
   | { kind: 'static'; key: string; labelKey: string; to?: string }
+  /** The sidebar section this URL lives in — always the first level (#254). */
+  | {
+      kind: 'section'
+      key: 'section'
+      labelKey: string
+      to: string
+      group: 'primary' | 'settings'
+    }
   | {
       kind: 'classroom'
       key: string
@@ -55,28 +69,53 @@ export type CrumbSpec =
   | { kind: 'snapshot'; key: string; snapshotId: string }
 
 /**
+ * The sidebar section a URL belongs to, as a breadcrumb level.
+ *
+ * Every in-shell page has one, which is why the breadcrumb now shows up on
+ * top-level pages too (#254) — there the section is the only level.
+ */
+export function sectionSpec(pathname: string): CrumbSpec | null {
+  const found = findNavSection(pathname)
+  if (!found) return null
+  return {
+    kind: 'section',
+    key: 'section',
+    labelKey: found.item.key,
+    to: found.item.to,
+    group: found.group,
+  }
+}
+
+/**
  * Map a pathname to breadcrumb levels.
  *
- * Returns null when the page is top-level (a single crumb would just repeat
- * the page title) or unknown — the component then renders nothing at all, so
- * no empty row is left above the title.
+ * The first level is always the sidebar section; anything below it comes from
+ * the table here. Returns null only for routes outside the shell (e.g.
+ * /classes/print), where the component renders nothing at all.
  *
- * `/students/:studentId` deliberately returns null: that route is not nested
- * under its class, so the class level can only come from the student payload.
- * StudentDetail builds its own crumbs via `studentCrumbSpecs` instead.
+ * `/students/:studentId` deliberately returns just its section: that route is
+ * not nested under its class, so the class level can only come from the
+ * student payload. StudentDetail builds its own crumbs instead.
  */
 export function matchBreadcrumbRoute(pathname: string): CrumbSpec[] | null {
-  const seg = pathname.split('/').filter(Boolean)
+  const section = sectionSpec(pathname)
+  if (!section) return null
 
+  const seg = pathname.split('/').filter(Boolean)
+  const deeper = matchDeeperLevels(seg)
+  return [section, ...deeper]
+}
+
+/** Levels below the section. Empty on top-level pages. */
+function matchDeeperLevels(seg: string[]): CrumbSpec[] {
   // /classes/:classroomId/(students|groups|grades)
   if (seg[0] === 'classes' && seg.length >= 3) {
     const classroomId = seg[1]
     const leaf = seg[2]
     if (leaf !== 'students' && leaf !== 'groups' && leaf !== 'grades') {
-      return null
+      return []
     }
-    const specs: CrumbSpec[] = [
-      { kind: 'static', key: 'classes', labelKey: 'nav.classes', to: '/classes' },
+    return [
       {
         kind: 'classroom',
         key: 'classroom',
@@ -85,13 +124,11 @@ export function matchBreadcrumbRoute(pathname: string): CrumbSpec[] | null {
       },
       { kind: 'static', key: leaf, labelKey: `breadcrumb.${leaf}` },
     ]
-    return specs
   }
 
   // /points/:classroomId
   if (seg[0] === 'points' && seg.length === 2) {
     return [
-      { kind: 'static', key: 'points', labelKey: 'nav.points', to: '/points' },
       {
         kind: 'classroom',
         key: 'classroom',
@@ -103,18 +140,10 @@ export function matchBreadcrumbRoute(pathname: string): CrumbSpec[] | null {
 
   // /snapshots/:snapshotId/grades
   if (seg[0] === 'snapshots' && seg.length === 3 && seg[2] === 'grades') {
-    return [
-      {
-        kind: 'static',
-        key: 'snapshots',
-        labelKey: 'nav.snapshots',
-        to: '/snapshots',
-      },
-      { kind: 'snapshot', key: 'snapshot', snapshotId: seg[1] },
-    ]
+    return [{ kind: 'snapshot', key: 'snapshot', snapshotId: seg[1] }]
   }
 
-  return null
+  return []
 }
 
 /** Fill `{id}` in a template produced by matchBreadcrumbRoute. */
