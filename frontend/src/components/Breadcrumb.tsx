@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Link, useNavigate } from 'react-router-dom'
 
 import { useBreadcrumbs } from '../hooks/useBreadcrumbs'
+import { NavIcon } from '../layout/NavIcon'
 import type { Crumb, CrumbSwitcher } from '../lib/breadcrumbs'
 
 /** Above this many options the switcher grows a filter box (issue #250). */
@@ -21,19 +22,34 @@ const SEARCH_THRESHOLD = 8
  * The link and the ▾ are deliberately two separate controls: merging them
  * would make "click the class name to go to the class" impossible.
  *
- * Renders nothing on top-level pages, so no blank row appears above the title.
+ * The first level is the sidebar section, so every page in the shell shows a
+ * breadcrumb — a top-level page just shows that one level (#254).
  */
 export function Breadcrumb({ items }: { items?: Crumb[] | null }) {
   const { t } = useTranslation()
   const derived = useBreadcrumbs()
   const crumbs = items ?? derived
 
-  if (!crumbs || crumbs.length < 2) return null
+  // Every in-shell page shows at least its section (#254); only routes outside
+  // the shell render nothing.
+  if (!crumbs || crumbs.length === 0) return null
 
   // Narrow screens collapse everything between the first and last crumb into
   // a single "…" menu so a deep path never forces horizontal scrolling.
   const collapsible = crumbs.slice(1, -1)
   const canCollapse = crumbs.length > 2
+
+  // A top-level page is a single crumb: it is both first and last, so the
+  // generic layout below would render it twice.
+  if (crumbs.length === 1) {
+    return (
+      <nav aria-label={t('breadcrumb.aria')} className="mb-2 min-w-0">
+        <ol className="flex items-center gap-1 text-sm text-slate-500 min-w-0">
+          <CrumbItem crumb={crumbs[0]} isLast />
+        </ol>
+      </nav>
+    )
+  }
 
   return (
     <nav aria-label={t('breadcrumb.aria')} className="mb-2 min-w-0">
@@ -121,6 +137,7 @@ function Switcher({
   const [highlight, setHighlight] = useState(0)
   const triggerRef = useRef<HTMLButtonElement>(null)
   const searchRef = useRef<HTMLInputElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
 
   const showSearch = switcher.items.length > SEARCH_THRESHOLD
   const needle = query.trim().toLowerCase()
@@ -133,7 +150,12 @@ function Switcher({
     setQuery('')
     const idx = switcher.items.findIndex((i) => i.id === switcher.activeId)
     setHighlight(idx >= 0 ? idx : 0)
+    // Something inside the panel must hold focus or the panel's onKeyDown
+    // never fires and Escape / arrow keys do nothing. The search box covers
+    // that for long lists; short ones (the section switcher, #254) have no
+    // focusable child, so focus the panel itself.
     if (showSearch) searchRef.current?.focus()
+    else panelRef.current?.focus()
     // Re-running on every items change would fight the user's typing; opening
     // is the only moment the initial highlight matters.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -195,8 +217,10 @@ function Switcher({
         <>
           <div className="fixed inset-0 z-30" onClick={() => close(false)} aria-hidden />
           <div
+            ref={panelRef}
+            tabIndex={-1}
             onKeyDown={onKeyDown}
-            className="absolute left-0 mt-1 w-64 max-w-[calc(100vw-2rem)] rounded-md border border-slate-200 bg-white shadow-lg z-40 py-1"
+            className="absolute left-0 mt-1 w-64 max-w-[calc(100vw-2rem)] rounded-md border border-slate-200 bg-white shadow-lg z-40 py-1 focus:outline-none"
           >
             {showSearch && (
               <div className="px-2 pb-1">
@@ -227,7 +251,14 @@ function Switcher({
               {visible.map((item, i) => {
                 const isActive = item.id === switcher.activeId
                 return (
-                  <li key={item.id}>
+                  <li
+                    key={item.id}
+                    className={
+                      item.dividerBefore
+                        ? 'border-t border-slate-100 mt-1 pt-1'
+                        : undefined
+                    }
+                  >
                     <button
                       type="button"
                       role="option"
@@ -238,7 +269,10 @@ function Switcher({
                         isActive ? 'bg-amber-50 text-amber-800' : 'text-slate-700'
                       } ${i === highlight ? 'bg-slate-50' : ''}`}
                     >
-                      <span className="truncate">{item.label}</span>
+                      <span className="flex items-center gap-2 min-w-0">
+                        {item.icon && <NavIcon kind={item.icon} />}
+                        <span className="truncate">{item.label}</span>
+                      </span>
                       {isActive && <span className="text-xs shrink-0">✓</span>}
                     </button>
                   </li>

@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import { useLocation } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 
@@ -8,8 +9,11 @@ import {
   matchBreadcrumbRoute,
   type Crumb,
   type CrumbSpec,
+  type CrumbSwitcher,
+  type CrumbSwitcherItem,
 } from '../lib/breadcrumbs'
 import { classroomDisplayName } from '../lib/classroomFormat'
+import { NAV_PRIMARY, NAV_SETTINGS } from '../layout/navItems'
 import { useSemesterView } from '../state/SemesterView'
 import { useClassrooms } from './useClassrooms'
 import { useStudents } from './useStudents'
@@ -22,6 +26,40 @@ import { useStudents } from './useStudents'
  * uses, so on a class page the breadcrumb costs zero extra network requests —
  * it reads the same react-query cache entry.
  */
+/**
+ * First-level switcher: the sidebar's sections (#254).
+ *
+ * Always the primary group. The settings group is appended only when the
+ * current page lives in it — otherwise the ✓ would have nowhere to land and
+ * the menu would look broken on /settings and /admin/*.
+ */
+function sectionSwitcher(
+  activeTo: string,
+  group: 'primary' | 'settings',
+  t: TFunction,
+): CrumbSwitcher {
+  const items: CrumbSwitcherItem[] = NAV_PRIMARY.map((item) => ({
+    id: item.to,
+    label: t(item.key),
+    to: item.to,
+    icon: item.icon,
+  }))
+
+  if (group === 'settings') {
+    NAV_SETTINGS.forEach((item, i) => {
+      items.push({
+        id: item.to,
+        label: t(item.key),
+        to: item.to,
+        icon: item.icon,
+        dividerBefore: i === 0,
+      })
+    })
+  }
+
+  return { items, activeId: activeTo }
+}
+
 export function useBreadcrumbs(): Crumb[] | null {
   const { t, i18n } = useTranslation()
   const { pathname } = useLocation()
@@ -49,6 +87,15 @@ export function useBreadcrumbs(): Crumb[] | null {
 
   const crumbs: Crumb[] = specs.map((spec: CrumbSpec, i) => {
     const isLast = i === specs.length - 1
+
+    if (spec.kind === 'section') {
+      return {
+        key: spec.key,
+        label: t(spec.labelKey),
+        to: isLast ? undefined : spec.to,
+        switcher: sectionSwitcher(spec.to, spec.group, t),
+      }
+    }
 
     if (spec.kind === 'static') {
       return {
@@ -125,7 +172,14 @@ export function useStudentBreadcrumbs(
   ) => `${seatNumber} ${name ?? t('students.no_name')}`.trim()
 
   return [
-    { key: 'classes', label: t('nav.classes'), to: '/classes' },
+    {
+      key: 'section',
+      label: t('nav.classes'),
+      to: '/classes',
+      // Without this the student page would be the only one whose first level
+      // has no section switcher (#254).
+      switcher: sectionSwitcher('/classes', 'primary', t),
+    },
     {
       key: 'classroom',
       label: classroomDisplayName(
