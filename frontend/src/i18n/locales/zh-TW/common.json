@@ -237,19 +237,6 @@
       "missing_fields": "請填妥所有欄位"
     }
   },
-  "errors": {
-    "item": {
-      "not_found": "找不到此項目",
-      "duplicate_name": "這個學期同科目同類別下已有同名項目",
-      "subject_invalid": "請選擇有效的科目",
-      "category_invalid": "請選擇有效的類別",
-      "semester_invalid": "請選擇有效的學期",
-      "classroom_invalid": "請選擇有效的班級"
-    },
-    "classroom_item": {
-      "has_scores": "該班還有學生此項分數 > 0，請先把所有分數歸 0 或刪除後再取消啟用"
-    }
-  },
   "admin_semesters": {
     "title": "學期管理",
     "subtitle": "設定一學年的學期數，並新增 / 切換目前學期。其他頁面 (成績輸入、儀表板) 會預設使用目前學期過濾資料。",
@@ -734,6 +721,17 @@
     }
   },
   "errors": {
+    "item": {
+      "not_found": "找不到此項目",
+      "duplicate_name": "這個學期同科目同類別下已有同名項目",
+      "subject_invalid": "請選擇有效的科目",
+      "category_invalid": "請選擇有效的類別",
+      "semester_invalid": "請選擇有效的學期",
+      "classroom_invalid": "請選擇有效的班級"
+    },
+    "classroom_item": {
+      "has_scores": "該班還有學生此項分數 > 0，請先把所有分數歸 0 或刪除後再取消啟用"
+    },
     "boundary": {
       "title": "這個頁面出了點問題",
       "subtitle": "畫面載入失敗。你已儲存的資料不受影響，可以重新整理或切換到其他頁面。",

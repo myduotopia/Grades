@@ -237,19 +237,6 @@
       "missing_fields": "Please fill in all fields"
     }
   },
-  "errors": {
-    "item": {
-      "not_found": "Item not found",
-      "duplicate_name": "An item with this name already exists for this subject + category + semester",
-      "subject_invalid": "Please select a valid subject",
-      "category_invalid": "Please select a valid category",
-      "semester_invalid": "Please select a valid semester",
-      "classroom_invalid": "Please select a valid classroom"
-    },
-    "classroom_item": {
-      "has_scores": "Some students still have scores > 0 for this item. Clear (zero-out / delete) all scores first before hiding the column."
-    }
-  },
   "admin_semesters": {
     "title": "Semesters",
     "subtitle": "Configure how many terms make up an academic year, and add / switch the current semester. Other pages (grade entry, dashboards) default to filtering by the current semester.",
@@ -734,6 +721,17 @@
     }
   },
   "errors": {
+    "item": {
+      "not_found": "Item not found",
+      "duplicate_name": "An item with this name already exists for this subject + category + semester",
+      "subject_invalid": "Please select a valid subject",
+      "category_invalid": "Please select a valid category",
+      "semester_invalid": "Please select a valid semester",
+      "classroom_invalid": "Please select a valid classroom"
+    },
+    "classroom_item": {
+      "has_scores": "Some students still have scores > 0 for this item. Clear (zero-out / delete) all scores first before hiding the column."
+    },
     "boundary": {
       "title": "Something went wrong on this page",
       "subtitle": "This page failed to render. Your saved data is unaffected — reload, or move to another page.",
