@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { NavLink, Outlet } from 'react-router-dom'
+import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 
 import { useAuth } from '../auth/AuthProvider'
 import { supabase } from '../lib/supabase'
+import { ErrorBoundary } from '../components/ErrorBoundary'
 import { SemesterSwitcher } from '../components/SemesterSwitcher'
 import { api } from '../lib/api'
 
@@ -39,6 +40,7 @@ const COLLAPSE_KEY = 'appshell.sidebar_collapsed'
 export function AppShell() {
   const { t, i18n } = useTranslation()
   const { session } = useAuth()
+  const location = useLocation()
   // Alerts badge counter (issue #161). Refetched every 60s so a teacher
   // who's been on the same surface for a while still sees new 0-scores
   // show up. Visiting /alerts marks them viewed and the count drops.
@@ -235,7 +237,11 @@ export function AppShell() {
         </div>
 
         <main className="flex-1 px-4 sm:px-8 lg:px-12 py-8 lg:py-10">
-          <Outlet />
+          {/* #243: a render crash inside a page must not blank the whole
+              app — keep the shell and show a readable error instead. */}
+          <ErrorBoundary resetKey={location.pathname}>
+            <Outlet />
+          </ErrorBoundary>
         </main>
       </div>
     </div>
