@@ -31,7 +31,7 @@ Each project has its own Environment Variables panel (Settings → Environment V
 | `VITE_SUPABASE_URL` | ✅ (Production = W, Preview = N) | — | — |
 | `VITE_SUPABASE_ANON_KEY` | ✅ | — | — |
 | `VITE_API_BASE_URL` | ✅ (points to matching backend URL — **no trailing slash**) | — | — |
-| `DATABASE_URL` (Session pooler) | — | ✅ | — |
+| `DATABASE_URL` (**Transaction pooler — port 6543**) | — | ✅ | — |
 | `SUPABASE_URL` | — | ✅ | ✅ |
 | `SUPABASE_SERVICE_ROLE_KEY` | — | ✅ | ✅ |
 | `SUPABASE_JWT_SECRET` | — | ✅ | ✅ |
@@ -67,6 +67,28 @@ Supabase exposes three connection modes; alembic + FastAPI need different ones:
 | Direct | `db.<ref>.supabase.co:5432` | ❌ IPv6-only | Nothing in this project — GH Actions and Vercel are IPv4-only |
 | Session pooler | `aws-1-*.pooler.supabase.com:5432` | ✅ | **alembic in CI** + **local dev**. Long-lived script-style connections; supports the session-scoped state alembic needs for DDL. |
 | Transaction pooler | `aws-1-*.pooler.supabase.com:6543` | ✅ | **FastAPI on Vercel**. Vercel opens a new connection per request — Transaction pooler keeps Postgres from running out of slots. Don't use for alembic — breaks DDL. |
+
+> **Only the port differs** between the two pooler modes — same host, same `postgres.<ref>` username, same password. Copy the exact string from Supabase → Project Settings → Database → Connection string rather than hand-editing the port, so you inherit any query params Supabase appends.
+>
+> This drifted once already (#247): `DATABASE_URL` was left on 5432, and because [backend/database.py](../backend/database.py) uses `NullPool`, every request paid a full connection handshake. If backend latency ever looks uniformly bad across all endpoints, check this port first.
+
+## Function region — must match the Supabase region
+
+[backend/vercel.json](../backend/vercel.json) pins the backend to `regions: ["hnd1"]` (Vercel's Tokyo = AWS `ap-northeast-1`), which is where the Supabase projects live.
+
+This matters more than being close to the user: a page load makes **one** round trip to the browser but **many** to the database. Left on Vercel's default `iad1` (Washington DC), every query was a ~170ms trans-Pacific hop, which is what made every page take 2–5s (#247).
+
+**If you ever move the Supabase project to another region, change `regions` to match** — otherwise the function is stranded on the wrong side of an ocean.
+
+Verify which region actually served a request by reading the second segment of the `X-Vercel-Id` response header (`hkg1::hnd1::...` = entered at the Hong Kong edge, executed in Tokyo):
+
+```bash
+curl -s -D - -o /dev/null https://grades-backend.vercel.app/api/health | grep -i x-vercel-id
+```
+
+A region set by hand in Vercel Dashboard → Settings → Functions can conflict with `vercel.json`; the header is the source of truth for what actually ran.
+
+**The frontend project is deliberately left alone** — it's static and served from the global edge CDN, so a region pin there would do nothing useful.
 
 ## Per-issue preview environments
 

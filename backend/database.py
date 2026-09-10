@@ -9,7 +9,19 @@ from config import settings
 
 # Serverless (Vercel) note: each invocation may run in a fresh container, so a
 # process-local SQLAlchemy pool can't be reused across requests. Hand pooling
-# to Supabase PgBouncer (transaction mode, port 6543) and keep no local pool.
+# to Supabase and keep no local pool.
+#
+# This REQUIRES DATABASE_URL to point at the transaction pooler on port 6543.
+# NullPool opens a brand-new connection per request; against the session pooler
+# (port 5432) that means a full TCP+TLS+SCRAM handshake every single time, which
+# is what made every endpoint slow (#247). Transaction mode keeps warm upstream
+# connections and hands one out cheaply.
+#
+# alembic must NOT use this URL — DDL needs session-scoped state, so migrations
+# stay on the session pooler via settings.alembic_database_url.
+#
+# psycopg2 doesn't use server-side prepared statements by default, so it's safe
+# in transaction mode. A future switch to asyncpg would need statement_cache_size=0.
 engine = create_engine(settings.database_url, poolclass=NullPool)
 
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)

@@ -187,10 +187,15 @@ export function ClassroomPoints() {
       )
       setTimeout(() => setToast(null), 3000)
       qc.invalidateQueries({ queryKey: ['points-students', classroomId] })
-      qc.invalidateQueries({ queryKey: ['points-classrooms'] })
+      // Not rendered on this page and already patched optimistically above —
+      // mark stale so it refetches on next mount, don't refetch now (#247).
+      qc.invalidateQueries({
+        queryKey: ['points-classrooms'],
+        refetchType: 'none',
+      })
       // A newly-typed reason was auto-filed server-side (#215) — refresh the
       // saved reason list so it appears in the combobox next time.
-      qc.invalidateQueries({ queryKey: meKey })
+      qc.invalidateQueries({ queryKey: meKey, refetchType: 'none' })
       setModal(null)
     },
     onError: (err) => {
@@ -223,8 +228,14 @@ export function ClassroomPoints() {
       )
       setTimeout(() => setToast(null), 3500)
       qc.invalidateQueries({ queryKey: ['points-students', classroomId] })
-      qc.invalidateQueries({ queryKey: ['points-classrooms'] })
-      qc.invalidateQueries({ queryKey: meKey })
+      // The student list above is the only thing on screen. The classroom
+      // rollup isn't rendered here, so mark it stale and let it refetch on
+      // next mount rather than blocking on it now (#247).
+      qc.invalidateQueries({
+        queryKey: ['points-classrooms'],
+        refetchType: 'none',
+      })
+      qc.invalidateQueries({ queryKey: meKey, refetchType: 'none' })
     },
     onError: (err) => {
       setToast(
@@ -292,7 +303,12 @@ export function ClassroomPoints() {
       }
       setTimeout(() => setToast(null), 3000)
       qc.invalidateQueries({ queryKey: ['points-students', classroomId] })
-      qc.invalidateQueries({ queryKey: ['points-classrooms'] })
+      // Not rendered on this page and already patched optimistically above —
+      // mark stale so it refetches on next mount, don't refetch now (#247).
+      qc.invalidateQueries({
+        queryKey: ['points-classrooms'],
+        refetchType: 'none',
+      })
       setConfirm(null)
     },
     onError: (err) => {
@@ -339,7 +355,12 @@ export function ClassroomPoints() {
       )
       setTimeout(() => setToast(null), 3000)
       qc.invalidateQueries({ queryKey: ['points-students', classroomId] })
-      qc.invalidateQueries({ queryKey: ['points-classrooms'] })
+      // Not rendered on this page and already patched optimistically above —
+      // mark stale so it refetches on next mount, don't refetch now (#247).
+      qc.invalidateQueries({
+        queryKey: ['points-classrooms'],
+        refetchType: 'none',
+      })
       setConfirm(null)
     },
     onError: (err) => {
