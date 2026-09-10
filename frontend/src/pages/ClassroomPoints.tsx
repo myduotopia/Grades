@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useParams } from 'react-router-dom'
 
@@ -70,6 +70,11 @@ export function ClassroomPoints() {
   )
   // Quick student lookup by seat number or name fragment (#173).
   const [query, setQuery] = useState('')
+  // Group + position filters (#242). The group is picked by id rather than
+  // typed, so "第一組 的 第1位" is unambiguous: both conditions are read off
+  // the same membership instead of being satisfied by two different groups.
+  const [groupFilter, setGroupFilter] = useState<string | null>(null)
+  const [orderFilter, setOrderFilter] = useState<number | null>(null)
   // Per-row selection for the subset batch flow (#173). The batch button
   // is enabled only when ≥1 student is checked; "select all" toggles the
   // full filtered set so a search-narrowed list can be batch-applied.
@@ -83,14 +88,45 @@ export function ClassroomPoints() {
       return next
     })
   }
+  // Narrowing the list clears the selection. The batch mutation posts
+  // Array.from(selected), which is NOT limited to what is on screen — so
+  // without this, "filter 第一組 → select all → add" followed by the same for
+  // 第二組 would award 第一組 twice. Group filtering makes that the normal
+  // workflow rather than an edge case (#242).
+  useEffect(() => {
+    setSelected(new Set())
+  }, [query, groupFilter, orderFilter])
+
   const trimmedQuery = query.trim().toLowerCase()
-  const filteredStudents = trimmedQuery
-    ? students.filter((s) => {
-        const seatStr = String(s.seat_number)
-        const name = (s.name ?? '').toLowerCase()
-        return seatStr.includes(trimmedQuery) || name.includes(trimmedQuery)
-      })
-    : students
+  const selectedGroup = groups.find((g) => g.id === groupFilter) ?? null
+  // With a group chosen the positions stop at that group's size; otherwise the
+  // longest group sets the ceiling. Math.max of an empty list is -Infinity,
+  // hence the 0 seed.
+  const maxOrder = selectedGroup
+    ? selectedGroup.members.length
+    : Math.max(0, ...groups.map((g) => g.members.length))
+
+  // A student can sit in several groups at once. With a group chosen the
+  // position must come from THAT membership; with no group chosen, position
+  // matches across every group (so "No. 1" gives every group's first member).
+  const filteredStudents = students.filter((s) => {
+    const refs = groupIndex.get(s.student_id) ?? []
+    if (trimmedQuery) {
+      const hit =
+        String(s.seat_number).includes(trimmedQuery) ||
+        (s.name ?? '').toLowerCase().includes(trimmedQuery)
+      if (!hit) return false
+    }
+    if (groupFilter !== null) {
+      const inGroup = refs.filter((r) => r.groupId === groupFilter)
+      if (inGroup.length === 0) return false
+      if (orderFilter !== null && !inGroup.some((r) => r.order === orderFilter))
+        return false
+    } else if (orderFilter !== null) {
+      if (!refs.some((r) => r.order === orderFilter)) return false
+    }
+    return true
+  })
   function changeView(v: View) {
     setDisplayMode(v)
     localStorage.setItem(VIEW_KEY, v)
@@ -366,7 +402,7 @@ export function ClassroomPoints() {
 
       {!studentsQ.isLoading && students.length > 0 && (
         <>
-          <div className="flex items-center gap-3 mb-4">
+          <div className="flex flex-wrap items-center gap-3 mb-4">
             <input
               type="search"
               value={query}
@@ -374,6 +410,55 @@ export function ClassroomPoints() {
               placeholder={t('points.search_placeholder')}
               className="w-full sm:w-72 border border-slate-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
             />
+            {hasGroups && (
+              <>
+                <select
+                  value={groupFilter ?? ''}
+                  onChange={(e) => {
+                    const next = e.target.value === '' ? null : e.target.value
+                    setGroupFilter(next)
+                    // A shorter group may not have the position that was
+                    // picked, which would silently show an empty list.
+                    const size = next
+                      ? (groups.find((g) => g.id === next)?.members.length ?? 0)
+                      : Math.max(0, ...groups.map((g) => g.members.length))
+                    if (orderFilter !== null && orderFilter > size) {
+                      setOrderFilter(null)
+                    }
+                  }}
+                  aria-label={t('points.group_filter_label')}
+                  className="border border-slate-300 rounded-lg px-2 py-1.5 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                >
+                  <option value="">{t('points.group_filter_all')}</option>
+                  {groups.map((g) => (
+                    <option key={g.id} value={g.id}>
+                      {g.name}
+                    </option>
+                  ))}
+                </select>
+                {maxOrder > 0 && (
+                  <select
+                    value={orderFilter ?? ''}
+                    onChange={(e) =>
+                      setOrderFilter(
+                        e.target.value === '' ? null : Number(e.target.value),
+                      )
+                    }
+                    aria-label={t('points.order_filter_label')}
+                    className="border border-slate-300 rounded-lg px-2 py-1.5 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  >
+                    <option value="">{t('points.order_filter_all')}</option>
+                    {Array.from({ length: maxOrder }, (_, i) => i + 1).map(
+                      (n) => (
+                        <option key={n} value={n}>
+                          {t('points.order_filter_option', { n })}
+                        </option>
+                      ),
+                    )}
+                  </select>
+                )}
+              </>
+            )}
             <span className="text-xs text-slate-500 hidden sm:inline">
               {t('points.match_count', { count: filteredStudents.length })}
             </span>
