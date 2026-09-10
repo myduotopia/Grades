@@ -1,4 +1,15 @@
 {
+  "breadcrumb": {
+    "aria": "Breadcrumb",
+    "students": "Students",
+    "groups": "Groups",
+    "grades": "Grades",
+    "loading": "Loading…",
+    "more": "Show hidden levels",
+    "no_results": "No matches",
+    "search_placeholder": "Search…",
+    "switch_aria": "Switch {{name}}"
+  },
   "app": {
     "title": "Grades",
     "tagline": "Student grade and point tracking",
@@ -69,7 +80,6 @@
     "batch_add": "Batch add ({{count}})",
     "batch_deduct": "Batch deduct ({{count}})",
     "goto_classes": "Go to classes",
-    "back": "Back",
     "custom": "Custom",
     "classroom_card": {
       "summary": "{{count}} students · {{total}} pts total"
@@ -235,19 +245,6 @@
     },
     "error": {
       "missing_fields": "Please fill in all fields"
-    }
-  },
-  "errors": {
-    "item": {
-      "not_found": "Item not found",
-      "duplicate_name": "An item with this name already exists for this subject + category + semester",
-      "subject_invalid": "Please select a valid subject",
-      "category_invalid": "Please select a valid category",
-      "semester_invalid": "Please select a valid semester",
-      "classroom_invalid": "Please select a valid classroom"
-    },
-    "classroom_item": {
-      "has_scores": "Some students still have scores > 0 for this item. Clear (zero-out / delete) all scores first before hiding the column."
     }
   },
   "admin_semesters": {
@@ -528,7 +525,6 @@
   "students": {
     "title": "Students",
     "subtitle": "Manage this class's roster, seat numbers, and per-category standards.",
-    "back_to_classes": "Back to classes",
     "no_name": "(No name)",
     "standards_heading": "Per-category standards (optional)",
     "confirm_delete": "Delete student at seat {{seat}}? This cannot be undone.",
@@ -734,6 +730,22 @@
     }
   },
   "errors": {
+    "item": {
+      "not_found": "Item not found",
+      "duplicate_name": "An item with this name already exists for this subject + category + semester",
+      "subject_invalid": "Please select a valid subject",
+      "category_invalid": "Please select a valid category",
+      "semester_invalid": "Please select a valid semester",
+      "classroom_invalid": "Please select a valid classroom"
+    },
+    "classroom_item": {
+      "has_scores": "Some students still have scores > 0 for this item. Clear (zero-out / delete) all scores first before hiding the column."
+    },
+    "boundary": {
+      "title": "Something went wrong on this page",
+      "subtitle": "This page failed to render. Your saved data is unaffected — reload, or move to another page.",
+      "reload": "Reload"
+    },
     "major_exam": {
       "already_exists": "A major exam already exists for this class — edit the existing one.",
       "already_exists_redirect": "Major exam already exists ({{name}}). Switched to it — edit the existing one.",
@@ -770,7 +782,6 @@
     "subtitle": "Snapshots of past-archived class grade bundles. Open any to browse, add items, edit scores — none of it affects the live classroom page.",
     "empty": "No archives yet. From a class's grades page, hit 「Archive grades」 in the top right.",
     "open": "Open",
-    "back_to_list": "← Back to archives",
     "filter": {
       "classroom": "Class",
       "all_classes": "All classes",

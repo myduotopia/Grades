@@ -4,6 +4,8 @@ import { useParams, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { ArchivedSemesterBanner } from '../components/ArchivedSemesterBanner'
+import { Breadcrumb } from '../components/Breadcrumb'
+import { useStudentBreadcrumbs } from '../hooks/useBreadcrumbs'
 import { StudentSummaryCard } from '../components/StudentGradeCard'
 import { useSemesters } from '../hooks/useSemesters'
 import { PageContainer } from '../layout/PageContainer'
@@ -62,6 +64,8 @@ export function StudentDetail() {
     placeholderData: (prev) => prev,
   })
 
+  const studentCrumbs = useStudentBreadcrumbs(detailQ.data)
+
   if (!studentId) return null
 
   const detail = detailQ.data
@@ -81,7 +85,13 @@ export function StudentDetail() {
 
   return (
     <PageContainer>
-      <PageHeader title={headerTitle} subtitle={detail?.email || undefined} />
+      <PageHeader
+        title={headerTitle}
+        subtitle={detail?.email || undefined}
+        // This route isn't nested under its class, so the crumbs have to be
+        // built from the detail payload rather than the URL (#250).
+        breadcrumb={<Breadcrumb items={studentCrumbs} />}
+      />
 
       {isArchived && (
         <ArchivedSemesterBanner

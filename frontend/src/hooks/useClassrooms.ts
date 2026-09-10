@@ -4,10 +4,11 @@ import { api, type Classroom, type ClassroomList } from '../lib/api'
 
 export const classroomsKey = ['classrooms'] as const
 
-export function useClassrooms() {
+export function useClassrooms(options?: { enabled?: boolean }) {
   return useQuery<ClassroomList>({
     queryKey: classroomsKey,
     queryFn: api.classrooms.list,
+    enabled: options?.enabled ?? true,
   })
 }
 
