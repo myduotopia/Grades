@@ -734,6 +734,11 @@
     }
   },
   "errors": {
+    "boundary": {
+      "title": "這個頁面出了點問題",
+      "subtitle": "畫面載入失敗。你已儲存的資料不受影響，可以重新整理或切換到其他頁面。",
+      "reload": "重新整理"
+    },
     "major_exam": {
       "already_exists": "段考成績項目已存在，請直接編輯",
       "already_exists_redirect": "段考已存在（{{name}}），已切換到該項目，請直接編輯",

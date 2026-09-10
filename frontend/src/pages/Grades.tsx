@@ -980,13 +980,25 @@ function BySubjectView({
     // editable column exists at a time, so there's no neighbouring cell.
   }
 
-  if (view.items.length === 0) return <EmptyHint />
+  // NOTE: no early return above this point — every hook in this component
+  // must run on every render. A class going from 0 items to 1 item (the
+  // teacher creating the very first grade item, #243) used to skip the
+  // hooks declared further down and crash with "Rendered more hooks than
+  // during the previous render", blanking the whole page. The empty-state
+  // guard now sits just above the JSX return at the bottom.
+
+  // `pickedId` is seeded once at mount; when the class had no items yet the
+  // subject list was empty and it stayed ''. Derive the effective subject so
+  // the first subject gets selected as soon as one exists (#243).
+  const pickedSubjectId = subjects.some((s) => s.id === pickedId)
+    ? pickedId
+    : (subjects[0]?.id ?? '')
 
   // Issue #159: column order = category group (段考 → 小考 → 作業 →
   // 出席率 → 加分), and within each group newest activation first.
   // Categories with no items just don't appear.
   const items = orderItemsForBySubject(
-    view.items.filter((i) => i.subject_id === pickedId),
+    view.items.filter((i) => i.subject_id === pickedSubjectId),
   )
   const grades = view.grades
   const lookup: Record<string, Record<string, number>> = {}
@@ -1265,13 +1277,15 @@ function BySubjectView({
     })
   }
 
+  if (view.items.length === 0) return <EmptyHint />
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-3">
         <label className="text-sm text-slate-600 inline-flex items-center gap-2">
           {t('grades.pick_subject')}
           <select
-            value={pickedId}
+            value={pickedSubjectId}
             onChange={(e) => {
               setPickedId(e.target.value)
               cancelEdit()

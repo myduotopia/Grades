@@ -734,6 +734,11 @@
     }
   },
   "errors": {
+    "boundary": {
+      "title": "Something went wrong on this page",
+      "subtitle": "This page failed to render. Your saved data is unaffected — reload, or move to another page.",
+      "reload": "Reload"
+    },
     "major_exam": {
       "already_exists": "A major exam already exists for this class — edit the existing one.",
       "already_exists_redirect": "Major exam already exists ({{name}}). Switched to it — edit the existing one.",
