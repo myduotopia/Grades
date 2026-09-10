@@ -39,8 +39,32 @@ export function useDeleteGroup(classroomId: string) {
 
 export function useReorderGroups(classroomId: string) {
   const qc = useQueryClient()
-  return useMutation<GroupList, Error, string[]>({
+  return useMutation<GroupList, Error, string[], { previous?: GroupList }>({
     mutationFn: (groupIds) => api.groups.updateOrder(classroomId, groupIds),
-    onSuccess: () => qc.invalidateQueries({ queryKey: groupsKey(classroomId) }),
+    // Reorder the cache up front so the list stays where the user dropped it.
+    // Without this the row snaps back to the server order until the PUT lands.
+    onMutate: async (groupIds) => {
+      await qc.cancelQueries({ queryKey: groupsKey(classroomId) })
+      const previous = qc.getQueryData<GroupList>(groupsKey(classroomId))
+      if (previous) {
+        const byId = new Map(previous.data.map((g) => [g.id, g]))
+        const reordered = groupIds
+          .map((id) => byId.get(id))
+          .filter((g): g is Group => !!g)
+        // keep anything the caller didn't mention, matching the backend
+        const seen = new Set(groupIds)
+        for (const g of previous.data) if (!seen.has(g.id)) reordered.push(g)
+        qc.setQueryData<GroupList>(groupsKey(classroomId), {
+          ...previous,
+          data: reordered,
+        })
+      }
+      return { previous }
+    },
+    onError: (_err, _groupIds, ctx) => {
+      if (ctx?.previous) qc.setQueryData(groupsKey(classroomId), ctx.previous)
+    },
+    // The endpoint returns the authoritative ordered list, so no refetch needed.
+    onSuccess: (data) => qc.setQueryData(groupsKey(classroomId), data),
   })
 }

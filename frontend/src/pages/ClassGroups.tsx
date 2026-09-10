@@ -7,6 +7,7 @@ import {
   DndContext,
   KeyboardSensor,
   PointerSensor,
+  TouchSensor,
   useSensor,
   useSensors,
   type DragEndEvent,
@@ -221,6 +222,11 @@ export function ClassGroups() {
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    // Touch needs a long-press to start, otherwise a vertical swipe inside the
+    // scrollable lists would be swallowed by the drag instead of scrolling.
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: 200, tolerance: 8 },
+    }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   )
 
@@ -361,7 +367,7 @@ export function ClassGroups() {
       )}
 
       {!loading && !failed && (
-        <div className="grid grid-cols-1 lg:grid-cols-[240px_minmax(0,1fr)_300px] gap-6 items-start">
+        <div className="grid grid-cols-1 lg:grid-cols-[minmax(120px,240px)_minmax(300px,1fr)_300px] lg:gap-4 xl:gap-6 gap-6 items-start">
           {/* ---------- column 1: group list ---------- */}
           <section className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
             <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-3">
@@ -666,7 +672,7 @@ function SortableGroupRow({
         {...attributes}
         {...listeners}
         title={handleTitle}
-        className="px-1 py-2 text-slate-300 select-none cursor-grab active:cursor-grabbing"
+        className="shrink-0 flex h-11 w-8 items-center justify-center touch-none text-slate-300 select-none cursor-grab active:cursor-grabbing"
       >
         ⋮⋮
       </span>
@@ -685,8 +691,8 @@ function SortableGroupRow({
           }`}
           aria-hidden="true"
         />
-        <span className="truncate">{group.name}</span>
-        <span className="ml-auto text-xs text-slate-400 tabular-nums">
+        <span className="min-w-0 line-clamp-2 break-words">{group.name}</span>
+        <span className="ml-auto shrink-0 text-xs text-slate-400 tabular-nums">
           {group.members.length}
         </span>
       </button>
@@ -747,7 +753,7 @@ function SortableMemberRow({
         {...attributes}
         {...listeners}
         title={handleTitle}
-        className="w-6 text-slate-400 select-none cursor-grab active:cursor-grabbing text-center"
+        className="shrink-0 flex h-11 w-8 items-center justify-center touch-none text-slate-400 select-none cursor-grab active:cursor-grabbing"
       >
         ⋮⋮
       </span>
