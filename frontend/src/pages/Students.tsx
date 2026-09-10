@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { StudentImportModal } from '../components/StudentImportModal'
@@ -40,7 +40,6 @@ const VIEW_KEY = 'students.view'
 export function Students() {
   const { t, i18n } = useTranslation()
   const { classroomId } = useParams<{ classroomId: string }>()
-  const navigate = useNavigate()
 
   const qc = useQueryClient()
   const classroomQ = useQuery({
@@ -81,13 +80,6 @@ export function Students() {
         subtitle={t('students.subtitle')}
         actions={
           <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-            <button
-              onClick={() => navigate('/classes')}
-              className={SECONDARY_BTN}
-              aria-label={t('students.back_to_classes')}
-            >
-              {t('students.back_to_classes')}
-            </button>
             <button
               onClick={() => setModal({ kind: 'import' })}
               className={SECONDARY_BTN}

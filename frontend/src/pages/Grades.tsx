@@ -305,16 +305,6 @@ export function Grades() {
                   : t('grades.archive_now')}
               </button>
             )}
-            <button
-              onClick={() =>
-                navigate(isSnapshotMode ? '/snapshots' : '/classes')
-              }
-              className={SECONDARY_BTN}
-            >
-              {isSnapshotMode
-                ? t('snapshots.back_to_list')
-                : t('students.back_to_classes')}
-            </button>
           </div>
         }
       />

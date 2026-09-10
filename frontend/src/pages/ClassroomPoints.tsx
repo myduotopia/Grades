@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Link, useParams } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 
 import {
   StudentGroupBadges,
@@ -396,9 +396,6 @@ export function ClassroomPoints() {
                 {t('points.reset_class')}
               </button>
             )}
-            <Link to="/points" className="text-sm text-slate-600 hover:text-slate-900">
-              ← {t('points.back')}
-            </Link>
           </div>
         }
       />

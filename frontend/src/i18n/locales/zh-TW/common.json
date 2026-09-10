@@ -1,4 +1,15 @@
 {
+  "breadcrumb": {
+    "aria": "麵包屑導覽",
+    "students": "學生",
+    "groups": "組別",
+    "grades": "成績",
+    "loading": "載入中…",
+    "more": "顯示其他層級",
+    "no_results": "找不到符合的項目",
+    "search_placeholder": "搜尋…",
+    "switch_aria": "切換{{name}}"
+  },
   "app": {
     "title": "Grades",
     "tagline": "學生成績與點數記錄系統",
@@ -69,7 +80,6 @@
     "batch_add": "批次加點（{{count}} 位）",
     "batch_deduct": "批次扣點（{{count}} 位）",
     "goto_classes": "前往班級管理",
-    "back": "返回班級列表",
     "custom": "自訂",
     "classroom_card": {
       "summary": "{{count}} 位學生・累計 {{total}} 點"
@@ -528,7 +538,6 @@
   "students": {
     "title": "學生名單",
     "subtitle": "管理這個班級的學生資料、座號與各類別標準分。",
-    "back_to_classes": "返回班級列表",
     "no_name": "（未填姓名）",
     "standards_heading": "各類別達標分數（選填）",
     "confirm_delete": "確定刪除座號 {{seat}} 的學生？此動作不可復原。",
@@ -770,7 +779,6 @@
     "subtitle": "已封存的班級成績結算包。點進去可瀏覽、補加成績項目、編輯分數，所有操作不影響主班級頁。",
     "empty": "尚未有任何成績封存。到班級成績頁右上角按「封存目前成績」開始第一份。",
     "open": "開啟",
-    "back_to_list": "← 回封存列表",
     "filter": {
       "classroom": "班級",
       "all_classes": "全部班級",
