@@ -10,6 +10,7 @@ mutate it.
 """
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import date, datetime
 from typing import Annotated
 from uuid import UUID, uuid4
@@ -124,23 +125,6 @@ def _ensure_saved_reason(db: Session, user_id: UUID, name: str) -> None:
         settings.point_reasons = existing
 
 
-def _latest_reset(
-    db: Session, user_id: UUID, student_id: UUID
-) -> datetime | None:
-    """Most-recent PointReset.reset_at for this student across ALL time
-    (cumulative — #207), or None if there isn't one. Acts as the floor for
-    the running total: anything created on or before this moment has been
-    zeroed out (#165)."""
-    return (
-        db.query(func.max(PointReset.reset_at))
-        .filter(
-            PointReset.user_id == user_id,
-            PointReset.student_id == student_id,
-        )
-        .scalar()
-    )
-
-
 def _latest_reset_map_for_classroom(
     db: Session, user_id: UUID, classroom_id: UUID
 ) -> dict[UUID, datetime]:
@@ -160,42 +144,47 @@ def _latest_reset_map_for_classroom(
     return {sid: ts for sid, ts in rows}
 
 
-def _points_for_student(
-    db: Session, user_id: UUID, student_id: UUID
-) -> int:
-    """Cumulative running total (#207): sum of ALL the student's points after
-    their latest 歸零 reset (or all, if never reset). No semester window —
-    archived-period and prior-semester points all count. Resets are strictly
-    exclusive (a record at exactly the reset moment is 'before', #165)."""
-    last_reset = _latest_reset(db, user_id, student_id)
-    q = db.query(func.coalesce(func.sum(PointRecord.points), 0)).filter(
-        PointRecord.user_id == user_id,
-        PointRecord.student_id == student_id,
-    )
-    if last_reset is not None:
-        q = q.filter(PointRecord.created_at > last_reset)
-    return int(q.scalar() or 0)
+def _latest_reset_map_for_students(
+    db: Session, user_id: UUID, student_ids: Sequence[UUID]
+) -> dict[UUID, datetime]:
+    """student_id → latest reset_at ever (only students that have one).
 
-
-def _points_for_classroom(
-    db: Session, user_id: UUID, classroom_id: UUID
-) -> int:
-    """Classroom total = sum of every student's cumulative total (each may
-    have their own last-reset floor)."""
-    last_reset_by_student = _latest_reset_map_for_classroom(
-        db, user_id, classroom_id
-    )
-    student_ids = [
-        sid
-        for (sid,) in db.query(Student.id).filter(
-            Student.classroom_id == classroom_id,
-            Student.user_id == user_id,
-        ).all()
-    ]
+    One query for the whole list. The floor semantics live in
+    _points_map_for_students, which is this helper's only caller.
+    """
     if not student_ids:
-        return 0
-    # Pull every relevant PointRecord once, then bucket per student so we
-    # only apply the right floor per student. Avoids N round-trips.
+        return {}
+    rows = (
+        db.query(PointReset.student_id, func.max(PointReset.reset_at))
+        .filter(
+            PointReset.user_id == user_id,
+            PointReset.student_id.in_(student_ids),
+        )
+        .group_by(PointReset.student_id)
+        .all()
+    )
+    return {sid: ts for sid, ts in rows}
+
+
+def _points_map_for_students(
+    db: Session, user_id: UUID, student_ids: Sequence[UUID]
+) -> dict[UUID, int]:
+    """student_id → cumulative running total, for a whole roster at once.
+
+    Two queries regardless of roster size (no N+1) — the batching pattern
+    used throughout student_detail.py. This is the single definition of the
+    reset-floor semantics; every other points total goes through it.
+
+    Cumulative across all time (#207): no semester window, so archived-period
+    and prior-semester points all count. Resets are strictly exclusive — a
+    record created at exactly the reset moment counts as 'before' it (#165).
+
+    Every requested student appears in the result, defaulting to 0.
+    """
+    if not student_ids:
+        return {}
+    floor_by_student = _latest_reset_map_for_students(db, user_id, student_ids)
+    totals: dict[UUID, int] = {sid: 0 for sid in student_ids}
     rows = (
         db.query(
             PointRecord.student_id,
@@ -208,13 +197,22 @@ def _points_for_classroom(
         )
         .all()
     )
-    total = 0
     for sid, pts, ts in rows:
-        floor = last_reset_by_student.get(sid)
+        floor = floor_by_student.get(sid)
         if floor is not None and ts <= floor:
             continue
-        total += int(pts)
-    return total
+        totals[sid] += int(pts)
+    return totals
+
+
+def _points_for_student(
+    db: Session, user_id: UUID, student_id: UUID
+) -> int:
+    """Cumulative running total for one student — thin wrapper so the
+    reset-floor semantics live in exactly one place."""
+    return _points_map_for_students(db, user_id, [student_id]).get(
+        student_id, 0
+    )
 
 
 # ---------- Summary views (drive /points pages) ----------
@@ -241,18 +239,31 @@ def list_classroom_summaries(
     if not classrooms:
         return ClassPointsSummaryList(data=[])
 
-    # student counts per classroom in one query
-    counts_rows = (
-        db.query(Student.classroom_id, func.count(Student.id))
+    # Every student the teacher owns, in one query. This gives us both the
+    # per-classroom roster size and the id list for the points map, so the
+    # whole page is 3 queries flat instead of 3 per classroom (#247).
+    student_rows = (
+        db.query(Student.id, Student.classroom_id)
         .filter(Student.user_id == user_id)
-        .group_by(Student.classroom_id)
         .all()
     )
-    counts = {cid: int(n) for cid, n in counts_rows}
+    counts: dict[UUID, int] = {}
+    classroom_of: dict[UUID, UUID] = {}
+    for sid, cid in student_rows:
+        counts[cid] = counts.get(cid, 0) + 1
+        classroom_of[sid] = cid
+
+    points_by_student = _points_map_for_students(
+        db, user_id, [sid for sid, _ in student_rows]
+    )
+    points_by_classroom: dict[UUID, int] = {}
+    for sid, pts in points_by_student.items():
+        cid = classroom_of[sid]
+        points_by_classroom[cid] = points_by_classroom.get(cid, 0) + pts
 
     out: list[ClassPointsSummary] = []
     for c in classrooms:
-        pts = _points_for_classroom(db, user_id, c.id)
+        pts = points_by_classroom.get(c.id, 0)
         out.append(
             ClassPointsSummary(
                 classroom_id=c.id,
@@ -292,9 +303,13 @@ def list_classroom_student_summaries(
         .all()
     )
 
+    points_by_student = _points_map_for_students(
+        db, user_id, [s.id for s in students]
+    )
+
     out: list[StudentPointsSummary] = []
     for s in students:
-        pts = _points_for_student(db, user_id, s.id)
+        pts = points_by_student.get(s.id, 0)
         out.append(
             StudentPointsSummary(
                 student_id=s.id,
@@ -549,8 +564,11 @@ def reset_classroom_points(
     # Issue #165: write one PointReset marker per student that currently
     # has a non-zero running total. Students already at 0 (per the new
     # last-reset-aware sum) are skipped so the history stays clean.
+    points_by_student = _points_map_for_students(
+        db, user_id, [s.id for s in students]
+    )
     for s in students:
-        current = _points_for_student(db, user_id, s.id)
+        current = points_by_student.get(s.id, 0)
         if current == 0:
             skipped += 1
             continue
