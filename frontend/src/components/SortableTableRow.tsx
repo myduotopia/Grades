@@ -55,7 +55,7 @@ export function SortableTableRow({
     >
       <td
         className={`px-2 py-2.5 w-8 text-slate-300 text-center select-none ${
-          disabled ? '' : 'cursor-grab active:cursor-grabbing'
+          disabled ? '' : 'touch-none cursor-grab active:cursor-grabbing'
         }`}
         aria-hidden={disabled}
         title={disabled ? undefined : handleTitle}
