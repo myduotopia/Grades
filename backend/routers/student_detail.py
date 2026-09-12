@@ -158,11 +158,13 @@ def _build_subject_summaries(
     weight_by: dict[UUID, dict[str, int]],
 ) -> list[StudentSubjectSummary]:
     """Per-subject weighted summaries for one student (#210). NO renormalise:
-    categories with no grades simply lose their weight. 額外加分 is folded into
-    the 平時 group (#235): it's scaled by the sum of the present 平時 category
-    weights (小考/作業/出席率 — same denominator as 原始平時) then added, capped
-    at 100. Mirrors gradeMath.ts (weightedExtraBonus) and the class views."""
-    plain_keys = ("quiz", "homework", "attendance")
+    categories with no grades simply lose their weight. 額外加分 is an ordinary
+    0..100 category scaled by its OWN `extra` weight (#257, replacing the #235
+    rule that rode the 平時 weight sum); `extra` stays out of the 100% base sum,
+    and the total is still capped at 100. A subject whose `extra` weight is 0
+    (the default) gets no bonus at all — the teacher opts in on the subject
+    weights page. Mirrors gradeMath.ts (weightedExtraBonus) and the class
+    views."""
     summaries: list[StudentSubjectSummary] = []
     for subj_id, by_cat in by_subject.items():
         sys_key, disp = subject_meta[subj_id]
@@ -179,17 +181,13 @@ def _build_subject_summaries(
         weighted = None
         if applicable:
             base = sum((cat_avg[ck] * w) / 100.0 for ck, w in applicable)
-            # 額外加分 (#235): raw extra × (present 平時 weight sum) ÷ 100, so it
-            # rides the 平時 weight instead of being a flat bonus.
-            plain_w_sum = sum(
-                w
-                for ck, w in weights_map.items()
-                if ck in plain_keys and ck in cat_avg and w > 0
-            )
+            # 額外加分 (#257): treated like any other category — its average
+            # × its own `extra` weight ÷ 100. Weight 0 (default) → no bonus.
             extra_avg = cat_avg.get("extra")
+            extra_w = weights_map.get("extra", 0)
             bonus = (
-                (extra_avg * plain_w_sum / 100.0)
-                if extra_avg is not None
+                (extra_avg * extra_w / 100.0)
+                if extra_avg is not None and extra_w > 0
                 else 0.0
             )
             weighted = min(100.0, round(base + bonus, 2))

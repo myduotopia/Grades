@@ -12,6 +12,12 @@
  *   extra_bonus = avg(student's `extra` scores in this subject) × weight[subject, extra] / 100
  *   final = min(100, weighted + extra_bonus)
  *
+ * `extra` (額外加分) is an ordinary 0..100 category that simply sits outside
+ * the “non-extra weights sum to 100%” rule. Its weight defaults to 0, so a
+ * teacher must opt in on the subject weights page before 加分 counts at all.
+ * It affects ONLY the weighted total — 原始平時 (rawPlainScore) excludes it
+ * (#257; it used to be added there raw and uncapped, which produced a 176).
+ *
  * Weights are stored as integer percents (5 means 5%). Categories with no
  * items contribute 0 — the weighted total is NOT renormalised. If a teacher
  * sets 出席率 10% but never enters attendance scores, students simply lose
@@ -100,8 +106,8 @@ function computeSubjectBreakdown(
     }
     if (hasAny) weightedTotal = acc
   }
-  // 額外加分 (#235): folded into the 平時 group — scaled by the present 平時
-  // weight sum (see weightedExtraBonus), then added, capped at 100.
+  // 額外加分 (#257): an ordinary category scaled by its own `extra` weight
+  // (see weightedExtraBonus), then added, capped at 100.
   const extraBonus = weightedExtraBonus(byCategoryAvg, weights)
   if (weightedTotal !== null) {
     weightedTotal = Math.min(100, weightedTotal + extraBonus)
@@ -163,7 +169,7 @@ export function computeProjection(
     hasWeighted = true
     acc += (byCategoryAvg[c] * w) / 100
   }
-  // 額外加分 (#235): folded into 平時 — scaled by the present 平時 weight sum.
+  // 額外加分 (#257): scaled by its own `extra` weight.
   const bonus = weightedExtraBonus(byCategoryAvg, weights)
   const weightedTotal = hasWeighted ? Math.min(100, acc + bonus) : null
 
@@ -229,15 +235,19 @@ export function computeProjection(
 const PLAIN_KEYS = ['quiz', 'homework', 'attendance'] as const
 
 /**
- * 原始平時成績 (#223) — the coursework score *before* the subject's category
- * weights scale it down. It's the weight-renormalised average of the 平時
- * categories (小考 / 作業 / 出席率) plus 額外加分 added as a raw bonus.
+ * 原始平時成績 (#223, fixed in #257) — the coursework score *before* the
+ * subject's category weights scale it down. It's the weight-renormalised
+ * average of the 平時 categories (小考 / 作業 / 出席率) and nothing else.
+ *
+ * 額外加分 is deliberately NOT included: it used to be added here at its raw
+ * value, which let this column read 176 for a student with 小考 68 / 作業 94 /
+ * 加分 95. 加分 now only affects the weighted total, via its own weight.
  *
  * Only categories that have a score AND weight > 0 count toward both the
  * numerator and the denominator — a missing one is dropped from both, so the
- * score isn't understated (缺項不灌水). 額外加分 is added at its raw value (not
- * weighted). Returns null when there's no 平時 score at all, and is NOT capped
- * at 100 — it's a raw figure. Mirrors backend `_raw_plain_score` exactly.
+ * score isn't understated (缺項不灌水). Being an average of 0..100 scores it
+ * naturally lands in 0..100. Returns null when there's no 平時 score at all.
+ * Mirrors backend `_raw_plain_score` exactly.
  */
 export function rawPlainScore(
   byCategoryAvg: Record<string, number>,
@@ -254,18 +264,19 @@ export function rawPlainScore(
     }
   }
   if (den === 0) return null
-  let score = num / den
-  const extra = byCategoryAvg[EXTRA_KEY]
-  if (extra !== undefined) score += extra
-  return score
+  return num / den
 }
 
 /**
- * 額外加分對「加權總分」的貢獻 (#235). 額外加分屬平時群組，隨「有分數的平時類別
- * 權重總和」折算——與 rawPlainScore 的分母一致，讓
- *   加權總分 = 原始平時 × 平時權重總和 ÷ 100 + 段考 × 段考權重 ÷ 100
- * 成立。無額外加分、或該科完全沒有平時分數（權重和為 0）時，貢獻為 0。
- * （原始平時本身仍以原始額外加分呈現，見 rawPlainScore。）
+ * 額外加分對「加權總分」的貢獻 (#235，算法於 #257 修正)。
+ *
+ * 額外加分就是一個普通的 0..100 成績類別，乘上它自己的 `extra` 權重：
+ *   貢獻 = 額外加分平均 × weights.extra ÷ 100
+ * 舊版是隨「平時權重總和」折算，與原始平時那邊的「原值相加」不一致，造成同一
+ * 筆加分在兩個欄位表現不同。現在原始平時完全不含加分，加分只走這條路。
+ *
+ * `extra` 不計入「非 extra 權重總和 = 100%」的檢核，所以它是真正的「額外」。
+ * 預設權重為 0，此時即使有加分成績也不計分 — 老師需到科目權重頁自行設定。
  */
 export function weightedExtraBonus(
   byCategoryAvg: Record<string, number>,
@@ -273,14 +284,9 @@ export function weightedExtraBonus(
 ): number {
   const extra = byCategoryAvg[EXTRA_KEY]
   if (extra === undefined) return 0
-  let plainWeightSum = 0
-  for (const k of PLAIN_KEYS) {
-    if (byCategoryAvg[k] !== undefined) {
-      const w = weights[k] ?? 0
-      if (w > 0) plainWeightSum += w
-    }
-  }
-  return (extra * plainWeightSum) / 100
+  const w = weights[EXTRA_KEY] ?? 0
+  if (w <= 0) return 0
+  return (extra * w) / 100
 }
 
 /** Pass-status note for the 備註 column / card (#210). Returns '' when there's
