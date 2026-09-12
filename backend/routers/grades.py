@@ -303,11 +303,13 @@ def _safe_sheet_title(raw: str, used: set[str]) -> str:
 
 
 def _raw_plain_score(cat_avg: dict, weights: dict) -> float | None:
-    """原始平時成績 (#223): weight-renormalised average of the 平時 categories
-    (小考/作業/出席) plus 額外加分 as raw bonus. Only categories that have a score
-    AND weight > 0 count toward numerator and denominator (a missing one is
-    dropped from both, so the score isn't understated). None when there's no
-    平時 score. Not capped at 100 — it's a raw figure."""
+    """原始平時成績 (#223，修正於 #257): weight-renormalised average of the
+    平時 categories (小考/作業/出席). 額外加分 is NOT included — it belongs to
+    the weighted total only, scaled by its own `extra` weight. Only categories
+    that have a score AND weight > 0 count toward numerator and denominator (a
+    missing one is dropped from both, so the score isn't understated). None
+    when there's no 平時 score. Being an average of 0..100 scores it naturally
+    lands in 0..100. Mirrors gradeMath.ts `rawPlainScore`."""
     num, den = 0.0, 0
     for k in _PLAIN_KEYS:
         avg, w = cat_avg.get(k), weights.get(k, 0)
@@ -316,11 +318,7 @@ def _raw_plain_score(cat_avg: dict, weights: dict) -> float | None:
             den += w
     if den == 0:
         return None
-    score = num / den
-    extra = cat_avg.get("extra")
-    if extra is not None:
-        score += extra
-    return round(score, 2)
+    return round(num / den, 2)
 
 
 def _write_class_sheet(ws, view, subject_filter: set[UUID] | None, sem_label: str) -> None:
