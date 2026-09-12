@@ -91,8 +91,10 @@ export function SubjectBreakdown({
     (c) => c !== 'extra' && c in summary.category_averages,
   )
   const hasExtra = 'extra' in summary.category_averages
-  // 額外加分 (#235): folded into 平時 — its contribution to the weighted total
-  // is the raw extra scaled by the present 平時 weight sum.
+  // 額外加分 (#257): an ordinary category — its contribution to the weighted
+  // total is its average scaled by its OWN `extra` weight (0 by default, in
+  // which case the 加分 exists but does not count).
+  const extraWeight = summary.category_weights['extra'] ?? 0
   const extraBonus = weightedExtraBonus(
     summary.category_averages,
     summary.category_weights,
@@ -123,8 +125,19 @@ export function SubjectBreakdown({
           )
         })}
         {hasExtra && (
-          <div className="flex justify-between gap-2 text-emerald-700">
-            <dt className="truncate">{t('grades.extra_bonus')}</dt>
+          <div
+            className={`flex justify-between gap-2 ${
+              extraWeight > 0 ? 'text-emerald-700' : 'text-slate-400'
+            }`}
+          >
+            <dt className="truncate">
+              {t('grades.extra_bonus')}
+              <span className="ml-1 text-xs">
+                {extraWeight > 0
+                  ? t('grades.weight_suffix', { weight: extraWeight })
+                  : t('grades.extra_weight_zero')}
+              </span>
+            </dt>
             <dd className="font-mono tabular-nums">+{extraBonus.toFixed(1)}</dd>
           </div>
         )}
