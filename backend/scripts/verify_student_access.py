@@ -28,6 +28,7 @@ import traceback
 import json
 import uuid
 from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from io import BytesIO
 from typing import Any
 
@@ -108,6 +109,14 @@ class Harness:
             {"pid": f"{uid.hex}-{provider}", "uid": uid, "p": provider,
              "d": json.dumps({"email": email, "sub": uid.hex})})
 
+    def add_identity(self, uid: uuid.UUID, provider: str, email: str, suffix: str) -> None:
+        """Attach ANOTHER identity row to `uid` (keeps the existing ones)."""
+        self.conn.execute(
+            text("INSERT INTO auth.identities (provider_id, user_id, identity_data, provider) "
+                 "VALUES (:pid, :uid, CAST(:d AS jsonb), :p)"),
+            {"pid": f"{uid.hex}-{provider}-{suffix}", "uid": uid, "p": provider,
+             "d": json.dumps({"email": email, "sub": f"{uid.hex}-{suffix}"})})
+
     def req(self, method: str, url: str, **kw: Any) -> Any:
         return self.client.request(method, url, **kw)
 
@@ -142,6 +151,24 @@ def student_payload(
         "user_metadata": {"email_verified": True},
         "_identity": (provider, identity_email if identity_email is not None else email),
     }
+
+
+@contextmanager
+def identity_lookup_broken() -> Iterator[None]:
+    """Make the auth.identities lookup fail (like a missing privilege)."""
+    orig_sql = identity._GOOGLE_IDENTITY_EMAIL_SQL
+    identity._GOOGLE_IDENTITY_EMAIL_SQL = text("SELECT email FROM auth.no_such_table")
+    try:
+        yield
+    finally:
+        identity._GOOGLE_IDENTITY_EMAIL_SQL = orig_sql
+
+
+def _code(r: Any) -> str | None:
+    try:
+        return r.json()["detail"]["error"]["message_key"]
+    except Exception:
+        return None
 
 
 def xlsx(rows: list[list[Any]]) -> bytes:
@@ -262,18 +289,47 @@ def verify_261(h: Harness) -> None:
     with h.session() as s:
         n = s.query(AccountLink).filter(AccountLink.auth_user_id == via_ident).count()
     check(n == 1, "identity-matched account gets the self link")
-    # Lookup failure (e.g. no privilege on auth schema) degrades to untrusted.
-    orig_sql = identity._GOOGLE_IDENTITY_EMAIL_SQL
-    identity._GOOGLE_IDENTITY_EMAIL_SQL = text("SELECT email FROM auth.no_such_table")
-    try:
+    # Lookup failure (e.g. no privilege on auth schema) = identity UNKNOWN,
+    # which is not "not a student": nothing is unbound, /api/me -> 503,
+    # seed refuses for a classless account.
+    with identity_lookup_broken():
         r = h.req("GET", "/api/me")
-        check(r.status_code == 200 and r.json()["identity"]["is_student"] is False,
-              "auth.identities lookup failure -> 200, untrusted (not a student)", r.text[:200])
+        check(r.status_code == 503 and _code(r) == "errors.identity.unavailable",
+              "auth.identities lookup failure -> /api/me 503", r.text[:200])
+        with h.session() as s:
+            n = s.query(AccountLink).filter(AccountLink.auth_user_id == via_ident).count()
+        check(n == 1, "lookup failure: existing self link NOT deleted")
         r = h.req("POST", "/api/me/seed")
-        check(r.status_code == 200, "lookup failure doesn't poison the request transaction",
+        with h.session() as s:
+            cats = s.query(Category).filter(Category.user_id == via_ident).count()
+        check(r.status_code == 503 and cats == 0,
+              "lookup failure: seed refuses (503) and creates nothing", r.text[:200])
+        # A teacher's routing doesn't depend on student status: still served.
+        h.as_user(teacher(t1))
+        r = h.req("GET", "/api/me")
+        check(r.status_code == 200 and r.json()["identity"]["is_teacher"] is True,
+              "lookup failure: class owner still gets /api/me 200 (is_teacher)", r.text[:200])
+        r = h.req("POST", "/api/me/seed")
+        check(r.status_code == 200,
+              "lookup failure: class owner's seed still runs (transaction not poisoned)",
               r.text[:200])
-    finally:
-        identity._GOOGLE_IDENTITY_EMAIL_SQL = orig_sql
+    # Several Google identities with DIFFERENT emails -> ambiguous -> untrusted.
+    multi = uuid.uuid4()
+    h.as_user(student_payload(multi, s_email))
+    h.add_identity(multi, "google", f"{TAG}-second@example.com", suffix="2")
+    me = h.req("GET", "/api/me").json()
+    check(me["identity"]["is_student"] is False,
+          "two google identities with different emails -> NOT a student", me.get("identity"))
+    with h.session() as s:
+        n = s.query(AccountLink).filter(AccountLink.auth_user_id == multi).count()
+    check(n == 0, "no account_link for the ambiguous account")
+    # Several Google identities, same email (case differs) -> still trusted.
+    same = uuid.uuid4()
+    h.as_user(student_payload(same, s_email))
+    h.add_identity(same, "google", s_email.upper(), suffix="2")
+    me = h.req("GET", "/api/me").json()
+    check(me["identity"]["is_student"] is True,
+          "two google identities with the same email -> student", me.get("identity"))
     # Restore stu_uid as the bound account for the following checks.
     h.as_user(student_payload(stu_uid, s_email))
     h.req("GET", "/api/me")
@@ -344,13 +400,6 @@ def verify_261(h: Harness) -> None:
 # #262 — 小老師 roles + access control
 # ---------------------------------------------------------------------------
 
-def _code(r: Any) -> str | None:
-    try:
-        return r.json()["detail"]["error"]["message_key"]
-    except Exception:
-        return None
-
-
 def verify_262(h: Harness) -> None:
     from models.access import ClassAssistant, ItemAssistant
     from models.curriculum import Semester
@@ -415,11 +464,44 @@ def verify_262(h: Harness) -> None:
           "no-email student cannot become assistant -> 400", r.text)
     r = h.req("PUT", f"/api/students/{a1}/assistant", json={"is_assistant": True})
     check(r.status_code == 200 and r.json()["is_assistant"] is True, "set A1 as assistant", r.text)
-    dup = mk_student(cls_a, 9, "同信箱", e1)
+    # Email edits that would make an assistant share an email -> 409.
+    r = h.req("POST", f"/api/classrooms/{cls_a}/students",
+              json={"seat_number": 9, "name": "同信箱", "email": e1})
+    check(r.status_code == 409 and _code(r) == "errors.assistant.email_clash",
+          "create a student with an assistant classmate's email -> 409", r.text)
+    dup = mk_student(cls_a, 9, "同信箱", f"{TAG}-dup9@example.com")
+    r = h.req("PUT", f"/api/students/{dup}",
+              json={"seat_number": 9, "name": "同信箱", "email": e1})
+    check(r.status_code == 409 and _code(r) == "errors.assistant.email_clash",
+          "change a student's email to an assistant classmate's -> 409", r.text)
+    for label, extra in (("", {}), (" (is_assistant sent)", {"is_assistant": True})):
+        r = h.req("PUT", f"/api/students/{a1}",
+                  json={"seat_number": 1, "name": "小明", "email": e4, **extra})
+        check(r.status_code == 409 and _code(r) == "errors.assistant.email_clash",
+              f"change an assistant's email to a classmate's{label} -> 409", r.text)
+    with h.session() as s:
+        from models.classroom import Student as _Student
+        st = s.get(_Student, uuid.UUID(a1))
+        check(st.email == e1, "rejected email change saved nothing")
+    check(next(x for x in h.req("GET", f"/api/classrooms/{cls_a}/students").json()["data"]
+               if x["id"] == a1)["is_assistant"] is True,
+          "rejected email change kept the assistant role")
+    r = h.req("PUT", f"/api/students/{a1}",
+              json={"seat_number": 1, "name": "小明", "email": f"{TAG}-a1-tmp@example.com",
+                    "is_assistant": True})
+    check(r.status_code == 200 and r.json()["is_assistant"] is True,
+          "assistant's email changed to a unique one (is_assistant sent) -> 200, role kept",
+          r.text)
+    h.req("PUT", f"/api/students/{a1}", json={"seat_number": 1, "name": "小明", "email": e1})
+    # Legacy duplicate (e.g. from an Excel import, which doesn't check yet).
+    with h.session() as s:
+        s.get(_Student, uuid.UUID(dup)).email = e1
+        s.commit()
     r = h.req("PUT", f"/api/students/{dup}/assistant", json={"is_assistant": True})
     check(r.status_code == 409 and _code(r) == "errors.assistant.duplicate_email",
           "duplicate email in class -> 409", r.text)
-    # #262-2: an EXISTING assistant is never 409'd by a classmate's email.
+    # #262-2: an EXISTING assistant whose email didn't change is never 409'd
+    # by a classmate's email.
     r = h.req("PUT", f"/api/students/{a1}",
               json={"seat_number": 1, "name": "小明改", "email": e1, "is_assistant": True})
     check(r.status_code == 200 and r.json()["is_assistant"] is True
@@ -520,6 +602,17 @@ def verify_262(h: Harness) -> None:
     check(r.status_code == 200 and r.json()["score"] == 89, "PUT own assistant-entered grade -> 200")
     check(r.status_code == 200 and r.json().get("entered_by_user_id") is None,
           "PUT response: entered_by_user_id is null", r.text)
+    with identity_lookup_broken():
+        r = h.req("PUT", f"/api/assistant/grades/{g_a1}", json={"score": 10})
+        check(r.status_code == 404, "identity lookup failure -> assistant PUT 404 (fail closed)",
+              r.status_code)
+        r = h.req("GET", f"/api/assistant/items/{item_x}/grades",
+                  params={"classroom_id": cls_a})
+        check(r.status_code == 404, "identity lookup failure -> assistant GET 404", r.status_code)
+    with h.session() as s:
+        n = s.query(AccountLink).filter(AccountLink.auth_user_id == u1).count()
+        score = float(s.get(Grade, uuid.UUID(g_a1)).score)
+    check(n == 1 and score == 89, "after lookup failure: link kept, score untouched")
 
     section("#262 POST create races a concurrent insert (unique conflict)")
     # Production has no DB-level unique for the live bucket (snapshot_id

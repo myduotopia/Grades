@@ -28,7 +28,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import and_
 from sqlalchemy.orm import Session
 
-from identity import sync_self_links
+from identity import IdentityUnknown, sync_self_links
 from models.access import ClassAssistant, ItemAssistant
 from models.classroom import Student
 from models.curriculum import ClassroomItem, Item, Semester
@@ -140,8 +140,15 @@ def resolve_actor(
     item_id: UUID,
     classroom_id: UUID,
 ) -> Actor:
-    """Permission for (item, class), or the uniform 404."""
-    for ctx in assistant_contexts(db, actor_user_id):
+    """Permission for (item, class), or the uniform 404.
+
+    Fails closed: if the identity lookup itself fails (`IdentityUnknown`)
+    the caller gets the same 404 — never access on an unknown identity."""
+    try:
+        contexts = assistant_contexts(db, actor_user_id)
+    except IdentityUnknown:
+        raise not_found("item")
+    for ctx in contexts:
         if ctx.classroom_id != classroom_id:
             continue
         item = visible_items_query(db, ctx).filter(Item.id == item_id).first()
@@ -212,9 +219,71 @@ def _err(code: int, key: str, message: str) -> HTTPException:
     )
 
 
-def set_assistant(db: Session, student: Student, flag: bool) -> None:
+def _duplicate_email_error() -> HTTPException:
+    """Making someone 小老師 while a classmate shares their email."""
+    return _err(
+        409,
+        "errors.assistant.duplicate_email",
+        "Another student in this class has the same email.",
+    )
+
+
+def _email_clash_error() -> HTTPException:
+    """An email edit that would make an assistant share an email."""
+    return _err(
+        409,
+        "errors.assistant.email_clash",
+        "This email is used by a classmate and one of them is an assistant.",
+    )
+
+
+def _classmates_with_same_email(db: Session, student: Student) -> list[UUID]:
+    if not student.email:
+        return []
+    return [
+        sid
+        for (sid,) in db.query(Student.id).filter(
+            Student.classroom_id == student.classroom_id,
+            Student.user_id == student.user_id,
+            Student.id != student.id,
+            Student.email == student.email,
+        )
+    ]
+
+
+def check_email_change_vs_assistants(db: Session, student: Student) -> None:
+    """409 when `student`'s (new) email clashes with a classmate's and a
+    小老師 is involved on either side — the student is an assistant, or the
+    classmate who already has that email is. Run after any roster email
+    change (create / update), on the final state (after transfer / role
+    changes). Two ordinary students sharing an email stay a warning only
+    (cold-read decision); the hard stop exists because an assistant's sign-in
+    must map to exactly one roster row in their class."""
+    dups = _classmates_with_same_email(db, student)
+    if not dups:
+        return
+    if is_assistant(db, student):
+        raise _email_clash_error()
+    clash = (
+        db.query(ClassAssistant.id)
+        .filter(
+            ClassAssistant.classroom_id == student.classroom_id,
+            ClassAssistant.student_id.in_(dups),
+        )
+        .first()
+    )
+    if clash is not None:
+        raise _email_clash_error()
+
+
+def set_assistant(
+    db: Session, student: Student, flag: bool, *, email_changed: bool = False
+) -> None:
     """Make / unmake `student` a 小老師 of their current class. Caller has
-    already verified the teacher owns the student. Does not commit."""
+    already verified the teacher owns the student. Does not commit.
+
+    `email_changed`: the caller just changed this student's email in the
+    same request — an existing assistant then gets the duplicate check too."""
     if not flag:
         revoke_assistant(db, student.id)
         return
@@ -224,27 +293,17 @@ def set_assistant(db: Session, student: Student, flag: bool) -> None:
             "errors.assistant.email_required",
             "A student needs an email before becoming an assistant.",
         )
-    # Already an assistant → nothing to do. Checked BEFORE the duplicate-
-    # email check so re-saving an existing assistant (StudentModal always
-    # sends is_assistant) isn't rejected for an unrelated classmate's email.
-    if is_assistant(db, student):
+    already = is_assistant(db, student)
+    # Already an assistant with the SAME email → nothing to do. Skipping the
+    # duplicate check here means re-saving an existing assistant
+    # (StudentModal always sends is_assistant) isn't rejected because a
+    # classmate was later given the same email. A changed email is checked.
+    if already and not email_changed:
         return
-    dup = (
-        db.query(Student.id)
-        .filter(
-            Student.classroom_id == student.classroom_id,
-            Student.user_id == student.user_id,
-            Student.id != student.id,
-            Student.email == student.email,
-        )
-        .first()
-    )
-    if dup is not None:
-        raise _err(
-            409,
-            "errors.assistant.duplicate_email",
-            "Another student in this class has the same email.",
-        )
+    if _classmates_with_same_email(db, student):
+        raise _email_clash_error() if already else _duplicate_email_error()
+    if already:
+        return  # keep the role AND its item assignments
     # A row left over from a previous class (transfer) is replaced.
     revoke_assistant(db, student.id)
     db.add(

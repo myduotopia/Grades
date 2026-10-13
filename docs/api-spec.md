@@ -117,10 +117,14 @@ assistant can enter right now; `teacher_label` is the teacher's Google full
 name read from Supabase `auth.users` (null if unavailable).
 Calling this endpoint also syncs the caller's `account_link(self)` rows — see
 data-model.md §account_link. The frontend routes on it: teacher app,
-`/assistant`, or `/no-access`.
+`/assistant`, or `/no-access`. If the `auth.identities` lookup itself fails
+(identity unknown — no links are changed): an account that owns no class gets
+**503** `errors.identity.unavailable` and the frontend shows an error with
+retry; a class owner still gets 200 as teacher, with `is_student: false` and
+no `assistant_contexts` for that response.
 
 #### `POST /api/me/seed`
-Idempotent. Called by `/auth/callback` on first sign-in to create the 7 default categories and one default semester. Safe to call repeatedly — checks before inserting. Returns zeros without seeding for a roster student who owns no classroom (#261).
+Idempotent. Called by `/auth/callback` on first sign-in to create the 7 default categories and one default semester. Safe to call repeatedly — checks before inserting. Returns zeros without seeding for a roster student who owns no classroom (#261). For an account that owns no classroom and whose identity lookup fails → **503** `errors.identity.unavailable`, nothing seeded.
 
 ### Classrooms
 
@@ -313,17 +317,24 @@ Teacher side:
 
 | Method | Path | Description |
 |---|---|---|
-| PUT | `/api/students/:id/assistant` | `{ "is_assistant": bool }`. 400 `errors.assistant.email_required` without email; 409 `errors.assistant.duplicate_email` if a classmate shares it (not checked when the student already is one, so re-saving them never 409s). Unsetting removes item assignments; stamps stay. |
+| PUT | `/api/students/:id/assistant` | `{ "is_assistant": bool }`. 400 `errors.assistant.email_required` without email; 409 `errors.assistant.duplicate_email` if a classmate shares it (not checked when the student already is one and the email didn't change, so re-saving them never 409s). Unsetting removes item assignments; stamps stay. |
 
 `StudentOut` includes `is_assistant`; `POST`/`PUT` student bodies accept an
 optional `is_assistant` (same rules) so the student form can save both at once.
+
+Email edits involving an assistant: `POST /api/classrooms/:id/students` and
+`PUT /api/students/:id` answer **409** `errors.assistant.email_clash` (nothing
+saved) when the new / changed email equals a classmate's and either side is a
+小老師 — e.g. an assistant's email changed to a classmate's, or a student given
+an assistant classmate's email. Two ordinary students sharing an email are
+still only a warning. (The Excel import does not apply this check yet.)
 
 Student side — separate endpoints, the teacher routes are unchanged:
 
 | Method | Path | Description |
 |---|---|---|
 | GET | `/api/assistant/items/:id/grades?classroom_id=` | Teacher's item-grades shape minus `semester_id`: whole class, names, scores, stamps. No email; `entered_by_user_id` always null. |
-| POST | `/api/assistant/grades` | `{item_id, classroom_id, student_id, score}` upsert. If the cell is created concurrently, the existing row is re-read and the same rules apply (teacher-entered → 403); otherwise **409** `errors.assistant.write_conflict`. |
+| POST | `/api/assistant/grades` | `{item_id, classroom_id, student_id, score}` upsert. If the cell is created concurrently, the existing row is re-read and the same rules apply (teacher-entered → 403); otherwise **409** `errors.assistant.write_conflict`. **Note:** this re-read / 409 path only fires once a live unique constraint exists — `grade` currently has no `UNIQUE (item_id, student_id) WHERE snapshot_id IS NULL`, so two concurrent creates both succeed and leave duplicate live rows (tracked as a follow-up issue). |
 | PUT | `/api/assistant/grades/:id` | `{score}` |
 | POST | `/api/assistant/grades/bulk` | `{item_id, classroom_id, entries:[{student_id, score}]}` |
 

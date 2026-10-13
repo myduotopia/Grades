@@ -791,6 +791,7 @@
     "assistant": {
       "email_required": "這位學生還沒有 email，無法設為小老師",
       "duplicate_email": "班上有其他學生使用相同 email，無法設為小老師",
+      "email_clash": "這個 email 與同班同學重複，而其中一位是小老師；小老師的 email 在班上必須唯一",
       "invalid_assignment": "有學生不是此班的小老師，或此班尚未使用這個項目",
       "teacher_grade_locked": "這個分數是老師登記的，小老師不能修改",
       "forbidden_entries": "部分分數不能儲存（例如老師登記的分數），整批都沒有儲存，請重新整理後再試",

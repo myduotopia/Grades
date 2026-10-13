@@ -791,6 +791,7 @@
     "assistant": {
       "email_required": "This student has no email and can't be made an assistant",
       "duplicate_email": "Another student in this class has the same email, so this one can't be made an assistant",
+      "email_clash": "This email is already used by a classmate and one of them is an assistant — an assistant's email must be unique in the class",
       "invalid_assignment": "Some students aren't assistants of a class where this item is in use",
       "teacher_grade_locked": "This score was entered by the teacher and can't be changed by an assistant",
       "forbidden_entries": "Some scores couldn't be saved (e.g. ones the teacher entered), so nothing was saved. Refresh and try again.",

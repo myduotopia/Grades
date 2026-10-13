@@ -26,6 +26,7 @@ from sqlalchemy.orm import Session
 
 from assistant_access import (
     assistant_ids_in_classroom,
+    check_email_change_vs_assistants,
     is_assistant,
     revoke_assistant,
     set_assistant,
@@ -214,6 +215,8 @@ def create_student(
         )
     if body.is_assistant:
         set_assistant(db, student, True)
+    # A new row taking an assistant classmate's email is refused (409).
+    check_email_change_vs_assistants(db, student)
     db.commit()
     db.refresh(student)
     return _serialize_student(student, is_assistant(db, student))
@@ -245,12 +248,19 @@ def update_student(
             "errors.student.duplicate_seat",
             "Seat number already exists in this classroom.",
         )
+    email_changed = (old_email or None) != (student.email or None)
     _on_email_changed(db, student, old_email)
     if transferred:
         # 小老師 is per class: a transfer ends the role (#262).
         revoke_assistant(db, student.id)
     if body.is_assistant is not None:
-        set_assistant(db, student, body.is_assistant)
+        set_assistant(
+            db, student, body.is_assistant, email_changed=email_changed
+        )
+    if email_changed or transferred:
+        # Final state: an assistant must not share an email with a
+        # classmate, whichever side changed (409, nothing is saved).
+        check_email_change_vs_assistants(db, student)
     db.commit()
     db.refresh(student)
     return _serialize_student(student, is_assistant(db, student))
