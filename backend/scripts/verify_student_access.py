@@ -493,7 +493,7 @@ def verify_262(h: Harness) -> None:
           "assistant's email changed to a unique one (is_assistant sent) -> 200, role kept",
           r.text)
     h.req("PUT", f"/api/students/{a1}", json={"seat_number": 1, "name": "小明", "email": e1})
-    # Legacy duplicate (e.g. from an Excel import, which doesn't check yet).
+    # Legacy duplicate (data written before the 小老師 email checks existed).
     with h.session() as s:
         s.get(_Student, uuid.UUID(dup)).email = e1
         s.commit()
@@ -800,8 +800,23 @@ def verify_262(h: Harness) -> None:
     r = h.req("POST", "/api/assistant/grades", json={**base, "student_id": a1, "score": 70})
     check(r.status_code == 201, "google account with the new email can write", r.text)
 
-    # Class transfer ends the role.
+    # Transfer into a class where an assistant already has the same email -> 409.
     h.as_user(teacher(t1))
+    eb1 = f"{TAG}-b1@example.com"
+    r = h.req("PUT", f"/api/students/{b1}/assistant", json={"is_assistant": True})
+    check(r.status_code == 200, "precondition: B1 is assistant of class B", r.text)
+    r = h.req("PUT", f"/api/students/{a1}",
+              json={"classroom_id": cls_b, "seat_number": 5, "name": "小明", "email": eb1})
+    check(r.status_code == 409 and _code(r) == "errors.assistant.email_clash",
+          "transfer into a class whose assistant has the same email -> 409", r.text)
+    with h.session() as s:
+        st = s.get(_Student, uuid.UUID(a1))
+        n = s.query(ClassAssistant).filter(ClassAssistant.student_id == uuid.UUID(a1)).count()
+    check(str(st.classroom_id) == cls_a and st.email == e1b and n == 1,
+          "rejected transfer saved nothing (class, email, role kept)")
+    h.req("PUT", f"/api/students/{b1}/assistant", json={"is_assistant": False})
+
+    # Class transfer ends the role.
     r = h.req("PUT", f"/api/students/{a1}",
               json={"classroom_id": cls_b, "seat_number": 5, "name": "小明", "email": e1b})
     check(r.status_code == 200 and r.json()["is_assistant"] is False,
@@ -809,6 +824,71 @@ def verify_262(h: Harness) -> None:
     with h.session() as s:
         n = s.query(ClassAssistant).filter(ClassAssistant.student_id == uuid.UUID(a1)).count()
     check(n == 0, "no class_assistant row left after transfer")
+
+    section("#262 Excel import vs 小老師 email")
+    import routers.student as student_mod
+    h.as_user(teacher(t1))
+    cls_d = h.req("POST", "/api/classrooms", json={"grade": 8, "name": f"{TAG}-D"}).json()["id"]
+    ed1, ed2 = f"{TAG}-d1@example.com", f"{TAG}-d2@example.com"
+    d1 = mk_student(cls_d, 1, "丁一", ed1)
+    d2 = mk_student(cls_d, 2, "丁二", ed2)
+    r = h.req("PUT", f"/api/students/{d1}/assistant", json={"is_assistant": True})
+    check(r.status_code == 200, "precondition: D1 is assistant of class D", r.text)
+
+    def imp(rows_: list[list[Any]], dry: bool) -> Any:
+        files_ = {"file": ("s.xlsx", xlsx(rows_),
+                           "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")}
+        return h.req("POST", f"/api/classrooms/{cls_d}/students/import"
+                     f"?dry_run={'true' if dry else 'false'}", files=files_)
+
+    for label, rows_, seat in (
+        ("update a student to the assistant's email", [[2, "丁二", ed1]], 2),
+        ("create a student with the assistant's email", [[3, "丁三", ed1]], 3),
+        ("change the assistant's email to a classmate's", [[1, "丁一", ed2]], 1),
+    ):
+        r = imp(rows_, dry=True)
+        body = r.json()
+        row = next((x for x in body.get("rows", []) if x["seat_number"] == seat), {})
+        check(r.status_code == 200 and row.get("action") == "error"
+              and "duplicate_email_assistant" in row.get("errors", [])
+              and body["summary"]["errors"] == 1,
+              f"import preview: {label} -> error row", body)
+        r = imp(rows_, dry=False)
+        check(r.status_code == 400 and _code(r) == "errors.import.has_errors",
+              f"import commit refused: {label}", r.text)
+    # Unchanged assistant row + a classmate taking its email: only the
+    # classmate's (changed) row is an error.
+    r = imp([[1, "丁一", ed1], [2, "丁二", ed1]], dry=True)
+    rows_by = {x["seat_number"]: x for x in r.json().get("rows", [])}
+    check(rows_by.get(1, {}).get("action") == "update"
+          and rows_by.get(2, {}).get("action") == "error",
+          "import preview: unchanged assistant row stays update, changed classmate row errors",
+          rows_by)
+    # Ordinary students only -> warning, commit allowed.
+    r = imp([[3, "丁三", ed2]], dry=True)
+    row = next((x for x in r.json().get("rows", []) if x["seat_number"] == 3), {})
+    check(row.get("action") == "create" and "duplicate_email" in row.get("warnings", [])
+          and not row.get("errors"),
+          "import preview: duplicate between ordinary students -> warning only", row)
+    r = imp([[3, "丁三", ed2]], dry=False)
+    check(r.status_code == 200, "import commit: ordinary duplicate allowed", r.text)
+    # A clash that slips past the preview (e.g. role granted concurrently):
+    # the commit re-checks and the whole batch is rolled back.
+    real_ids = student_mod.assistant_ids_in_classroom
+    student_mod.assistant_ids_in_classroom = lambda db, cid: set()
+    try:
+        r = imp([[2, "丁二改", f"{TAG}-d2-new@example.com"],
+                 [4, "丁四", f"{TAG}-d4@example.com"],
+                 [5, "丁五", ed1]], dry=False)
+    finally:
+        student_mod.assistant_ids_in_classroom = real_ids
+    check(r.status_code == 409 and _code(r) == "errors.assistant.email_clash",
+          "import commit: assistant email clash past preview -> 409", r.text)
+    roster = {s["seat_number"]: s for s in
+              h.req("GET", f"/api/classrooms/{cls_d}/students").json()["data"]}
+    check(set(roster) == {1, 2, 3} and roster[2]["name"] == "丁二"
+          and roster[2]["email"] == ed2 and roster[1]["is_assistant"] is True,
+          "import 409 rolled back the whole batch (no row saved)", roster)
 
     # /api/me/reset must not trip over the new tables (FK CASCADE). Uses a
     # fresh teacher without snapshots: reset after a snapshot already fails

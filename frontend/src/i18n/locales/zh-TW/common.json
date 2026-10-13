@@ -580,6 +580,9 @@
       "warning": {
         "duplicate_email": "提醒：班上有其他學生使用相同 email",
         "email_unchanged": "email 欄空白，保留原本的 email"
+      },
+      "row_error": {
+        "duplicate_email_assistant": "這個 email 和同班同學重複，而其中一位是小老師；小老師的 email 不能和同學相同"
       }
     },
     "errors": {

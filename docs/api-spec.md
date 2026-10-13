@@ -239,9 +239,17 @@ Email rules (#261): same normaliser/validator as the single form (invalid →
 row error `email is invalid`). Each row also carries `warnings` (codes, not
 blocking; `summary.warnings` counts rows with any):
 - `duplicate_email` — after the import, another student in this class would
-  have the same email;
+  have the same email (ordinary students only — see the error below);
 - `email_unchanged` — an **update** row whose email cell is blank keeps the
   stored email (shown in `email`) instead of clearing it.
+
+小老師 email clash (#262): when, after the import, an email would be shared by
+classmates and one of them is a 小老師, every row in that group whose email is
+new or changed becomes `action: "error"` with error code
+`duplicate_email_assistant` (blocking, unlike `duplicate_email`). The commit
+re-checks the final state with the same rule as the single form and answers
+**409** `errors.assistant.email_clash` with the whole batch rolled back if a
+clash slipped past the preview.
 
 ### Subjects
 
@@ -327,7 +335,11 @@ Email edits involving an assistant: `POST /api/classrooms/:id/students` and
 saved) when the new / changed email equals a classmate's and either side is a
 小老師 — e.g. an assistant's email changed to a classmate's, or a student given
 an assistant classmate's email. Two ordinary students sharing an email are
-still only a warning. (The Excel import does not apply this check yet.)
+still only a warning. A transfer (`PUT` with a new `classroom_id`) is checked
+the same way against the target class. The Excel import applies the same rule:
+the preview marks such rows as errors (`duplicate_email_assistant`) and the
+commit answers 409 `errors.assistant.email_clash` with the whole batch rolled
+back (see the students import section).
 
 Student side — separate endpoints, the teacher routes are unchanged:
 

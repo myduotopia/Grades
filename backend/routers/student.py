@@ -394,7 +394,12 @@ async def import_students(
         if row is None or all(c is None or c == "" for c in row):
             continue
         preview_rows.append(_parse_row(row_idx, row, header_map, by_seat, seen_seats))
-    _flag_duplicate_emails(preview_rows, existing_students)
+    _flag_duplicate_emails(
+        preview_rows,
+        existing_students,
+        by_seat,
+        assistant_ids_in_classroom(db, classroom_id),
+    )
 
     summary = ImportPreviewSummary(
         total_rows=len(preview_rows),
@@ -425,6 +430,12 @@ async def import_students(
             "errors.student.duplicate_seat",
             "Seat number already exists in this classroom.",
         )
+    except HTTPException:
+        # 409 errors.assistant.email_clash from the 小老師 email check (a
+        # clash that slipped past preview, e.g. a concurrent edit): the whole
+        # batch is rolled back — nothing from this file is saved.
+        db.rollback()
+        raise
     return ImportResult(dry_run=False, summary=summary, rows=preview_rows)
 
 
@@ -538,12 +549,31 @@ def _parse_row(
     )
 
 
+def _import_email_changed(r: ImportRowPreview, by_seat: dict[int, Student]) -> bool:
+    """A new row, or an update row whose email differs from the stored one —
+    exactly the rows `_commit_import` runs the 小老師 email check on."""
+    existing = by_seat.get(r.seat_number) if r.seat_number is not None else None
+    if r.action == "create" or existing is None:
+        return True
+    return (existing.email or None) != (r.email or None)
+
+
 def _flag_duplicate_emails(
-    rows: list[ImportRowPreview], existing_students: list[Student]
+    rows: list[ImportRowPreview],
+    existing_students: list[Student],
+    by_seat: dict[int, Student],
+    assistant_ids: set[UUID],
 ) -> None:
-    """Warn (not block) when, after this import, two students in the class
-    would share an email. Computed on the post-import state: existing
-    students keyed by seat, overridden by the file's rows."""
+    """Flag emails that, after this import, two students in the class would
+    share. Computed on the post-import state: existing students keyed by
+    seat, overridden by the file's rows.
+
+    - A 小老師 is in the group of students sharing the email → every row in
+      that group whose email is new / changed becomes an ERROR
+      (`duplicate_email_assistant`), mirroring the 409 that
+      `check_email_change_vs_assistants` raises at commit time (#262).
+    - Otherwise (ordinary students only) → warning, import still allowed.
+    """
     final_by_seat: dict[int, str | None] = {
         s.seat_number: s.email for s in existing_students
     }
@@ -553,8 +583,30 @@ def _flag_duplicate_emails(
     dupes = duplicate_emails(final_by_seat.values())
     if not dupes:
         return
+    # Import never changes who is 小老師 (and can't clear an email), so the
+    # current assistants are also the post-import assistants.
+    assistant_seats = {
+        s.seat_number for s in existing_students if s.id in assistant_ids
+    }
+    dupes_with_assistant = {
+        e
+        for e in dupes
+        if any(
+            seat in assistant_seats
+            for seat, em in final_by_seat.items()
+            if em and em.lower() == e
+        )
+    }
     for r in rows:
-        if r.action != "error" and r.email and r.email.lower() in dupes:
+        if r.action == "error" or not r.email:
+            continue
+        key = r.email.lower()
+        if key not in dupes:
+            continue
+        if key in dupes_with_assistant and _import_email_changed(r, by_seat):
+            r.action = "error"
+            r.errors.append("duplicate_email_assistant")
+        else:
             r.warnings.append("duplicate_email")
 
 
@@ -567,6 +619,10 @@ def _commit_import(
     rows: list[ImportRowPreview],
     by_seat: dict[int, Student],
 ) -> None:
+    # Students whose email is new / changed by this file; checked against
+    # 小老師 after ALL rows are applied (final state — a swap between two
+    # rows must not trip on the intermediate state).
+    to_check: list[Student] = []
     for r in rows:
         if r.action == "error" or r.seat_number is None:
             continue
@@ -578,6 +634,8 @@ def _commit_import(
             old_email = student.email
             student.email = r.email
             _on_email_changed(db, student, old_email)
+            if (old_email or None) != (student.email or None):
+                to_check.append(student)
         else:
             student = Student(
                 user_id=user_id,
@@ -589,4 +647,9 @@ def _commit_import(
             )
             db.add(student)
             db.flush()
+            to_check.append(student)
+    db.flush()
+    for student in to_check:
+        # 409 errors.assistant.email_clash → caller rolls back the batch.
+        check_email_change_vs_assistants(db, student)
 

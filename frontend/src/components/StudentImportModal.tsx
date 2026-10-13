@@ -237,7 +237,13 @@ function PreviewTable({ result }: { result: ImportResult }) {
                   <td className="px-2 py-1.5">
                     {r.errors.length > 0 && (
                       <span className="block text-rose-700">
-                        {r.errors.join('; ')}
+                        {r.errors
+                          .map((e) =>
+                            t(`students.import.row_error.${e}`, {
+                              defaultValue: e,
+                            }),
+                          )
+                          .join('; ')}
                       </span>
                     )}
                     {(r.warnings ?? []).map((w) => (

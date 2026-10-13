@@ -580,6 +580,9 @@
       "warning": {
         "duplicate_email": "Note: another student in this class has the same email",
         "email_unchanged": "Email cell blank — existing email kept"
+      },
+      "row_error": {
+        "duplicate_email_assistant": "This email is shared with a classmate and one of them is an assistant; an assistant's email must be unique in the class"
       }
     },
     "errors": {
