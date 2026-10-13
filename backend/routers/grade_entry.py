@@ -19,7 +19,7 @@ from models.classroom import Classroom, Student
 from models.curriculum import Category, ClassroomItem, Item, Semester, Subject
 from models.grading import Grade, PointRecord
 from sqlalchemy.dialects.postgresql import insert as pg_insert
-from routers.grades import apply_auto_award
+from routers.grades import apply_auto_award, grade_stamp_fields
 from schemas import (
     GradeBulkResult,
     GradeBulkUpsert,
@@ -160,20 +160,31 @@ def get_item_grades(
         category_system_key=cat.system_key if cat else "",
         semester_id=item.semester_id,
         classroom_id=classroom_id,
-        students=[
-            ItemGradesStudentRow(
-                student_id=s.id,
-                seat_number=s.seat_number,
-                name=s.name,
-                grade_id=grades_by_student[s.id].id if s.id in grades_by_student else None,
-                score=(
-                    float(grades_by_student[s.id].score)
-                    if s.id in grades_by_student
-                    else None
-                ),
-            )
-            for s in roster
-        ],
+        students=[_student_row(s, grades_by_student.get(s.id)) for s in roster],
+    )
+
+
+def _student_row(s: Student, g: Grade | None) -> ItemGradesStudentRow:
+    return ItemGradesStudentRow(
+        student_id=s.id,
+        seat_number=s.seat_number,
+        name=s.name,
+        grade_id=g.id if g is not None else None,
+        score=float(g.score) if g is not None else None,
+        **(grade_stamp_fields(g) if g is not None else {}),
+    )
+
+
+def _write_out(db: Session, grade: Grade) -> GradeWriteOut:
+    return GradeWriteOut(
+        id=grade.id,
+        item_id=grade.item_id,
+        student_id=grade.student_id,
+        score=float(grade.score),
+        awarded_points=_award_points_for(db, grade),
+        entered_by_user_id=grade.entered_by_user_id,
+        entered_by_role=grade.entered_by_role,
+        updated_at=grade.updated_at,
     )
 
 
@@ -212,7 +223,7 @@ def create_grade(
         .one_or_none()
     )
     if existing is not None:
-        existing.score = Decimal(str(body.score))
+        existing.write_score(Decimal(str(body.score)), user_id)
         grade = existing
     else:
         grade = Grade(
@@ -221,19 +232,15 @@ def create_grade(
             student_id=student.id,
             score=Decimal(str(body.score)),
             source="manual",
+            entered_by_user_id=user_id,
+            entered_by_role="teacher",
         )
         db.add(grade)
     db.flush()
     apply_auto_award(db, user_id, [grade])
     db.commit()
     db.refresh(grade)
-    return GradeWriteOut(
-        id=grade.id,
-        item_id=grade.item_id,
-        student_id=grade.student_id,
-        score=float(grade.score),
-        awarded_points=_award_points_for(db, grade),
-    )
+    return _write_out(db, grade)
 
 
 @router.put("/api/grades/{grade_id}", response_model=GradeWriteOut)
@@ -253,18 +260,12 @@ def update_grade(
     item = db.get(Item, grade.item_id)
     if item is not None:
         _check_semester_writable(db, user_id, item.semester_id)
-    grade.score = Decimal(str(body.score))
+    grade.write_score(Decimal(str(body.score)), user_id)
     db.flush()
     apply_auto_award(db, user_id, [grade])
     db.commit()
     db.refresh(grade)
-    return GradeWriteOut(
-        id=grade.id,
-        item_id=grade.item_id,
-        student_id=grade.student_id,
-        score=float(grade.score),
-        awarded_points=_award_points_for(db, grade),
-    )
+    return _write_out(db, grade)
 
 
 @router.delete("/api/grades/{grade_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -439,11 +440,13 @@ def bulk_upsert_grades(
                 snapshot_id=body.snapshot_id,  # bucket scope (#169)
                 score=Decimal(str(e.score)),
                 source="manual",
+                entered_by_user_id=user_id,
+                entered_by_role="teacher",
             )
             db.add(g)
             written_grades.append(g)
         else:
-            existing.score = Decimal(str(e.score))
+            existing.write_score(Decimal(str(e.score)), user_id)
             written_grades.append(existing)
         written += 1
 

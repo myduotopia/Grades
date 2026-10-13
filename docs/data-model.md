@@ -185,9 +185,13 @@ grade
 ├─ score                numeric(4,1)   ← 0.0 to 100.0, one decimal
 ├─ source               enum('manual','duotopia','google_classroom')
 ├─ source_external_id   text NULL      ← e.g., duotopia_student_assignment_id
+├─ entered_by_user_id   uuid NULL      ← auth user who last wrote the score (#260)
+├─ entered_by_role      varchar(16) DEFAULT 'teacher' + CHECK IN ('teacher','assistant')
 ├─ created_at, updated_at  timestamptz
 └─ UNIQUE (item_id, student_id)
 ```
+
+**"Entered by" stamp (#260).** `user_id` is the *owning* teacher; `entered_by_*` records who last *wrote* the score — the teacher, or a student assistant (小老師, #262). The stamp is refreshed only when the score actually changes (or the row is created), because bulk save and Excel import resend every row and re-saving an untouched assistant score must not relabel it as the teacher's. A teacher overwriting an assistant's score flips the stamp back to `teacher`. Rows that predate the column were backfilled with `entered_by_user_id = user_id`, `entered_by_role = 'teacher'`. The UI shows a small corner badge + tooltip (assistant name · `MM/DD HH:mm` from `updated_at`) only for `assistant` rows.
 
 **Duotopia import upsert key:** `(user_id, item_id, student_id)` — same as the natural unique constraint. Re-importing the same item × student overwrites the prior row, including any local edits. By design.
 

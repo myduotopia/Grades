@@ -597,6 +597,11 @@
     "modal": {
       "add_title": "New exam item",
       "pick_subtitle": "Pick the item you want to enter scores for; Save takes you to this class's grades page with that column ready to edit."
+    },
+    "entered_by": {
+      "badge": "A",
+      "assistant_tooltip": "Student assistant {{name}} · {{time}}",
+      "assistant_tooltip_no_name": "Student assistant · {{time}}"
     }
   },
   "student_detail": {
