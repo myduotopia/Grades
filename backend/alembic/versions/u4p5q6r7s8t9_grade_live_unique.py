@@ -7,6 +7,9 @@ live rows — after which every `.one_or_none()` read of that cell raised
 MultipleResultsFound (500) and the cell could never be saved again.
 
 Upgrade:
+0. LOCK TABLE grade IN SHARE ROW EXCLUSIVE MODE (held until the migration
+   transaction commits) so no concurrent save can re-create a duplicate
+   between the merge and the index build.
 1. Merge existing duplicate live rows, keeping the most recently updated
    one per (item_id, student_id) (ties: newest created_at, then highest id).
    If the kept row has no point_record but a removed duplicate does, that
@@ -47,6 +50,12 @@ _RANKED = """
 
 
 def upgrade() -> None:
+    # 0. Block concurrent grade writes (reads still allowed) until this
+    #    migration's transaction commits, so no new duplicate can slip in
+    #    between the merge below and CREATE UNIQUE INDEX (which would make
+    #    the index build fail). SHARE ROW EXCLUSIVE conflicts with the
+    #    ROW EXCLUSIVE lock that INSERT/UPDATE/DELETE take.
+    op.execute("LOCK TABLE grade IN SHARE ROW EXCLUSIVE MODE")
     # 1a. Keep awarded points: move one duplicate's point_record onto the
     #     kept row when the kept row has none.
     op.execute(f"""

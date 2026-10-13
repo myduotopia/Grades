@@ -1301,6 +1301,115 @@ def verify_264(h: Harness) -> None:
     check(len(rows) == 4 and all(n == 1 for _, n in rows),  # A: 1,2,4 + B: 1
           "still exactly one live row per student", rows)
 
+    section("#264 assistant single POST racing a real concurrent create")
+    # The concurrent writer really commits a new row between the router's
+    # read (which found nothing) and its INSERT ... ON CONFLICT DO NOTHING.
+    import routers.assistant as am
+    real_alive = am._live_grade
+    a5 = mk_student(cls_a, 5, "小強", None)
+    a6 = mk_student(cls_a, 6, "小志", None)
+    h.as_user(student_payload(u1, e1))
+    r = h.req("POST", lock_x, params=pa)
+    check(r.status_code == 200, "小明 takes X for the race checks", r.text)
+
+    def racing(sid: str, role: str, who: uuid.UUID) -> Callable[..., Any]:
+        planted: list[str] = []
+
+        def live(db: Any, actor: Any, student_id: Any) -> Any:
+            if not planted:
+                with h.session() as s2:
+                    g = Grade(user_id=t1, item_id=uuid.UUID(item_x), student_id=uuid.UUID(sid),
+                              score=40, source="manual", entered_by_user_id=who,
+                              entered_by_role=role)
+                    s2.add(g)
+                    s2.commit()
+                    planted.append(str(g.id))
+                return None
+            return real_alive(db, actor, student_id)
+        live.planted = planted  # type: ignore[attr-defined]
+        return live
+
+    try:
+        am._live_grade = race = racing(a5, "assistant", u4)
+        r = h.req("POST", "/api/assistant/grades",
+                  json={**base, "student_id": a5, "score": 88})
+        planted_id = race.planted[0] if race.planted else None  # type: ignore[attr-defined]
+        check(r.status_code == 201 and r.json().get("id") == planted_id
+              and r.json().get("score") == 88,
+              "assistant POST racing another assistant's create -> overwrites that row", r.text)
+        am._live_grade = race = racing(a6, "teacher", t1)
+        r = h.req("POST", "/api/assistant/grades",
+                  json={**base, "student_id": a6, "score": 89})
+        check(r.status_code == 403 and _code(r) == "errors.assistant.teacher_grade_locked",
+              "assistant POST racing the teacher's create -> 403, teacher row kept", r.text)
+    finally:
+        am._live_grade = real_alive
+    with h.session() as s:
+        n5 = s.query(Grade).filter(Grade.item_id == uuid.UUID(item_x),
+                                   Grade.student_id == uuid.UUID(a5),
+                                   Grade.snapshot_id.is_(None)).all()
+        n6 = s.query(Grade).filter(Grade.item_id == uuid.UUID(item_x),
+                                   Grade.student_id == uuid.UUID(a6),
+                                   Grade.snapshot_id.is_(None)).all()
+    check(len(n5) == 1 and float(n5[0].score) == 88 and n5[0].entered_by_user_id == u1,
+          "race: one live row for 小強, score + stamp from 小明")
+    # The planted row shares the harness transaction, so the 403's rollback
+    # takes it along here (a real concurrent writer commits on its own);
+    # what matters is that nothing of 小明's landed.
+    check(len(n6) <= 1 and all(float(g.score) == 40 and g.entered_by_role == "teacher"
+                               for g in n6),
+          "race: 小志's cell not written by the assistant (no 89, no duplicate)",
+          [(float(g.score), g.entered_by_role) for g in n6])
+
+    section("#264 B7: permission gone -> heartbeat 404, own lock still releasable")
+
+    def lock_rows(uid: uuid.UUID) -> int:
+        with h.session() as s:
+            return s.query(GradeItemLock).filter(GradeItemLock.holder_user_id == uid).count()
+
+    # (1) 取消資格 — 小明 still holds X from the race checks.
+    h.as_user(teacher(t1))
+    r = h.req("PUT", f"/api/students/{a1}/assistant", json={"is_assistant": False})
+    check(r.status_code == 200, "teacher revokes 小明 while he holds X", r.text)
+    h.as_user(student_payload(u1, e1))
+    r = h.req("POST", lock_x, params=pa)
+    check(r.status_code == 404, "B7 revoked: heartbeat -> 404", r.status_code)
+    r = h.req("DELETE", lock_x, params=pa)
+    check(r.status_code == 204 and lock_rows(u1) == 0, "B7 revoked: release frees X", r.status_code)
+    # (2) 清 email
+    h.as_user(student_payload(u4, e4))
+    r = h.req("POST", lock_x, params=pa)
+    check(r.status_code == 200, "小美 takes X", r.text)
+    h.as_user(teacher(t1))
+    r = h.req("PUT", f"/api/students/{a4}", json={"seat_number": 4, "name": "小美", "email": None})
+    check(r.status_code == 200 and r.json()["is_assistant"] is False,
+          "teacher clears 小美's email while she holds X", r.text)
+    h.as_user(student_payload(u4, e4))
+    r = h.req("POST", lock_x, params=pa)
+    check(r.status_code == 404, "B7 email cleared: heartbeat -> 404", r.status_code)
+    r = h.req("DELETE", lock_x, params=pa)
+    check(r.status_code == 204 and lock_rows(u4) == 0, "B7 email cleared: release frees X",
+          r.status_code)
+    # (3) 轉班 — re-grant 小明 first.
+    h.as_user(teacher(t1))
+    h.req("PUT", f"/api/students/{a1}/assistant", json={"is_assistant": True})
+    r = h.req("PUT", f"/api/items/{item_x}/assistants", json={"student_ids": [a1]})
+    check(r.status_code == 200, "precondition: 小明 re-assigned to X", r.text)
+    h.as_user(student_payload(u1, e1))
+    r = h.req("POST", lock_x, params=pa)
+    check(r.status_code == 200, "小明 takes X again", r.text)
+    h.as_user(teacher(t1))
+    r = h.req("PUT", f"/api/students/{a1}",
+              json={"classroom_id": cls_b, "seat_number": 7, "name": "小明", "email": e1})
+    check(r.status_code == 200 and r.json()["is_assistant"] is False,
+          "teacher moves 小明 to class B while he holds X", r.text)
+    h.as_user(student_payload(u1, e1))
+    r = h.req("POST", lock_x, params=pa)
+    check(r.status_code == 404, "B7 transferred: heartbeat -> 404", r.status_code)
+    r = h.req("DELETE", lock_x, params=pa)
+    check(r.status_code == 204 and lock_rows(u1) == 0, "B7 transferred: release frees X",
+          r.status_code)
+
     section("#264 cascade")
     h.as_user(teacher(t1))
     h.req("POST", f"/api/classrooms/{cls_b}/item-locks", json={"item_ids": [item_x]})

@@ -227,9 +227,17 @@ leave duplicate live rows that then broke every read of that cell (500). The
 partial unique index fixes that; its migration first merged existing
 duplicates (kept the most recently updated row; a removed duplicate's
 point_record moves onto the kept row if it had none — not reversible on
-downgrade). All writers (teacher single/bulk, Excel import, 小老師) insert new
+downgrade). The migration holds `LOCK TABLE grade IN SHARE ROW EXCLUSIVE MODE`
+for its whole transaction (reads still work, grade writes wait) so no new
+duplicate can appear between the merge and the index build. All writers
+(teacher single/bulk, Excel import, 小老師) insert new
 live rows with `INSERT ... ON CONFLICT DO NOTHING` and then update whatever row
 exists, applying their normal rules (`models.grading.insert_live_grades`).
+
+**Deploy order (#264):** run `alembic upgrade head` on the target DB *before*
+the new code goes live. The code's `ON CONFLICT` needs the partial unique index
+and every grade write checks `grade_item_lock`; without the migration all
+grade writes 500.
 
 **"Entered by" stamp (#260).** `user_id` is the *owning* teacher; `entered_by_*` records who last *wrote* the score — the teacher, or a student assistant (小老師, #262). The stamp is refreshed only when the score actually changes (or the row is created), because bulk save and Excel import resend every row and re-saving an untouched assistant score must not relabel it as the teacher's. A teacher overwriting an assistant's score flips the stamp back to `teacher`. Rows that predate the column were backfilled with `entered_by_user_id = user_id`, `entered_by_role = 'teacher'`. The UI shows a small corner badge + tooltip (assistant name · `MM/DD HH:mm` from `entered_at`, falling back to `updated_at`) only for `assistant` rows. `entered_at` (#262) is set by `Grade.write_score` whenever the score changes; unlike `updated_at` it does not move on bookkeeping updates such as archiving into a snapshot. Pre-existing rows were backfilled from `updated_at`. The assistant's display name (`entered_by_name` in API responses) is resolved per response: the roster name of the owning teacher's student self-linked (`account_link`) to `entered_by_user_id`; it becomes unknown (badge says just 小老師) if the teacher later changes that student's email.
 

@@ -218,6 +218,9 @@ def assert_writable(
             GradeItemLock.classroom_id == classroom_id,
             GradeItemLock.item_id.in_(ids),
         )
+        # Same row order as acquire (by item_id) so two writers locking
+        # overlapping item sets can't deadlock.
+        .order_by(GradeItemLock.item_id)
         .with_for_update(of=GradeItemLock)
         .populate_existing()
         .all()
