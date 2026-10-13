@@ -86,6 +86,27 @@ Parent links (QR flow) are a separate issue; the `invite_user_by_email` path is 
 
 **`linked_via='invite_code'`** is reserved in the enum but not used in v1 — invite-code flow / table will be added later.
 
+### `class_assistant` / `item_assistant` (小老師, #262)
+
+```
+class_assistant                       item_assistant
+├─ id            uuid PK              ├─ id            uuid PK
+├─ user_id       uuid  ← teacher      ├─ user_id       uuid  ← teacher
+├─ classroom_id  uuid FK CASCADE      ├─ item_id       uuid FK → item CASCADE
+├─ student_id    uuid FK CASCADE      ├─ student_id    uuid FK → student CASCADE
+├─ created_at    timestamptz          ├─ created_at    timestamptz
+└─ UNIQUE (classroom_id, student_id)  └─ UNIQUE (item_id, student_id)
+```
+
+**Why new tables, not an `account_link` extension:** `account_link` links an *auth account* to a roster row; being a 小老師 is a teacher's per-class appointment of a *roster row*, independent of whether the student has signed in yet (and it must survive the account changing when the email changes). Separate tables keep both concerns simple and let every FK cascade.
+
+**Rules:**
+- Appointing requires `student.email`, and no classmate with the same email (409). Clearing the email, transferring the student to another class, or unticking 小老師 deletes the `class_assistant` row **and** all the student's `item_assistant` rows. Grades they already entered keep their stamp. Changing (not clearing) the email keeps the role; the new address binds on next sign-in.
+- `item_assistant` can only be set while the item is live (`classroom_item`, main bucket) in that student's class and the item's semester is current.
+- **What an assistant can see/write** (`backend/assistant_access.py`): JWT email (Google-verified) matches the student now → `class_assistant` for the student's *current* class → `item_assistant` for the item → item is the same teacher's, in the teacher's **current** semester, and live in that class. Anything else is the same 404 as a non-existent id.
+- **封存 (archived) mapping:** both archive mechanisms hide items from assistants — (a) a non-current semester (`semester.is_current = false`, the read-only "已封存" semester that `_check_semester_writable` guards) and (b) "封存目前成績" snapshots (`grade_snapshot`): archiving moves the class's `classroom_item` rows into the snapshot, so the item is no longer live in the class. Assistants only ever read/write the live bucket (`grade.snapshot_id IS NULL`). If the teacher re-activates the same item later, the existing `item_assistant` row makes it visible again.
+- Ownership never mixes ids: assistant writes use the **teacher's** id for `grade.user_id`, auto-award and semester checks; the student's JWT `sub` goes only into `entered_by_user_id` with `entered_by_role='assistant'`.
+
 ### `subject`
 
 ```
@@ -192,11 +213,12 @@ grade
 ├─ source_external_id   text NULL      ← e.g., duotopia_student_assignment_id
 ├─ entered_by_user_id   uuid NULL      ← auth user who last wrote the score (#260)
 ├─ entered_by_role      varchar(16) DEFAULT 'teacher' + CHECK IN ('teacher','assistant')
+├─ entered_at           timestamptz NULL DEFAULT now()  ← when the stamped writer last changed the score (#262)
 ├─ created_at, updated_at  timestamptz
 └─ UNIQUE (item_id, student_id)
 ```
 
-**"Entered by" stamp (#260).** `user_id` is the *owning* teacher; `entered_by_*` records who last *wrote* the score — the teacher, or a student assistant (小老師, #262). The stamp is refreshed only when the score actually changes (or the row is created), because bulk save and Excel import resend every row and re-saving an untouched assistant score must not relabel it as the teacher's. A teacher overwriting an assistant's score flips the stamp back to `teacher`. Rows that predate the column were backfilled with `entered_by_user_id = user_id`, `entered_by_role = 'teacher'`. The UI shows a small corner badge + tooltip (assistant name · `MM/DD HH:mm` from `updated_at`) only for `assistant` rows.
+**"Entered by" stamp (#260).** `user_id` is the *owning* teacher; `entered_by_*` records who last *wrote* the score — the teacher, or a student assistant (小老師, #262). The stamp is refreshed only when the score actually changes (or the row is created), because bulk save and Excel import resend every row and re-saving an untouched assistant score must not relabel it as the teacher's. A teacher overwriting an assistant's score flips the stamp back to `teacher`. Rows that predate the column were backfilled with `entered_by_user_id = user_id`, `entered_by_role = 'teacher'`. The UI shows a small corner badge + tooltip (assistant name · `MM/DD HH:mm` from `entered_at`, falling back to `updated_at`) only for `assistant` rows. `entered_at` (#262) is set by `Grade.write_score` whenever the score changes; unlike `updated_at` it does not move on bookkeeping updates such as archiving into a snapshot. Pre-existing rows were backfilled from `updated_at`. The assistant's display name (`entered_by_name` in API responses) is resolved per response: the roster name of the owning teacher's student self-linked (`account_link`) to `entered_by_user_id`; it becomes unknown (badge says just 小老師) if the teacher later changes that student's email.
 
 **Duotopia import upsert key:** `(user_id, item_id, student_id)` — same as the natural unique constraint. Re-importing the same item × student overwrites the prior row, including any local edits. By design.
 
@@ -297,12 +319,12 @@ Cascades the related `point_record` (FK constraint).
 | Delete | Cascades to | Blocked by |
 |---|---|---|
 | `class` | `student`s, their grades & point_records | — |
-| `student` | grades, point_records, standards | — |
+| `student` | grades, point_records, standards, account_link, class_assistant, item_assistant | — |
 | `subject` | — | `item`s referencing it (return 409) |
 | `category` (user-custom) | `student_standard`, `point_rule` | `item`s referencing it (return 409) |
 | `category` (system default) | — | always blocked (return 403) |
 | `semester` | — | `item`s referencing it (return 409) |
-| `item` | grades, point_records via grades, item_classroom | — |
+| `item` | grades, point_records via grades, item_classroom, item_assistant | — |
 
 ### Seeding on signup
 

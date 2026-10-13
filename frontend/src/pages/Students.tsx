@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 
+import { AssistantSwitch } from '../components/AssistantSwitch'
 import { StudentImportModal } from '../components/StudentImportModal'
 import {
   StudentGroupBadges,
@@ -171,6 +172,7 @@ export function Students() {
 
       {!isLoading && !isError && students.length > 0 && view === 'list' && (
         <StudentTable
+          classroomId={classroomId}
           students={students}
           groupIndex={groupIndex}
           showGroups={hasGroups}
@@ -180,6 +182,7 @@ export function Students() {
 
       {!isLoading && !isError && students.length > 0 && view === 'card' && (
         <StudentCards
+          classroomId={classroomId}
           students={students}
           groupIndex={groupIndex}
           onEdit={(s) => setModal({ kind: 'edit', student: s })}
@@ -217,11 +220,13 @@ export function Students() {
 // ---------- list view ----------
 
 function StudentTable({
+  classroomId,
   students,
   groupIndex,
   showGroups,
   onEdit,
 }: {
+  classroomId: string
   students: Student[]
   groupIndex: Map<string, StudentGroupRef[]>
   showGroups: boolean
@@ -248,6 +253,9 @@ function StudentTable({
               <th className="px-4 py-3 text-left font-medium">
                 {t('students.col.email')}
               </th>
+              <th className="px-4 py-3 text-center font-medium whitespace-nowrap">
+                {t('students.col.assistant')}
+              </th>
               <th className="px-4 py-3 text-right font-medium">
                 {t('students.col.actions')}
               </th>
@@ -270,6 +278,9 @@ function StudentTable({
                 <td className="px-4 py-3 text-slate-500 break-all">
                   {s.email || <span className="text-slate-400">—</span>}
                 </td>
+                <td className="px-4 py-3 text-center">
+                  <AssistantSwitch student={s} classroomId={classroomId} />
+                </td>
                 <td className="px-4 py-3 text-right">
                   <button
                     onClick={() => onEdit(s)}
@@ -290,10 +301,12 @@ function StudentTable({
 // ---------- card view ----------
 
 function StudentCards({
+  classroomId,
   students,
   groupIndex,
   onEdit,
 }: {
+  classroomId: string
   students: Student[]
   groupIndex: Map<string, StudentGroupRef[]>
   onEdit: (s: Student) => void
@@ -323,7 +336,11 @@ function StudentCards({
               />
             </div>
           </div>
-          <div className="mt-auto pt-2 border-t border-slate-100 flex justify-end">
+          <div className="mt-auto pt-2 border-t border-slate-100 flex items-center justify-between">
+            <span className="flex items-center gap-1 text-xs text-slate-500">
+              <AssistantSwitch student={s} classroomId={classroomId} />
+              {t('students.col.assistant')}
+            </span>
             <button
               onClick={() => onEdit(s)}
               className="text-amber-700 hover:text-amber-900 font-medium text-sm"
@@ -357,6 +374,7 @@ function StudentModal({ mode, classroomId, student, onClose }: ModalProps) {
   const [seat, setSeat] = useState<number | ''>(student?.seat_number ?? '')
   const [name, setName] = useState(student?.name ?? '')
   const [email, setEmail] = useState(student?.email ?? '')
+  const [isAssistant, setIsAssistant] = useState(!!student?.is_assistant)
   const [errKey, setErrKey] = useState<string | null>(null)
 
   const submitting = create.isPending || update.isPending || del.isPending
@@ -371,6 +389,8 @@ function StudentModal({ mode, classroomId, student, onClose }: ModalProps) {
       (c) => c.id !== student?.id && normalizeEmail(c.email) === normalizedEmail,
     )
   const canSubmit = seat !== '' && !emailInvalid && !submitting
+  // 小老師 needs an email (#262); clearing the email unticks it.
+  const assistantAllowed = normalizedEmail !== null && !emailInvalid
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -381,6 +401,7 @@ function StudentModal({ mode, classroomId, student, onClose }: ModalProps) {
         seat_number: Number(seat),
         name: name.trim() || null,
         email: normalizedEmail,
+        is_assistant: isAssistant && assistantAllowed,
       }
       if (mode === 'add') {
         await create.mutateAsync(body)
@@ -396,6 +417,11 @@ function StudentModal({ mode, classroomId, student, onClose }: ModalProps) {
         err.body?.message_key === 'errors.student.invalid_email'
       ) {
         setErrKey('students.errors.invalid_email')
+      } else if (
+        err instanceof ApiError &&
+        err.body?.message_key?.startsWith('errors.assistant.')
+      ) {
+        setErrKey(err.body.message_key)
       } else {
         setErrKey('common.error_generic')
       }
@@ -490,6 +516,34 @@ function StudentModal({ mode, classroomId, student, onClose }: ModalProps) {
             ) : (
               <span className="text-slate-500">{t('students.email_hint')}</span>
             )}
+          </span>
+        </label>
+
+        <label
+          className={`mt-3 flex items-start gap-2 min-h-[44px] ${
+            assistantAllowed ? 'cursor-pointer' : 'cursor-not-allowed'
+          }`}
+        >
+          <input
+            type="checkbox"
+            checked={isAssistant && assistantAllowed}
+            disabled={!assistantAllowed}
+            onChange={(e) => setIsAssistant(e.target.checked)}
+            className="mt-0.5 h-4 w-4 rounded border-slate-300 text-amber-500 focus:ring-amber-500"
+          />
+          <span>
+            <span
+              className={`block text-sm font-medium ${
+                assistantAllowed ? 'text-slate-700' : 'text-slate-400'
+              }`}
+            >
+              {t('assistant_admin.checkbox')}
+            </span>
+            <span className="block text-xs text-slate-500">
+              {assistantAllowed
+                ? t('assistant_admin.checkbox_hint')
+                : t('assistant_admin.needs_email')}
+            </span>
           </span>
         </label>
 

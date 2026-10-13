@@ -35,6 +35,7 @@ from sqlalchemy.orm import Session
 
 from auth import require_user_id
 from database import get_db
+from models.access import AccountLink
 from models.classroom import Classroom, Student
 from models.curriculum import (
     Category,
@@ -908,17 +909,64 @@ def _commit_grades(
     apply_auto_award(db, user_id, written_grades)
 
 
-def grade_stamp_fields(g: Grade) -> dict:
+def assistant_names(
+    db: Session, grades: list[Grade]
+) -> dict[tuple[UUID, UUID], str | None]:
+    """Display names for assistant-entered grades (#262), in one query.
+
+    Key = (owning teacher `grade.user_id`, `grade.entered_by_user_id`).
+    The name is the roster name of THAT teacher's student who is
+    self-linked (account_link) to the assistant's auth account. Stays
+    resolvable after the 小老師 role is revoked; lost (→ None, the badge
+    then just says "小老師") if the teacher changes that student's email.
+    """
+    pairs = {
+        (g.user_id, g.entered_by_user_id)
+        for g in grades
+        if g.entered_by_role == "assistant" and g.entered_by_user_id is not None
+    }
+    if not pairs:
+        return {}
+    owners = {o for o, _ in pairs}
+    actors = {a for _, a in pairs}
+    rows = (
+        db.query(Student.user_id, AccountLink.auth_user_id, Student.name)
+        .join(AccountLink, AccountLink.student_id == Student.id)
+        .filter(
+            AccountLink.link_role == "self",
+            AccountLink.auth_user_id.in_(actors),
+            Student.user_id.in_(owners),
+        )
+        .order_by(Student.seat_number.asc())
+        .all()
+    )
+    names: dict[tuple[UUID, UUID], str | None] = {}
+    for owner, actor, name in rows:
+        if (owner, actor) in pairs and names.get((owner, actor)) is None:
+            names[(owner, actor)] = name
+    return names
+
+
+def grade_stamp_fields(
+    g: Grade, names: dict[tuple[UUID, UUID], str | None] | None = None
+) -> dict:
     """The "entered by" stamp (#260) as response-schema kwargs.
 
-    `entered_by_name` is only meaningful for assistant (小老師) rows and
-    has no data source yet — #262 will resolve it from the assistant's
-    linked student. Teacher rows never need a name (no badge is shown).
+    `names` comes from `assistant_names` (computed once per response);
+    teacher rows never need a name (no badge is shown).
     """
+    name = None
+    if (
+        names
+        and g.entered_by_role == "assistant"
+        and g.entered_by_user_id is not None
+    ):
+        name = names.get((g.user_id, g.entered_by_user_id))
     return {
         "entered_by_user_id": g.entered_by_user_id,
         "entered_by_role": g.entered_by_role,
-        "entered_by_name": None,
+        "entered_by_name": name,
+        "entered_at": g.entered_at,
         "updated_at": g.updated_at,
     }
 
@@ -1365,6 +1413,7 @@ def get_classroom_grades(
             .all()
         )
 
+    names = assistant_names(db, grades)
     return ClassroomGradesView(
         semester=SemesterOut.model_validate(semester),
         classroom_id=classroom.id,
@@ -1378,7 +1427,7 @@ def get_classroom_grades(
                 item_id=g.item_id,
                 student_id=g.student_id,
                 score=float(g.score),
-                **grade_stamp_fields(g),
+                **grade_stamp_fields(g, names),
             )
             for g in grades
         ],
@@ -1754,6 +1803,7 @@ def get_snapshot_grades(
             .all()
         )
 
+    names = assistant_names(db, grades)
     return ClassroomGradesView(
         semester=SemesterOut.model_validate(semester) if semester else None,
         classroom_id=classroom.id,
@@ -1767,7 +1817,7 @@ def get_snapshot_grades(
                 item_id=g.item_id,
                 student_id=g.student_id,
                 score=float(g.score),
-                **grade_stamp_fields(g),
+                **grade_stamp_fields(g, names),
             )
             for g in grades
         ],

@@ -144,7 +144,7 @@ def build_identity(
     return {
         "is_teacher": owns_any_classroom(db, user_id),
         "is_student": bool(students),
-        # Filled by the 小老師 feature (#262).
+        # Filled in by GET /api/me from routers.assistant (#262).
         "assistant_contexts": [],
     }
 

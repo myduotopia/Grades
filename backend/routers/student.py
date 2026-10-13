@@ -24,6 +24,12 @@ from openpyxl import Workbook, load_workbook
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from assistant_access import (
+    assistant_ids_in_classroom,
+    is_assistant,
+    revoke_assistant,
+    set_assistant,
+)
 from auth import require_user_id
 from database import get_db
 from email_validation import InvalidEmail, clean_email, duplicate_emails
@@ -34,6 +40,7 @@ from schemas import (
     ImportResult,
     ImportRowPreview,
     ListMeta,
+    StudentAssistantUpdate,
     StudentCreate,
     StudentList,
     StudentOut,
@@ -109,6 +116,10 @@ def _on_email_changed(db: Session, student: Student, old_email: str | None) -> N
         AccountLink.student_id == student.id,
         AccountLink.link_role == "self",
     ).delete(synchronize_session=False)
+    # No email → can't sign in → no longer a 小老師 (#262). A changed (not
+    # cleared) email keeps the role; the new address binds on next sign-in.
+    if not student.email:
+        revoke_assistant(db, student.id)
 
 
 # ---------- lookups ----------
@@ -135,8 +146,9 @@ def _get_owned_student(db: Session, user_id: UUID, student_id: UUID) -> Student:
     return s
 
 
-def _serialize_student(s: Student) -> StudentOut:
+def _serialize_student(s: Student, assistant: bool = False) -> StudentOut:
     return StudentOut(
+        is_assistant=assistant,
         id=s.id,
         classroom_id=s.classroom_id,
         seat_number=s.seat_number,
@@ -163,8 +175,9 @@ def list_students(
         .order_by(Student.seat_number.asc())
         .all()
     )
+    assistants = assistant_ids_in_classroom(db, classroom_id)
     return StudentList(
-        data=[_serialize_student(s) for s in rows],
+        data=[_serialize_student(s, s.id in assistants) for s in rows],
         meta=ListMeta(total=len(rows)),
     )
 
@@ -199,9 +212,11 @@ def create_student(
             "errors.student.duplicate_seat",
             "Seat number already exists in this classroom.",
         )
+    if body.is_assistant:
+        set_assistant(db, student, True)
     db.commit()
     db.refresh(student)
-    return _serialize_student(student)
+    return _serialize_student(student, is_assistant(db, student))
 
 
 @router.put("/api/students/{student_id}", response_model=StudentOut)
@@ -213,14 +228,15 @@ def update_student(
 ) -> StudentOut:
     student = _get_owned_student(db, user_id, student_id)
     email = _clean_email_or_400(body.email)
+    transferred = False
     if body.classroom_id is not None and body.classroom_id != student.classroom_id:
         _get_owned_classroom(db, user_id, body.classroom_id)  # ensures ownership
         student.classroom_id = body.classroom_id
+        transferred = True
     student.seat_number = body.seat_number
     student.name = body.name
     old_email = student.email
     student.email = email
-    _on_email_changed(db, student, old_email)
     try:
         db.flush()
     except IntegrityError:
@@ -229,9 +245,36 @@ def update_student(
             "errors.student.duplicate_seat",
             "Seat number already exists in this classroom.",
         )
+    _on_email_changed(db, student, old_email)
+    if transferred:
+        # 小老師 is per class: a transfer ends the role (#262).
+        revoke_assistant(db, student.id)
+    if body.is_assistant is not None:
+        set_assistant(db, student, body.is_assistant)
     db.commit()
     db.refresh(student)
-    return _serialize_student(student)
+    return _serialize_student(student, is_assistant(db, student))
+
+
+@router.put("/api/students/{student_id}/assistant", response_model=StudentOut)
+def update_student_assistant(
+    student_id: UUID,
+    body: StudentAssistantUpdate,
+    user_id: Annotated[UUID, Depends(require_user_id)],
+    db: Annotated[Session, Depends(get_db)],
+) -> StudentOut:
+    """Make / unmake a student 小老師 of their class (#262).
+
+    400 `errors.assistant.email_required` without an email; 409
+    `errors.assistant.duplicate_email` when a classmate shares the email.
+    Unsetting also removes every item assignment; grades already entered
+    keep their stamp.
+    """
+    student = _get_owned_student(db, user_id, student_id)
+    set_assistant(db, student, body.is_assistant)
+    db.commit()
+    db.refresh(student)
+    return _serialize_student(student, is_assistant(db, student))
 
 
 @router.delete("/api/students/{student_id}", status_code=status.HTTP_204_NO_CONTENT)

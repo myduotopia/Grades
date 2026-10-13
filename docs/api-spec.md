@@ -108,7 +108,12 @@ Returns the user's identity and a setup status flag the frontend uses to decide 
 
 `identity` (#261): `is_teacher` = owns ≥1 classroom; `is_student` = the
 Google-verified JWT email matches ≥1 `student.email` (any teacher).
-`assistant_contexts` lists the classes where this student is a 小老師 (#262).
+`assistant_contexts` lists the classes where this student is a 小老師 (#262):
+`{classroom_id, classroom_grade, classroom_name, teacher_label, student_id,
+student_name, items:[{item_id, item_name, subject_id, subject_system_key,
+subject_display_name, category_system_key}]}` — `items` only holds what the
+assistant can enter right now; `teacher_label` is the teacher's Google full
+name read from Supabase `auth.users` (null if unavailable).
 Calling this endpoint also syncs the caller's `account_link(self)` rows — see
 data-model.md §account_link. The frontend routes on it: teacher app,
 `/assistant`, or `/no-access`.
@@ -271,6 +276,8 @@ When PUT sets `is_current=true`, the backend automatically sets all other rows f
 | GET | `/api/items/:id` | Item detail (includes classroom list) |
 | PUT | `/api/items/:id` | Update (incl. `classroom_ids`) |
 | DELETE | `/api/items/:id` | Cascade-delete grades, point_records |
+| GET | `/api/items/:id/assistants` | 小老師 assignable to this item (all the teacher's classes) + which are assigned + `writable` (#262) |
+| PUT | `/api/items/:id/assistants` | Replace the assigned set: `{ "student_ids": [...] }`. Each must be a 小老師 of a class where the item is live; archived semester → 403 |
 
 `POST /api/items` body:
 ```json
@@ -295,6 +302,41 @@ When PUT sets `is_current=true`, the backend automatically sets all other rows f
 | GET | `/api/classrooms/:id/grades?semester_id=` | One classroom's grade bundle for one semester (defaults to current). Frontend computes weighted totals from `category_weights`. |
 | GET | `/api/classrooms/:id/grades/template.xlsx` | Download grade batch-import template |
 | POST | `/api/classrooms/:id/grades/import` | Excel batch import (preview + commit) |
+
+Grade payloads carry the stamp fields `entered_by_user_id`, `entered_by_role`,
+`entered_by_name` (assistant's roster name) and `entered_at` (#260 / #262).
+
+### Student assistants (小老師, #262)
+
+Teacher side:
+
+| Method | Path | Description |
+|---|---|---|
+| PUT | `/api/students/:id/assistant` | `{ "is_assistant": bool }`. 400 `errors.assistant.email_required` without email; 409 `errors.assistant.duplicate_email` if a classmate shares it. Unsetting removes item assignments; stamps stay. |
+
+`StudentOut` includes `is_assistant`; `POST`/`PUT` student bodies accept an
+optional `is_assistant` (same rules) so the student form can save both at once.
+
+Student side — separate endpoints, the teacher routes are unchanged:
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/api/assistant/items/:id/grades?classroom_id=` | Same shape as the teacher's item grades: whole class, names, scores, stamps. No email. |
+| POST | `/api/assistant/grades` | `{item_id, classroom_id, student_id, score}` upsert. |
+| PUT | `/api/assistant/grades/:id` | `{score}` |
+| POST | `/api/assistant/grades/bulk` | `{item_id, classroom_id, entries:[{student_id, score}]}` |
+
+Rules (enforced server-side): only assigned, live, current-semester items in
+the assistant's own class, otherwise **404** (`errors.item.not_found` /
+`errors.grade.not_found` — the same as a non-existent id). Changing a score last
+written by the teacher → **403** `errors.assistant.teacher_grade_locked`
+(re-sending the same value is a no-op). No DELETE route; `score: null` and any
+unknown field such as `snapshot_id` → **422**. Bulk never activates an item and
+is all-or-nothing: any violation → **403** `errors.assistant.forbidden_entries`
+with `details.violations: [{student_id, reason}]` (`not_in_class`,
+`teacher_entered`, `duplicate`). Assistants may enter their own score and may
+overwrite other assistants' scores. Writes store the teacher's id in
+`grade.user_id`; the assistant's sub goes to `entered_by_user_id`.
 
 #### `GET /api/classrooms/:id/grades`
 

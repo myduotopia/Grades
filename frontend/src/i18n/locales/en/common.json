@@ -537,7 +537,8 @@
       "name": "Name",
       "email": "Email",
       "groups": "Groups",
-      "actions": "Actions"
+      "actions": "Actions",
+      "assistant": "Assistant"
     },
     "actions": {
       "add": "Add student",
@@ -785,6 +786,13 @@
       "bad_date_range": "Start date cannot be after end date",
       "date_mismatch": "The entered dates do not match the academic year / term",
       "archived": "This semester is archived and read-only"
+    },
+    "assistant": {
+      "email_required": "This student has no email and can't be made an assistant",
+      "duplicate_email": "Another student in this class has the same email, so this one can't be made an assistant",
+      "invalid_assignment": "Some students aren't assistants of a class where this item is in use",
+      "teacher_grade_locked": "This score was entered by the teacher and can't be changed by an assistant",
+      "forbidden_entries": "Some scores couldn't be saved (e.g. ones the teacher entered), so nothing was saved. Refresh and try again."
     }
   },
   "archived_banner": {
@@ -874,6 +882,37 @@
     "role": "Student assistant",
     "header": "{{name}} (student assistant)",
     "title": "Enter scores",
-    "subtitle": "Only the grade items your teacher assigned to you are listed."
+    "subtitle": "Only the grade items your teacher assigned to you are listed.",
+    "class_with_teacher": "{{cls}} ({{teacher}})",
+    "pick_item": "Grade item",
+    "empty": {
+      "heading": "No grade items assigned to you yet",
+      "body": "Items appear here once your teacher opens them to you."
+    },
+    "col": {
+      "score": "Score"
+    },
+    "score_for": "Score for #{{seat}} {{name}}",
+    "locked": "Entered by teacher",
+    "locked_hint": "The teacher entered this score; it can't be changed",
+    "cannot_clear": "An entered score can't be cleared",
+    "invalid_score": "Enter a number from 0 to 100",
+    "pending": "{{n}} unsaved",
+    "saved": "Saved {{n}}",
+    "load_error": "Couldn't load. Your teacher may have archived this item or closed it to you.",
+    "no_students": "This class has no students."
+  },
+  "assistant_admin": {
+    "needs_email": "Add an email before making this student an assistant",
+    "switch_on": "{{name}} is an assistant — click to remove",
+    "switch_off": "Make {{name}} a student assistant",
+    "checkbox": "Student assistant",
+    "checkbox_hint": "After signing in with Google, an assistant can only enter the grade items you assign to them.",
+    "picker_label": "Student assistants who may enter this item",
+    "picker_hint": "Checked assistants can enter this item after signing in (their own class only). They cannot delete scores or change scores you entered.",
+    "picker_empty": "No student assistants yet. Make a student an assistant from the class roster first.",
+    "picker_archived": "This semester is archived; changes are disabled.",
+    "picker_inactive": "This class hasn't used this item yet (save it once on that class's grade-entry page)",
+    "picker_student": "#{{seat}} {{name}}"
   }
 }

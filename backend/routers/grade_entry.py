@@ -19,7 +19,7 @@ from models.classroom import Classroom, Student
 from models.curriculum import Category, ClassroomItem, Item, Semester, Subject
 from models.grading import Grade, PointRecord
 from sqlalchemy.dialects.postgresql import insert as pg_insert
-from routers.grades import apply_auto_award, grade_stamp_fields
+from routers.grades import apply_auto_award, assistant_names, grade_stamp_fields
 from schemas import (
     GradeBulkResult,
     GradeBulkUpsert,
@@ -151,6 +151,7 @@ def get_item_grades(
         else {}
     )
 
+    names = assistant_names(db, list(grades_by_student.values()))
     return ItemGradesView(
         item_id=item.id,
         item_name=item.name,
@@ -160,18 +161,25 @@ def get_item_grades(
         category_system_key=cat.system_key if cat else "",
         semester_id=item.semester_id,
         classroom_id=classroom_id,
-        students=[_student_row(s, grades_by_student.get(s.id)) for s in roster],
+        students=[
+            _student_row(s, grades_by_student.get(s.id), names)
+            for s in roster
+        ],
     )
 
 
-def _student_row(s: Student, g: Grade | None) -> ItemGradesStudentRow:
+def _student_row(
+    s: Student,
+    g: Grade | None,
+    names: dict[tuple[UUID, UUID], str | None] | None = None,
+) -> ItemGradesStudentRow:
     return ItemGradesStudentRow(
         student_id=s.id,
         seat_number=s.seat_number,
         name=s.name,
         grade_id=g.id if g is not None else None,
         score=float(g.score) if g is not None else None,
-        **(grade_stamp_fields(g) if g is not None else {}),
+        **(grade_stamp_fields(g, names) if g is not None else {}),
     )
 
 
@@ -184,6 +192,7 @@ def _write_out(db: Session, grade: Grade) -> GradeWriteOut:
         awarded_points=_award_points_for(db, grade),
         entered_by_user_id=grade.entered_by_user_id,
         entered_by_role=grade.entered_by_role,
+        entered_at=grade.entered_at,
         updated_at=grade.updated_at,
     )
 

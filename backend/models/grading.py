@@ -1,5 +1,5 @@
 """Grade, StudentStandard, PointRule, PointRecord."""
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import ROUND_HALF_UP, Decimal
 from typing import TYPE_CHECKING
 from uuid import UUID
@@ -73,6 +73,12 @@ class Grade(Base, UserScopedMixin, TimestampMixin):
     entered_by_role: Mapped[str] = mapped_column(
         String(16), nullable=False, default="teacher", server_default="teacher"
     )
+    # When the stamped writer last CHANGED the score (#262). Unlike
+    # `updated_at` it does not move on bookkeeping updates (e.g. archiving
+    # into a snapshot), so the 小老師 tooltip shows the real entry time.
+    entered_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, server_default=text("now()")
+    )
 
     def write_score(
         self, score: Decimal, entered_by_user_id: UUID, role: str = "teacher"
@@ -94,6 +100,7 @@ class Grade(Base, UserScopedMixin, TimestampMixin):
         self.score = score
         self.entered_by_user_id = entered_by_user_id
         self.entered_by_role = role
+        self.entered_at = datetime.now(timezone.utc)
         return True
 
     item: Mapped["Item"] = relationship(back_populates="grades")

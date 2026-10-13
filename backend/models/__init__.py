@@ -1,5 +1,5 @@
 """Re-exports for convenience and to ensure all models are loaded by Alembic."""
-from models.access import AccountLink
+from models.access import AccountLink, ClassAssistant, ItemAssistant
 from models.base import Base
 from models.classroom import Classroom, Student
 from models.curriculum import (
@@ -22,10 +22,12 @@ __all__ = [
     "AccountLink",
     "Base",
     "Category",
+    "ClassAssistant",
     "Classroom",
     "GROUP_COLOR_VALUES",
     "Grade",
     "Item",
+    "ItemAssistant",
     "PointRecord",
     "PointRule",
     "SYSTEM_CATEGORY_DEFAULTS",

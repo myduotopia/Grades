@@ -16,8 +16,8 @@ if (RAW_API_BASE.endsWith('/')) {
 }
 const API_BASE = RAW_API_BASE.replace(/\/+$/, '')
 
-// One class where the signed-in student is a 小老師 (#262). Empty until
-// #262 ships; declared here so the identity shape is stable.
+// One class where the signed-in student is a 小老師 (#262), with the items
+// they may currently enter (assigned, live in the class, current semester).
 export interface AssistantContextItem {
   item_id: string
   item_name: string
@@ -31,7 +31,7 @@ export interface AssistantContext {
   classroom_id: string
   classroom_name: string
   classroom_grade: number
-  teacher_label: string
+  teacher_label: string | null
   student_id: string
   student_name: string | null
   items: AssistantContextItem[]
@@ -215,6 +215,8 @@ export interface Student {
   source: ClassroomSource
   created_at: string
   updated_at: string
+  // 小老師 of this class (#262).
+  is_assistant?: boolean
 }
 
 // ---------- student groups (#237) ----------
@@ -270,6 +272,26 @@ export interface StudentPayload {
   seat_number: number
   name?: string | null
   email?: string | null
+  // 小老師 toggle (#262); omit to leave unchanged. True requires an email.
+  is_assistant?: boolean
+}
+
+// Item editor: which 小老師 may enter this item (#262).
+export interface ItemAssistantCandidate {
+  student_id: string
+  seat_number: number
+  name: string | null
+  classroom_id: string
+  classroom_grade: number
+  classroom_name: string
+  item_active: boolean
+}
+
+export interface ItemAssistantsView {
+  item_id: string
+  writable: boolean
+  assigned_student_ids: string[]
+  candidates: ItemAssistantCandidate[]
 }
 
 // ---------- Student detail (issue #11) ----------
@@ -440,6 +462,7 @@ export interface ItemGradesStudentRow {
   entered_by_user_id?: string | null
   entered_by_role?: EnteredByRole | null
   entered_by_name?: string | null
+  entered_at?: string | null
   updated_at?: string | null
 }
 
@@ -463,6 +486,7 @@ export interface GradeWriteOut {
   awarded_points: number
   entered_by_user_id?: string | null
   entered_by_role?: EnteredByRole
+  entered_at?: string | null
   updated_at?: string | null
 }
 
@@ -638,6 +662,7 @@ export interface GradeEntry {
   entered_by_user_id?: string | null
   entered_by_role?: EnteredByRole
   entered_by_name?: string | null
+  entered_at?: string | null
   updated_at?: string | null
 }
 
@@ -884,6 +909,11 @@ export const api = {
       }),
     remove: (id: string) =>
       request<void>(`/api/students/${id}`, { method: 'DELETE' }),
+    setAssistant: (id: string, isAssistant: boolean) =>
+      request<Student>(`/api/students/${id}/assistant`, {
+        method: 'PUT',
+        body: JSON.stringify({ is_assistant: isAssistant }),
+      }),
     standards: (classroomId: string) =>
       request<StandardsView>(
         `/api/classrooms/${classroomId}/standards`,
@@ -1037,6 +1067,30 @@ export const api = {
       }),
     remove: (id: string) =>
       request<void>(`/api/items/${id}`, { method: 'DELETE' }),
+    assistants: (id: string) =>
+      request<ItemAssistantsView>(`/api/items/${id}/assistants`),
+    setAssistants: (id: string, studentIds: string[]) =>
+      request<ItemAssistantsView>(`/api/items/${id}/assistants`, {
+        method: 'PUT',
+        body: JSON.stringify({ student_ids: studentIds }),
+      }),
+  },
+  // Student 小老師 endpoints (#262). Separate from the teacher routes; the
+  // backend derives the owning teacher and enforces every permission.
+  assistant: {
+    forItem: (itemId: string, classroomId: string) =>
+      request<ItemGradesView>(
+        `/api/assistant/items/${itemId}/grades?classroom_id=${classroomId}`,
+      ),
+    bulk: (body: {
+      item_id: string
+      classroom_id: string
+      entries: { student_id: string; score: number }[]
+    }) =>
+      request<GradeBulkResult>('/api/assistant/grades/bulk', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
   },
   gradeEntry: {
     forItem: (itemId: string, classroomId: string) =>

@@ -69,7 +69,9 @@ class Harness:
         self.client = TestClient(main.app, raise_server_exceptions=False)
 
     def _db(self) -> Iterator[Session]:
-        s = Session(bind=self.conn, join_transaction_mode="create_savepoint")
+        # autoflush=False mirrors database.SessionLocal.
+        s = Session(bind=self.conn, join_transaction_mode="create_savepoint",
+                    autoflush=False)
         try:
             yield s
         finally:
@@ -261,7 +263,339 @@ def verify_261(h: Harness) -> None:
     check(roster[2]["email"] == f"{TAG}-dup@example.com", "after commit: filled email updated")
 
 
-SECTIONS: list[Callable[[Harness], None]] = [verify_261]
+# ---------------------------------------------------------------------------
+# #262 — 小老師 roles + access control
+# ---------------------------------------------------------------------------
+
+def _code(r: Any) -> str | None:
+    try:
+        return r.json()["detail"]["error"]["message_key"]
+    except Exception:
+        return None
+
+
+def verify_262(h: Harness) -> None:
+    from models.access import ClassAssistant, ItemAssistant
+    from models.curriculum import Semester
+    from models.grading import Grade
+
+    section("#262 setup (teacher T1: classes A, B; teacher T2: class C)")
+    t1, t2 = uuid.uuid4(), uuid.uuid4()
+    h.as_user(teacher(t1))
+    h.req("POST", "/api/me/seed")
+    cls_a = h.req("POST", "/api/classrooms", json={"grade": 8, "name": f"{TAG}-A"}).json()["id"]
+    cls_b = h.req("POST", "/api/classrooms", json={"grade": 8, "name": f"{TAG}-B"}).json()["id"]
+    subject_id = h.req("GET", "/api/subjects").json()["data"][0]["id"]
+    quiz_id = next(c["id"] for c in h.req("GET", "/api/categories").json()["data"]
+                   if c["system_key"] == "quiz")
+    sem_id = next(x["id"] for x in h.req("GET", "/api/semesters").json()["data"]
+                  if x["is_current"])
+
+    def mk_item(name: str) -> str:
+        r = h.req("POST", "/api/items", json={
+            "subject_id": subject_id, "category_id": quiz_id,
+            "semester_id": sem_id, "name": f"{TAG}-{name}"})
+        assert r.status_code == 201, r.text
+        return r.json()["id"]
+
+    def mk_student(cid: str, seat: int, name: str, email: str | None) -> str:
+        r = h.req("POST", f"/api/classrooms/{cid}/students",
+                  json={"seat_number": seat, "name": name, "email": email})
+        assert r.status_code == 201, r.text
+        return r.json()["id"]
+
+    item_x, item_y, item_w = mk_item("X"), mk_item("Y"), mk_item("W")
+    e1, e4 = f"{TAG}-a1@example.com", f"{TAG}-a4@example.com"
+    a1 = mk_student(cls_a, 1, "小明", e1)
+    a2 = mk_student(cls_a, 2, "小華", None)
+    a4 = mk_student(cls_a, 4, "小美", e4)
+    b1 = mk_student(cls_b, 1, "乙班", f"{TAG}-b1@example.com")
+    # Activate X and Y in class A, X in class B (teacher bulk save).
+    for it, cid in ((item_x, cls_a), (item_y, cls_a), (item_x, cls_b)):
+        r = h.req("POST", "/api/grades/bulk",
+                  json={"item_id": it, "classroom_id": cid, "entries": []})
+        assert r.status_code == 200, r.text
+
+    h.as_user(teacher(t2))
+    h.req("POST", "/api/me/seed")
+    cls_c = h.req("POST", "/api/classrooms", json={"grade": 8, "name": f"{TAG}-C"}).json()["id"]
+    sem2 = next(x["id"] for x in h.req("GET", "/api/semesters").json()["data"] if x["is_current"])
+    quiz2 = next(c["id"] for c in h.req("GET", "/api/categories").json()["data"]
+                 if c["system_key"] == "quiz")
+    item_z = h.req("POST", "/api/items", json={
+        "subject_id": subject_id, "category_id": quiz2,
+        "semester_id": sem2, "name": f"{TAG}-Z"}).json()["id"]
+    h.req("POST", "/api/grades/bulk", json={"item_id": item_z, "classroom_id": cls_c, "entries": []})
+    r = h.req("GET", f"/api/items/{item_x}/assistants")
+    check(r.status_code == 404, "T2 cannot read T1's item assistants -> 404", r.status_code)
+    r = h.req("PUT", f"/api/students/{a1}/assistant", json={"is_assistant": True})
+    check(r.status_code == 404, "T2 cannot make T1's student an assistant -> 404", r.status_code)
+
+    section("#262 teacher: set assistant")
+    h.as_user(teacher(t1))
+    r = h.req("PUT", f"/api/students/{a2}/assistant", json={"is_assistant": True})
+    check(r.status_code == 400 and _code(r) == "errors.assistant.email_required",
+          "no-email student cannot become assistant -> 400", r.text)
+    r = h.req("PUT", f"/api/students/{a1}/assistant", json={"is_assistant": True})
+    check(r.status_code == 200 and r.json()["is_assistant"] is True, "set A1 as assistant", r.text)
+    dup = mk_student(cls_a, 9, "同信箱", e1)
+    r = h.req("PUT", f"/api/students/{dup}/assistant", json={"is_assistant": True})
+    check(r.status_code == 409 and _code(r) == "errors.assistant.duplicate_email",
+          "duplicate email in class -> 409", r.text)
+    h.req("DELETE", f"/api/students/{dup}")
+    r = h.req("PUT", f"/api/students/{a4}",
+              json={"seat_number": 4, "name": "小美", "email": e4, "is_assistant": True})
+    check(r.status_code == 200 and r.json()["is_assistant"] is True,
+          "StudentModal path (PUT student with is_assistant) sets A4", r.text)
+    roster = h.req("GET", f"/api/classrooms/{cls_a}/students").json()["data"]
+    check({s["id"] for s in roster if s["is_assistant"]} == {a1, a4},
+          "student list reports is_assistant for A1, A4")
+
+    section("#262 teacher: item assignment")
+    view = h.req("GET", f"/api/items/{item_x}/assistants").json()
+    check({c["student_id"] for c in view["candidates"]} == {a1, a4} and view["writable"],
+          "item editor lists the class's assistants", view)
+    r = h.req("PUT", f"/api/items/{item_w}/assistants", json={"student_ids": [a1]})
+    check(r.status_code == 400 and _code(r) == "errors.assistant.invalid_assignment",
+          "assign item not active in class -> 400", r.text)
+    r = h.req("PUT", f"/api/items/{item_x}/assistants", json={"student_ids": [a1, a2]})
+    check(r.status_code == 400, "assign a non-assistant -> 400", r.text)
+    r = h.req("PUT", f"/api/items/{item_x}/assistants", json={"student_ids": [a1, a4]})
+    check(r.status_code == 200 and set(r.json()["assigned_student_ids"]) == {a1, a4},
+          "assign X to A1 + A4", r.text)
+
+    # Teacher-entered grades: A2 on X; A1 on Y; B1 on X.
+    g_a2 = h.req("POST", "/api/grades", json={"item_id": item_x, "student_id": a2, "score": 70}).json()["id"]
+    g_a1y = h.req("POST", "/api/grades", json={"item_id": item_y, "student_id": a1, "score": 60}).json()["id"]
+    g_b1 = h.req("POST", "/api/grades", json={"item_id": item_x, "student_id": b1, "score": 50}).json()["id"]
+
+    section("#262 assistant: visibility")
+    u1, u4 = uuid.uuid4(), uuid.uuid4()
+    h.as_user(student_payload(u1, e1))
+    me = h.req("GET", "/api/me").json()["identity"]
+    ctx = me["assistant_contexts"]
+    check(len(ctx) == 1 and ctx[0]["classroom_id"] == cls_a
+          and [i["item_id"] for i in ctx[0]["items"]] == [item_x]
+          and ctx[0]["student_name"] == "小明",
+          "/api/me assistant_contexts = class A with only item X", ctx)
+    r = h.req("GET", f"/api/assistant/items/{item_x}/grades", params={"classroom_id": cls_a})
+    rows = r.json().get("students", []) if r.status_code == 200 else []
+    check(r.status_code == 200 and len(rows) == 3 and all("email" not in x for x in rows),
+          "GET assigned item X: whole class, no email field", r.text[:200])
+    for label, it, cid in (
+        ("unassigned item Y (same teacher)", item_y, cls_a),
+        ("other teacher's item Z", item_z, cls_c),
+        ("assigned item X but other class B", item_x, cls_b),
+        ("non-existent item", str(uuid.uuid4()), cls_a),
+    ):
+        r = h.req("GET", f"/api/assistant/items/{it}/grades", params={"classroom_id": cid})
+        check(r.status_code == 404 and _code(r) == "errors.item.not_found",
+              f"GET {label} -> uniform 404", r.status_code)
+
+    section("#262 assistant: writes")
+    r = h.req("POST", "/api/assistant/grades",
+              json={"item_id": item_x, "classroom_id": cls_a, "student_id": a1, "score": 88})
+    check(r.status_code == 201 and r.json()["entered_by_role"] == "assistant",
+          "POST own score on X -> 201, stamped assistant", r.text)
+    g_a1 = r.json().get("id")
+    with h.session() as s:
+        g = s.get(Grade, uuid.UUID(g_a1))
+        check(g is not None and g.user_id == t1 and g.entered_by_user_id == u1
+              and g.entered_at is not None,
+              "grade.user_id = TEACHER, entered_by_user_id = assistant sub, entered_at set")
+    r = h.req("POST", "/api/assistant/grades",
+              json={"item_id": item_x, "classroom_id": cls_a, "student_id": b1, "score": 90})
+    check(r.status_code == 404, "POST for a student of another class -> 404", r.status_code)
+    r = h.req("POST", "/api/assistant/grades",
+              json={"item_id": item_x, "classroom_id": cls_a, "student_id": a2, "score": 99})
+    check(r.status_code == 403 and _code(r) == "errors.assistant.teacher_grade_locked",
+          "POST upsert over teacher-entered score -> 403", r.text)
+    r = h.req("POST", "/api/assistant/grades",
+              json={"item_id": item_y, "classroom_id": cls_a, "student_id": a1, "score": 99})
+    check(r.status_code == 404, "POST on unassigned item -> 404", r.status_code)
+    r = h.req("POST", "/api/assistant/grades",
+              json={"item_id": item_x, "classroom_id": cls_a, "student_id": a1, "score": None})
+    check(r.status_code == 422, "POST null score -> 422", r.status_code)
+
+    r = h.req("PUT", f"/api/assistant/grades/{g_a2}", json={"score": 99})
+    check(r.status_code == 403, "PUT teacher-entered grade -> 403", r.status_code)
+    r = h.req("PUT", f"/api/assistant/grades/{g_a1y}", json={"score": 99})
+    check(r.status_code == 404, "PUT grade of another item -> 404", r.status_code)
+    r = h.req("PUT", f"/api/assistant/grades/{g_b1}", json={"score": 99})
+    check(r.status_code == 404, "PUT grade of another class -> 404", r.status_code)
+    r = h.req("PUT", f"/api/assistant/grades/{g_a1}", json={"score": 89})
+    check(r.status_code == 200 and r.json()["score"] == 89, "PUT own assistant-entered grade -> 200")
+
+    r = h.req("DELETE", f"/api/assistant/grades/{g_a1}")
+    check(r.status_code == 405, "DELETE /api/assistant/grades/{id} -> 405 (no route)", r.status_code)
+    r = h.req("DELETE", f"/api/grades/{g_a1}")
+    check(r.status_code == 404, "DELETE /api/grades/{id} (teacher route) as assistant -> 404", r.status_code)
+    r = h.req("POST", "/api/grades", json={"item_id": item_x, "student_id": a1, "score": 1})
+    check(r.status_code == 404, "teacher POST /api/grades as assistant -> 404", r.status_code)
+    r = h.req("POST", "/api/grades/bulk", json={"item_id": item_x, "classroom_id": cls_a,
+                                                "entries": [{"student_id": a1, "score": None}]})
+    check(r.status_code == 404, "teacher bulk (could clear) as assistant -> 404", r.status_code)
+
+    section("#262 assistant: bulk")
+    base = {"item_id": item_x, "classroom_id": cls_a}
+    r = h.req("POST", "/api/assistant/grades/bulk",
+              json={**base, "entries": [{"student_id": a1, "score": 77},
+                                        {"student_id": b1, "score": 77}]})
+    viol = (r.json().get("detail", {}).get("error", {}).get("details", {}) or {}).get("violations", [])
+    check(r.status_code == 403 and viol == [{"student_id": b1, "reason": "not_in_class"}],
+          "bulk with another class's student -> 403 listing it", r.text)
+    with h.session() as s:
+        check(float(s.get(Grade, uuid.UUID(g_a1)).score) == 89,
+              "rejected bulk saved nothing (all-or-nothing)")
+    r = h.req("POST", "/api/assistant/grades/bulk",
+              json={**base, "snapshot_id": str(uuid.uuid4()), "entries": []})
+    check(r.status_code == 422, "bulk with snapshot_id -> 422", r.status_code)
+    r = h.req("POST", "/api/assistant/grades/bulk",
+              json={**base, "entries": [{"student_id": a1, "score": None}]})
+    check(r.status_code == 422, "bulk with null score -> 422", r.status_code)
+    r = h.req("POST", "/api/assistant/grades/bulk",
+              json={**base, "entries": [{"student_id": a2, "score": 71}]})
+    check(r.status_code == 403 and "teacher_entered" in r.text, "bulk changing teacher score -> 403")
+    r = h.req("POST", "/api/assistant/grades/bulk",
+              json={**base, "entries": [{"student_id": a2, "score": 70},
+                                        {"student_id": a4, "score": 66}]})
+    check(r.status_code == 200 and r.json()["written"] == 1,
+          "bulk re-sending teacher's unchanged score is a no-op; other row written", r.text)
+    r = h.req("POST", "/api/assistant/grades/bulk",
+              json={"item_id": item_w, "classroom_id": cls_a,
+                    "entries": [{"student_id": a1, "score": 50}]})
+    check(r.status_code == 404, "bulk on unassigned/inactive item -> 404 (never activates)")
+
+    section("#262 another assistant may overwrite; stamp name")
+    h.as_user(student_payload(u4, e4))
+    h.req("GET", "/api/me")  # binds A4's account (as the app does on load)
+    r = h.req("PUT", f"/api/assistant/grades/{g_a1}", json={"score": 91})
+    check(r.status_code == 200 and r.json()["entered_by_user_id"] == str(u4),
+          "assistant A4 overwrites A1's assistant-entered score", r.text)
+    h.as_user(teacher(t1))
+    rows = {x["student_id"]: x for x in h.req(
+        "GET", f"/api/items/{item_x}/grades", params={"classroom_id": cls_a}).json()["students"]}
+    check(rows[a1]["entered_by_role"] == "assistant" and rows[a1]["entered_by_name"] == "小美"
+          and rows[a1]["entered_at"],
+          "teacher view: entered_by_name resolved to 小美 + entered_at", rows[a1])
+    check(rows[a2]["entered_by_role"] == "teacher", "teacher-entered row unchanged")
+
+    section("#262 archived (封存) is invisible")
+    with h.session() as s:
+        sem = s.get(Semester, uuid.UUID(sem_id))
+        sem.is_current = False
+        s.commit()
+    h.as_user(student_payload(u1, e1))
+    r = h.req("GET", f"/api/assistant/items/{item_x}/grades", params={"classroom_id": cls_a})
+    check(r.status_code == 404, "semester archived -> GET 404", r.status_code)
+    r = h.req("PUT", f"/api/assistant/grades/{g_a1}", json={"score": 50})
+    check(r.status_code == 404, "semester archived -> PUT 404", r.status_code)
+    me = h.req("GET", "/api/me").json()["identity"]
+    check(me["assistant_contexts"][0]["items"] == [], "semester archived -> no items listed")
+    with h.session() as s:
+        sem = s.get(Semester, uuid.UUID(sem_id))
+        sem.is_current = True
+        s.commit()
+    h.as_user(teacher(t1))
+    r = h.req("POST", f"/api/classrooms/{cls_a}/snapshots")
+    check(r.status_code == 201, "teacher archives class A into a snapshot (結算)", r.text)
+    h.as_user(student_payload(u1, e1))
+    r = h.req("GET", f"/api/assistant/items/{item_x}/grades", params={"classroom_id": cls_a})
+    check(r.status_code == 404, "snapshot-archived item -> GET 404", r.status_code)
+    r = h.req("PUT", f"/api/assistant/grades/{g_a1}", json={"score": 50})
+    check(r.status_code == 404, "snapshot-archived grade -> PUT 404", r.status_code)
+    r = h.req("POST", "/api/assistant/grades/bulk",
+              json={**base, "entries": [{"student_id": a1, "score": 50}]})
+    check(r.status_code == 404, "snapshot-archived item -> bulk 404", r.status_code)
+    me = h.req("GET", "/api/me").json()["identity"]
+    check(me["assistant_contexts"][0]["items"] == [], "snapshot-archived item not listed")
+    # Re-activate X in class A for the remaining checks.
+    h.as_user(teacher(t1))
+    h.req("POST", "/api/grades/bulk", json={**base, "entries": []})
+
+    section("#262 revocation")
+    h.as_user(student_payload(u1, e1))
+    r = h.req("POST", "/api/assistant/grades", json={**base, "student_id": a1, "score": 80})
+    check(r.status_code == 201, "precondition: A1 can write again after re-activation", r.text)
+    g_new = r.json().get("id")
+    h.as_user(teacher(t1))
+    r = h.req("PUT", f"/api/students/{a1}/assistant", json={"is_assistant": False})
+    check(r.status_code == 200 and r.json()["is_assistant"] is False, "teacher revokes A1")
+    with h.session() as s:
+        n_items = s.query(ItemAssistant).filter(ItemAssistant.student_id == uuid.UUID(a1)).count()
+        stamp = s.get(Grade, uuid.UUID(g_new)).entered_by_role
+    check(n_items == 0 and stamp == "assistant",
+          "revoke deletes item assignments; existing stamp kept")
+    h.as_user(student_payload(u1, e1))
+    r = h.req("POST", "/api/assistant/grades", json={**base, "student_id": a1, "score": 81})
+    check(r.status_code == 404, "revoked assistant write -> 404", r.status_code)
+    me = h.req("GET", "/api/me").json()["identity"]
+    check(me["assistant_contexts"] == [] and me["is_student"] is True,
+          "revoked assistant: no contexts (frontend -> /no-access)")
+
+    # Email cleared -> role removed automatically.
+    h.as_user(teacher(t1))
+    h.req("PUT", f"/api/items/{item_x}/assistants", json={"student_ids": [a4]})
+    r = h.req("PUT", f"/api/students/{a4}", json={"seat_number": 4, "name": "小美", "email": None})
+    check(r.status_code == 200 and r.json()["is_assistant"] is False,
+          "clearing email auto-revokes assistant", r.text)
+    h.as_user(student_payload(u4, e4))
+    r = h.req("POST", "/api/assistant/grades", json={**base, "student_id": a4, "score": 70})
+    check(r.status_code == 404, "old account after email cleared -> 404", r.status_code)
+
+    # Email changed -> old account loses access; role kept for the new one.
+    h.as_user(teacher(t1))
+    h.req("PUT", f"/api/students/{a1}/assistant", json={"is_assistant": True})
+    h.req("PUT", f"/api/items/{item_x}/assistants", json={"student_ids": [a1]})
+    e1b = f"{TAG}-a1-new@example.com"
+    h.req("PUT", f"/api/students/{a1}", json={"seat_number": 1, "name": "小明", "email": e1b})
+    h.as_user(student_payload(u1, e1))
+    r = h.req("POST", "/api/assistant/grades", json={**base, "student_id": a1, "score": 70})
+    check(r.status_code == 404, "old account after email changed -> 404", r.status_code)
+    h.as_user(student_payload(uuid.uuid4(), e1b, provider="email"))
+    r = h.req("POST", "/api/assistant/grades", json={**base, "student_id": a1, "score": 70})
+    check(r.status_code == 404, "non-google account with the new email -> 404", r.status_code)
+    h.as_user(student_payload(uuid.uuid4(), e1b))
+    r = h.req("POST", "/api/assistant/grades", json={**base, "student_id": a1, "score": 70})
+    check(r.status_code == 201, "google account with the new email can write", r.text)
+
+    # Class transfer ends the role.
+    h.as_user(teacher(t1))
+    r = h.req("PUT", f"/api/students/{a1}",
+              json={"classroom_id": cls_b, "seat_number": 5, "name": "小明", "email": e1b})
+    check(r.status_code == 200 and r.json()["is_assistant"] is False,
+          "transfer to another class revokes assistant", r.text)
+    with h.session() as s:
+        n = s.query(ClassAssistant).filter(ClassAssistant.student_id == uuid.UUID(a1)).count()
+    check(n == 0, "no class_assistant row left after transfer")
+
+    # /api/me/reset must not trip over the new tables (FK CASCADE). Uses a
+    # fresh teacher without snapshots: reset after a snapshot already fails
+    # on snapshot_student's RESTRICT FK — a pre-existing, unrelated issue.
+    t3 = uuid.uuid4()
+    h.as_user(teacher(t3))
+    h.req("POST", "/api/me/seed")
+    c3 = h.req("POST", "/api/classrooms", json={"grade": 9, "name": f"{TAG}-R"}).json()["id"]
+    s3 = h.req("POST", f"/api/classrooms/{c3}/students",
+               json={"seat_number": 1, "email": f"{TAG}-r@example.com",
+                     "is_assistant": True}).json()
+    check(s3.get("is_assistant") is True, "create student with is_assistant=true")
+    sem3 = next(x["id"] for x in h.req("GET", "/api/semesters").json()["data"] if x["is_current"])
+    quiz3 = next(c["id"] for c in h.req("GET", "/api/categories").json()["data"]
+                 if c["system_key"] == "quiz")
+    it3 = h.req("POST", "/api/items", json={"subject_id": subject_id, "category_id": quiz3,
+                                            "semester_id": sem3, "name": f"{TAG}-R"}).json()["id"]
+    h.req("POST", "/api/grades/bulk", json={"item_id": it3, "classroom_id": c3, "entries": []})
+    h.req("PUT", f"/api/items/{it3}/assistants", json={"student_ids": [s3["id"]]})
+    r = h.req("POST", "/api/me/reset")
+    with h.session() as s:
+        left = (s.query(ClassAssistant).filter(ClassAssistant.user_id == t3).count()
+                + s.query(ItemAssistant).filter(ItemAssistant.user_id == t3).count())
+    check(r.status_code == 200 and left == 0,
+          "/api/me/reset cascades through class_assistant / item_assistant", r.text[:200])
+
+
+SECTIONS: list[Callable[[Harness], None]] = [verify_261, verify_262]
 
 
 def main_() -> int:
