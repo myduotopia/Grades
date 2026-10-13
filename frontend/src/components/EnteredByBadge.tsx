@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import type { EnteredByRole } from '../lib/api'
@@ -34,16 +34,33 @@ function formatStampTime(iso: string | null | undefined) {
 export function EnteredByBadge({ stamp }: { stamp: EnteredByStamp | undefined }) {
   const { t } = useTranslation()
   const btnRef = useRef<HTMLButtonElement>(null)
+  const tipRef = useRef<HTMLSpanElement>(null)
+  const tipId = useId()
   const [pos, setPos] = useState<{ top: number; right: number } | null>(null)
 
   useEffect(() => {
     if (!pos) return
     const close = () => setPos(null)
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') close()
+    }
+    // Safari doesn't focus a button on click, so onBlur alone never fires
+    // there — close on any pointer press outside the badge and its popover.
+    const onPointerDown = (e: PointerEvent) => {
+      const target = e.target as Node | null
+      if (!target) return
+      if (btnRef.current?.contains(target) || tipRef.current?.contains(target)) return
+      close()
+    }
     window.addEventListener('scroll', close, true)
     window.addEventListener('resize', close)
+    document.addEventListener('keydown', onKeyDown)
+    document.addEventListener('pointerdown', onPointerDown)
     return () => {
       window.removeEventListener('scroll', close, true)
       window.removeEventListener('resize', close)
+      document.removeEventListener('keydown', onKeyDown)
+      document.removeEventListener('pointerdown', onPointerDown)
     }
   }, [pos])
 
@@ -76,12 +93,16 @@ export function EnteredByBadge({ stamp }: { stamp: EnteredByStamp | undefined })
         onBlur={() => setPos(null)}
         title={label}
         aria-label={label}
+        aria-describedby={pos ? tipId : undefined}
+        aria-expanded={pos !== null}
         className="absolute top-0.5 right-0.5 rounded px-0.5 text-[9px] font-semibold leading-none bg-amber-100 text-amber-800 ring-1 ring-amber-300 focus:outline-none focus:ring-2 focus:ring-amber-500"
       >
         {t('grade_entry.entered_by.badge')}
       </button>
       {pos && (
         <span
+          ref={tipRef}
+          id={tipId}
           role="tooltip"
           style={{ top: pos.top, right: pos.right }}
           className="fixed z-50 whitespace-nowrap rounded-lg bg-slate-900 px-2 py-1 text-xs text-white shadow-lg"

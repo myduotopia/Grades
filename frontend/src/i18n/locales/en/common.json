@@ -600,7 +600,6 @@
     },
     "entered_by": {
       "badge": "A",
-      "assistant": "Student assistant",
       "assistant_tooltip": "Student assistant {{name}} · {{time}}",
       "assistant_tooltip_no_name": "Student assistant · {{time}}"
     }

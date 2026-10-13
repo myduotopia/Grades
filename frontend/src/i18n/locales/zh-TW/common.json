@@ -600,7 +600,6 @@
     },
     "entered_by": {
       "badge": "小",
-      "assistant": "小老師",
       "assistant_tooltip": "小老師 {{name}} · {{time}}",
       "assistant_tooltip_no_name": "小老師 · {{time}}"
     }

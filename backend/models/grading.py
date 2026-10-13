@@ -1,6 +1,6 @@
 """Grade, StudentStandard, PointRule, PointRecord."""
 from datetime import datetime
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from typing import TYPE_CHECKING
 from uuid import UUID
 
@@ -26,6 +26,9 @@ if TYPE_CHECKING:
 
 # Who last wrote a grade (#260). 'assistant' = student 小老師 (#262).
 ENTERED_BY_ROLE_VALUES = ("teacher", "assistant")
+
+# Grade.score is Numeric(4, 1) — one decimal place.
+SCORE_QUANTUM = Decimal("0.1")
 
 
 class Grade(Base, UserScopedMixin, TimestampMixin):
@@ -81,6 +84,11 @@ class Grade(Base, UserScopedMixin, TimestampMixin):
         untouched assistant score must not silently relabel it as the
         teacher's. Returns True when the score changed.
         """
+        # The column is Numeric(4, 1): compare at the precision the DB stores,
+        # otherwise 85.25 vs stored 85.3 would always look "changed" and
+        # relabel an assistant's score. Postgres rounds numeric half away
+        # from zero, which for non-negative scores is ROUND_HALF_UP.
+        score = Decimal(str(score)).quantize(SCORE_QUANTUM, rounding=ROUND_HALF_UP)
         if self.score is not None and Decimal(self.score) == score:
             return False
         self.score = score
