@@ -218,7 +218,7 @@ function ScoreTable({ classroomId, itemId }: { classroomId: string; itemId: stri
     setErrKey(null)
     setLostMsg(null)
     try {
-      await lock.start(ops)
+      if (!(await lock.start(ops))) return // cancelled / left meanwhile
       // Start from the latest scores (someone may have just saved).
       setDraft({})
       await q.refetch()

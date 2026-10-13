@@ -932,7 +932,6 @@
     "holder_assistant_no_name": "小老師",
     "holder_unknown": "其他人",
     "badge": "{{who}}編輯中",
-    "editing_by": "{{who}}正在編輯",
     "pencil_takeover": "{{who}}正在編輯，按一下可接手",
     "takeover_confirm": "{{who}}正在編輯，要接手嗎？\n\n接手後，對方的畫面會在 30 秒內轉為唯讀，他尚未儲存的輸入會作廢。",
     "teacher_lost": "{{who}}已開始編輯這個項目，你的輸入還沒儲存。按「接手並繼續」即可繼續輸入與儲存。",
@@ -944,7 +943,7 @@
     "assistant_edit": "編輯分數",
     "assistant_view_hint": "目前是檢視模式，按「編輯分數」才能輸入。同一時間只能有一個人編輯這個項目。",
     "assistant_blocked": "{{who}}正在編輯，暫時不能輸入（畫面約 30 秒內會更新）。",
-    "import_blocked": "以下項目有人正在編輯，整份成績都沒有匯入。請等對方完成後再試：",
+    "import_blocked": "以下項目有人正在編輯，整份成績都沒有匯入。請等對方完成後再試，或到成績頁按該項目的鉛筆「接手」後再匯入：",
     "import_item_line": "{{item}}：{{who}}正在編輯",
     "unnamed_item": "此項目"
   }

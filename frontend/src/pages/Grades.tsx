@@ -1148,7 +1148,7 @@ function BySubjectView({
     try {
       for (;;) {
         try {
-          await lock.start(opsFor(itemIds), takeover)
+          if (!(await lock.start(opsFor(itemIds), takeover))) return // cancelled meanwhile
           break
         } catch (err) {
           const holder = lockHolderFromError(err)
@@ -1175,7 +1175,7 @@ function BySubjectView({
   async function takeBack() {
     setStarting(true)
     try {
-      await lock.start(opsFor(lockedItemsRef.current), true)
+      if (!(await lock.start(opsFor(lockedItemsRef.current), true))) return
       setLostHolder(null)
       void locksQ.refetch()
     } catch (err) {

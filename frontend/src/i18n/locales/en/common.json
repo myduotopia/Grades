@@ -932,7 +932,6 @@
     "holder_assistant_no_name": "An assistant",
     "holder_unknown": "Someone else",
     "badge": "{{who}} editing",
-    "editing_by": "{{who}} is editing",
     "pencil_takeover": "{{who}} is editing — click to take over",
     "takeover_confirm": "{{who}} is editing. Take over?\n\nTheir screen turns read-only within 30 seconds and anything they haven't saved will be discarded.",
     "teacher_lost": "{{who}} has started editing this item; your input isn't saved yet. Choose “Take over and continue” to keep editing and save.",
@@ -944,7 +943,7 @@
     "assistant_edit": "Edit scores",
     "assistant_view_hint": "View only. Press “Edit scores” to enter scores — only one person can edit this item at a time.",
     "assistant_blocked": "{{who}} is editing; you can't enter scores right now (this updates within 30 seconds).",
-    "import_blocked": "Someone is editing these items, so nothing was imported. Try again once they're done:",
+    "import_blocked": "Someone is editing these items, so nothing was imported. Try again once they're done, or take over the item on the grades page (its pencil) and then import:",
     "import_item_line": "{{item}}: {{who}} is editing",
     "unnamed_item": "This item"
   }
