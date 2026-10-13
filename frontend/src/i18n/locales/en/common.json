@@ -27,7 +27,8 @@
     "sign_in_with_google": "Sign in with Google",
     "sign_out": "Sign out",
     "signed_in_as": "Signed in as",
-    "signing_in": "Signing in…"
+    "signing_in": "Signing in…",
+    "identity_error": "Couldn't load your account information. Please check your connection and try again."
   },
   "common": {
     "save": "Save",

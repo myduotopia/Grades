@@ -5,6 +5,7 @@ import { AuthProvider } from './auth/AuthProvider'
 import { IdentityGate } from './auth/IdentityGate'
 import { ProtectedRoute } from './auth/ProtectedRoute'
 import { AppShell } from './layout/AppShell'
+import { MinimalShell } from './layout/MinimalShell'
 import { SemesterViewProvider } from './state/SemesterView'
 import { AdminItems } from './pages/AdminItems'
 import { Alerts } from './pages/Alerts'
@@ -46,10 +47,14 @@ function App() {
           <Route element={<ProtectedRoute />}>
             {/* Student areas (#261): outside AppShell, no teacher chrome. */}
             <Route element={<IdentityGate area="assistant" />}>
-              <Route path="/assistant" element={<Assistant />} />
+              <Route element={<MinimalShell />}>
+                <Route path="/assistant" element={<Assistant />} />
+              </Route>
             </Route>
             <Route element={<IdentityGate area="no_access" />}>
-              <Route path="/no-access" element={<NoAccess />} />
+              <Route element={<MinimalShell />}>
+                <Route path="/no-access" element={<NoAccess />} />
+              </Route>
             </Route>
             <Route element={<IdentityGate area="teacher" />}>
               <Route

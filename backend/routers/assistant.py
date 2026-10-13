@@ -17,7 +17,7 @@ Rules (all enforced here, not just hidden in the UI):
 from __future__ import annotations
 
 from decimal import ROUND_HALF_UP, Decimal
-from typing import Annotated, Any
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -31,7 +31,7 @@ from assistant_access import (
     resolve_actor,
     visible_items_query,
 )
-from auth import get_current_user, require_user_id
+from auth import require_user_id
 from database import get_db
 from models.classroom import Classroom, Student
 from models.curriculum import Category, Item, Subject
@@ -51,7 +51,6 @@ from schemas import (
 
 router = APIRouter()
 
-Payload = Annotated[dict[str, Any], Depends(get_current_user)]
 UserId = Annotated[UUID, Depends(require_user_id)]
 Db = Annotated[Session, Depends(get_db)]
 
@@ -151,13 +150,13 @@ def _teacher_labels(db: Session, owner_ids: set[UUID]) -> dict[UUID, str]:
 
 
 def build_assistant_contexts(
-    db: Session, user_id: UUID, payload: dict[str, Any]
+    db: Session, user_id: UUID
 ) -> list[AssistantContextOut]:
     """`identity.assistant_contexts` for GET /api/me — one per class where
     the student is a 小老師, with only the items they can currently see
     (assigned, live in the class, current semester). A context with no
     items is still listed so the page can say "nothing assigned yet"."""
-    ctxs = assistant_contexts(db, user_id, payload)
+    ctxs = assistant_contexts(db, user_id)
     labels = _teacher_labels(db, {c.owner_user_id for c in ctxs})
     out: list[AssistantContextOut] = []
     for ctx in ctxs:
@@ -217,13 +216,12 @@ def build_assistant_contexts(
 def assistant_item_grades(
     item_id: UUID,
     classroom_id: Annotated[UUID, Query()],
-    payload: Payload,
     user_id: UserId,
     db: Db,
 ) -> ItemGradesView:
     """The item's live scores for the assistant's whole class (names, seat
     numbers, scores, stamps — no email, no other items, no totals)."""
-    actor = resolve_actor(db, user_id, payload, item_id, classroom_id)
+    actor = resolve_actor(db, user_id, item_id, classroom_id)
     item = actor.item
     roster = (
         db.query(Student)
@@ -275,9 +273,9 @@ def assistant_item_grades(
     status_code=status.HTTP_201_CREATED,
 )
 def assistant_create_grade(
-    body: AssistantGradeCreate, payload: Payload, user_id: UserId, db: Db
+    body: AssistantGradeCreate, user_id: UserId, db: Db
 ) -> GradeWriteOut:
-    actor = resolve_actor(db, user_id, payload, body.item_id, body.classroom_id)
+    actor = resolve_actor(db, user_id, body.item_id, body.classroom_id)
     if body.student_id not in actor.allowed_student_ids:
         raise not_found("student")
     existing = _live_grade(db, actor, body.student_id)
@@ -295,7 +293,6 @@ def assistant_create_grade(
 def assistant_update_grade(
     grade_id: UUID,
     body: AssistantGradeUpdate,
-    payload: Payload,
     user_id: UserId,
     db: Db,
 ) -> GradeWriteOut:
@@ -307,7 +304,7 @@ def assistant_update_grade(
         raise not_found("grade")
     try:
         actor = resolve_actor(
-            db, user_id, payload, grade.item_id, student.classroom_id
+            db, user_id, grade.item_id, student.classroom_id
         )
     except HTTPException:
         raise not_found("grade")
@@ -328,9 +325,9 @@ def assistant_update_grade(
 
 @router.post("/api/assistant/grades/bulk", response_model=GradeBulkResult)
 def assistant_bulk_grades(
-    body: AssistantGradeBulk, payload: Payload, user_id: UserId, db: Db
+    body: AssistantGradeBulk, user_id: UserId, db: Db
 ) -> GradeBulkResult:
-    actor = resolve_actor(db, user_id, payload, body.item_id, body.classroom_id)
+    actor = resolve_actor(db, user_id, body.item_id, body.classroom_id)
     if not body.entries:
         return GradeBulkResult(written=0, deleted=0, awarded=0, revoked=0)
 

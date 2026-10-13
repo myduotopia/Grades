@@ -3,6 +3,7 @@ import { Navigate, Outlet } from 'react-router-dom'
 
 import { useMe } from '../hooks/useMe'
 import type { MeIdentity } from '../lib/api'
+import { supabase } from '../lib/supabase'
 
 export type Area = 'teacher' | 'assistant' | 'no_access'
 
@@ -42,7 +43,7 @@ function canEnter(area: Area, identity: MeIdentity | undefined): boolean {
 /** Layout route: renders children only when the user belongs to `area`. */
 export function IdentityGate({ area }: { area: Area }) {
   const { t } = useTranslation()
-  const { data, isLoading, isError } = useMe()
+  const { data, isLoading, isError, isFetching, refetch } = useMe()
 
   if (isLoading) {
     return (
@@ -51,11 +52,39 @@ export function IdentityGate({ area }: { area: Area }) {
       </div>
     )
   }
-  // If /api/me itself failed, don't lock anyone out of the page they asked
-  // for — each page surfaces its own API errors.
-  if (isError) return <Outlet />
+  // /api/me failed: we don't know who this is, so don't guess — letting
+  // them into the teacher AppShell would onboard a student as a new teacher.
+  // Show an error with retry (and sign-out, in case the session is broken).
+  if (isError || !data) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4">
+        <div className="bg-white border border-slate-200 rounded-xl p-6 max-w-md w-full text-center">
+          <p className="text-sm text-slate-700 mb-4" role="alert">
+            {t('auth.identity_error')}
+          </p>
+          <div className="flex items-center justify-center gap-3">
+            <button
+              type="button"
+              onClick={() => void refetch()}
+              disabled={isFetching}
+              className="inline-flex items-center justify-center min-h-[44px] px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white text-sm font-medium shadow-sm transition-colors disabled:bg-slate-300 disabled:shadow-none disabled:cursor-not-allowed"
+            >
+              {isFetching ? t('common.loading') : t('common.retry')}
+            </button>
+            <button
+              type="button"
+              onClick={() => void supabase.auth.signOut()}
+              className="inline-flex items-center min-h-[44px] px-4 py-2 rounded-lg bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-medium shadow-sm transition-colors"
+            >
+              {t('auth.sign_out')}
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
-  const identity = data?.identity
+  const identity = data.identity
   if (!canEnter(area, identity)) {
     return <Navigate to={AREA_PATH[homeAreaFor(identity)]} replace />
   }

@@ -1,7 +1,6 @@
 import { useTranslation } from 'react-i18next'
 
 import { useAuth } from '../auth/AuthProvider'
-import { MinimalShell } from '../layout/MinimalShell'
 import { PageContainer } from '../layout/PageContainer'
 import { PageHeader } from '../layout/PageHeader'
 import { supabase } from '../lib/supabase'
@@ -19,25 +18,23 @@ export function NoAccess() {
   const email = session?.user.email ?? ''
 
   return (
-    <MinimalShell>
-      <PageContainer>
-        <PageHeader title={t('no_access.title')} breadcrumb={false} />
-        <div className="bg-white border border-slate-200 rounded-xl p-6 lg:p-8 max-w-2xl">
-          <p className="text-slate-700 leading-relaxed">{t('no_access.body')}</p>
-          {email && (
-            <p className="text-sm text-slate-500 mt-4 break-all">
-              {t('no_access.signed_in_as', { email })}
-            </p>
-          )}
-          <button
-            type="button"
-            onClick={() => supabase.auth.signOut()}
-            className={`${SECONDARY_BTN} mt-6`}
-          >
-            {t('no_access.switch_account')}
-          </button>
-        </div>
-      </PageContainer>
-    </MinimalShell>
+    <PageContainer>
+      <PageHeader title={t('no_access.title')} breadcrumb={false} />
+      <div className="bg-white border border-slate-200 rounded-xl p-6 lg:p-8 max-w-2xl">
+        <p className="text-slate-700 leading-relaxed">{t('no_access.body')}</p>
+        {email && (
+          <p className="text-sm text-slate-500 mt-4 break-all">
+            {t('no_access.signed_in_as', { email })}
+          </p>
+        )}
+        <button
+          type="button"
+          onClick={() => supabase.auth.signOut()}
+          className={`${SECONDARY_BTN} mt-6`}
+        >
+          {t('no_access.switch_account')}
+        </button>
+      </div>
+    </PageContainer>
   )
 }

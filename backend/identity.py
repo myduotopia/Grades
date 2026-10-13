@@ -7,22 +7,22 @@ There is no users/roles table. Identity is derived on every request:
   already filters by `user_id == sub`, so a student calling one simply sees
   nothing of anyone else's. A brand-new account that matches no roster entry
   keeps the existing "new teacher" onboarding.
-- **Student** = the JWT email matches one or more `student.email` rows
-  (any teacher's roster) AND the email is trustworthy (see
-  `trusted_email`). Each match gets an `account_link(link_role='self')`
-  row; `sync_self_links` keeps those rows in step with the roster on every
-  `GET /api/me`.
+- **Student** = the account's GOOGLE identity email (read server-side from
+  `auth.identities`, see `trusted_email`) matches one or more
+  `student.email` rows (any teacher's roster). Each match gets an
+  `account_link(link_role='self')` row; `sync_self_links` keeps those rows
+  in step with the roster on every `GET /api/me`.
 
 Authorisation for student-facing endpoints (小老師, #262) must re-check the
-live `lower(student.email) = JWT email` match — an account_link alone is not
+live `student.email = trusted email` match — an account_link alone is not
 enough, because the teacher may have changed / cleared the email since.
 """
 from __future__ import annotations
 
-from typing import Any
+import logging
 from uuid import UUID
 
-from sqlalchemy import func
+from sqlalchemy import text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
@@ -30,48 +30,60 @@ from email_validation import normalize_email
 from models.access import AccountLink
 from models.classroom import Classroom, Student
 
-# Only identities whose email ownership was proven by the provider count.
-# Supabase puts the sign-in provider in `app_metadata` (server-controlled —
-# users cannot edit it). `user_metadata.email_verified` is deliberately NOT
-# trusted: users can overwrite user_metadata via supabase.auth.updateUser().
-TRUSTED_PROVIDERS = frozenset({"google"})
+logger = logging.getLogger(__name__)
+
+# The email Google proved this account owns. Read from Supabase's own
+# `auth.identities` table instead of the JWT `email` claim: the JWT email is
+# the account's *primary* email, which (depending on Supabase settings) can
+# be changed by the user or come from another provider; `app_metadata`
+# provider lists don't say WHICH identity the email came from. The Google
+# identity row's `identity_data.email` is written by Supabase from Google's
+# userinfo only. Preconditions on the Supabase project: see
+# docs/data-model.md (§ student binding).
+_GOOGLE_IDENTITY_EMAIL_SQL = text(
+    "SELECT identity_data->>'email' FROM auth.identities "
+    "WHERE user_id = :uid AND provider = 'google'"
+)
 
 
-def trusted_email(payload: dict[str, Any]) -> str | None:
-    """The JWT email, normalised, if it may be used to match a roster entry.
+def trusted_email(db: Session, user_id: UUID) -> str | None:
+    """The account's Google identity email, normalised, or None.
 
-    Prevents someone from self-registering (e.g. email/password with an
-    unconfirmed address) using a student's email and inheriting that
-    student's access. Returns None when the email isn't trustworthy.
+    None (= "not trustworthy", nothing gets bound) when the account has no
+    Google identity, has several Google identities with different emails,
+    or the lookup fails for any reason (e.g. missing privilege on the auth
+    schema). The query runs in a savepoint so a failure can't poison the
+    request's transaction.
     """
-    app_meta = payload.get("app_metadata") or {}
-    if not isinstance(app_meta, dict):
+    try:
+        with db.begin_nested():
+            rows = db.execute(
+                _GOOGLE_IDENTITY_EMAIL_SQL, {"uid": user_id}
+            ).all()
+    except Exception:
+        logger.warning("auth.identities lookup failed; treating email as untrusted",
+                       exc_info=True)
         return None
-    provider = app_meta.get("provider")
-    providers = app_meta.get("providers") or []
-    if not isinstance(providers, list):
-        providers = []
-    if provider not in TRUSTED_PROVIDERS and not (
-        TRUSTED_PROVIDERS & {p for p in providers if isinstance(p, str)}
-    ):
+    emails = {normalize_email(e) for (e,) in rows} - {None}
+    if len(emails) != 1:
         return None
-    return normalize_email(payload.get("email"))
+    return emails.pop()
 
 
 def matched_students(db: Session, email: str | None) -> list[Student]:
-    """Roster rows (across all teachers) whose email equals `email`."""
+    """Roster rows (across all teachers) whose email equals `email`.
+
+    `student.email` is stored normalised (trim + lower, migration
+    r1m2n3o4p5q6 + every write path), and `email` comes from
+    `trusted_email` (also normalised), so a plain equality is enough and
+    can use an index.
+    """
     if not email:
         return []
-    return (
-        db.query(Student)
-        .filter(func.lower(Student.email) == email)
-        .all()
-    )
+    return db.query(Student).filter(Student.email == email).all()
 
 
-def sync_self_links(
-    db: Session, user_id: UUID, payload: dict[str, Any]
-) -> list[Student]:
+def sync_self_links(db: Session, user_id: UUID) -> list[Student]:
     """Bring this user's `account_link(self)` rows in line with the roster.
 
     - creates a link for every roster row whose email matches (a student may
@@ -84,7 +96,7 @@ def sync_self_links(
 
     Commits only when something changed. Returns the matched students.
     """
-    students = matched_students(db, trusted_email(payload))
+    students = matched_students(db, trusted_email(db, user_id))
     matched_ids = {s.id for s in students}
     changed = False
 
@@ -137,10 +149,11 @@ def owns_any_classroom(db: Session, user_id: UUID) -> bool:
 
 
 def build_identity(
-    db: Session, user_id: UUID, payload: dict[str, Any]
-) -> dict[str, Any]:
-    """The `identity` block of `GET /api/me`. Also syncs account links."""
-    students = sync_self_links(db, user_id, payload)
+    db: Session, user_id: UUID, students: list[Student]
+) -> dict[str, object]:
+    """The `identity` block of `GET /api/me`. `students` is the result of
+    `sync_self_links` (the caller syncs once and shares it with
+    `build_assistant_contexts`)."""
     return {
         "is_teacher": owns_any_classroom(db, user_id),
         "is_student": bool(students),
@@ -149,11 +162,9 @@ def build_identity(
     }
 
 
-def is_student_only(
-    db: Session, user_id: UUID, payload: dict[str, Any]
-) -> bool:
+def is_student_only(db: Session, user_id: UUID) -> bool:
     """True for an account that matches a roster entry and owns no class —
     such an account must not be onboarded as a new teacher (no seeding)."""
     if owns_any_classroom(db, user_id):
         return False
-    return bool(matched_students(db, trusted_email(payload)))
+    return bool(matched_students(db, trusted_email(db, user_id)))

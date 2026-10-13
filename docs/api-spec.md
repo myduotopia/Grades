@@ -107,7 +107,8 @@ Returns the user's identity and a setup status flag the frontend uses to decide 
 ```
 
 `identity` (#261): `is_teacher` = owns ≥1 classroom; `is_student` = the
-Google-verified JWT email matches ≥1 `student.email` (any teacher).
+account's Google identity email (read server-side from `auth.identities`,
+not the JWT `email` claim) matches ≥1 `student.email` (any teacher).
 `assistant_contexts` lists the classes where this student is a 小老師 (#262):
 `{classroom_id, classroom_grade, classroom_name, teacher_label, student_id,
 student_name, items:[{item_id, item_name, subject_id, subject_system_key,

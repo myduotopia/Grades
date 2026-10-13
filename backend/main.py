@@ -20,7 +20,7 @@ from starlette.responses import JSONResponse
 from auth import get_current_user, require_user_id
 from config import settings
 from database import get_db
-from identity import build_identity
+from identity import build_identity, sync_self_links
 from models.classroom import Classroom
 from models.curriculum import Semester, Subject
 from models.settings import UserSettings
@@ -155,10 +155,11 @@ def me(
     student 小老師 page, or the no-access page. Computing it also re-syncs the
     caller's student `account_link` rows (see identity.sync_self_links).
     """
-    identity = build_identity(db, user_id, user)
+    students = sync_self_links(db, user_id)
+    identity = build_identity(db, user_id, students)
     identity["assistant_contexts"] = [
         c.model_dump(mode="json")
-        for c in assistant_router.build_assistant_contexts(db, user_id, user)
+        for c in assistant_router.build_assistant_contexts(db, user_id)
     ]
     has_classes = (
         db.query(Classroom.id).filter(Classroom.user_id == user_id).first()

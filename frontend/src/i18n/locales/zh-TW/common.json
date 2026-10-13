@@ -27,7 +27,8 @@
     "sign_in_with_google": "用 Google 登入",
     "sign_out": "登出",
     "signed_in_as": "登入身份",
-    "signing_in": "登入中…"
+    "signing_in": "登入中…",
+    "identity_error": "無法載入帳號資料，請確認網路連線後重試。"
   },
   "common": {
     "save": "儲存",

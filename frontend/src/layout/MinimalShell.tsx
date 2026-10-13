@@ -1,8 +1,9 @@
-import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
+import { Outlet, useLocation } from 'react-router-dom'
 
 import { useAuth } from '../auth/AuthProvider'
 import { ErrorBoundary } from '../components/ErrorBoundary'
+import { useMe } from '../hooks/useMe'
 import { supabase } from '../lib/supabase'
 
 /**
@@ -11,20 +12,27 @@ import { supabase } from '../lib/supabase'
  * A single top bar — logo, who's signed in, language toggle, sign out — and
  * no sidebar, because these users have none of the teacher features.
  *
- * Pages inside still use `<PageContainer>` / `<PageHeader>` like any other.
+ * Layout route, like `AppShell`: mounted once in `App.tsx`; pages render
+ * only their content (`<PageContainer>` / `<PageHeader>`) via `<Outlet />`.
  */
-export function MinimalShell({
-  label,
-  children,
-}: {
-  /** Shown next to the logo, e.g. "王小明（小老師）". Defaults to the email. */
-  label?: ReactNode
-  children: ReactNode
-}) {
+export function MinimalShell() {
   const { t, i18n } = useTranslation()
   const { session } = useAuth()
+  const { data: me } = useMe()
+  const location = useLocation()
   const toggleLang = () =>
     i18n.changeLanguage(i18n.language === 'zh-TW' ? 'en' : 'zh-TW')
+
+  // On the 小老師 page show "name（小老師）"; elsewhere the app title.
+  const onAssistant = location.pathname.startsWith('/assistant')
+  const studentName = me?.identity.assistant_contexts.find(
+    (c) => c.student_name,
+  )?.student_name
+  const label = onAssistant
+    ? studentName
+      ? t('assistant.header', { name: studentName })
+      : t('assistant.role')
+    : t('app.title')
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
@@ -34,9 +42,7 @@ export function MinimalShell({
             <span className="text-white font-bold text-sm">G</span>
           </div>
           <div className="min-w-0 flex-1">
-            <div className="text-sm font-semibold text-white truncate">
-              {label ?? t('app.title')}
-            </div>
+            <div className="text-sm font-semibold text-white truncate">{label}</div>
             {session?.user.email && (
               <div className="text-xs text-slate-400 truncate">
                 {session.user.email}
@@ -60,7 +66,9 @@ export function MinimalShell({
         </div>
       </header>
       <main className="flex-1 px-4 sm:px-8 lg:px-12 py-8 lg:py-10">
-        <ErrorBoundary>{children}</ErrorBoundary>
+        <ErrorBoundary resetKey={location.pathname}>
+          <Outlet />
+        </ErrorBoundary>
       </main>
     </div>
   )

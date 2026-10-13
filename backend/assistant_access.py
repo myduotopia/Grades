@@ -8,7 +8,7 @@ Two ids, never mixed up:
   stamp (`entered_by_user_id`, with `entered_by_role='assistant'`).
 
 What an assistant can see/write ("visible"), all of which must hold:
-1. their Google-verified JWT email matches the roster student's email right
+1. their Google identity email (auth.identities) matches the roster student's email right
    now (identity.sync_self_links — also keeps account_link in step);
 2. `class_assistant` row for that student in the student's CURRENT class;
 3. `item_assistant` row for (item, that student);
@@ -22,7 +22,6 @@ reveal whether an id exists.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
 from uuid import UUID
 
 from fastapi import HTTPException, status
@@ -68,10 +67,8 @@ class Actor:
     allowed_student_ids: frozenset[UUID] = frozenset()
 
 
-def assistant_contexts(
-    db: Session, actor_user_id: UUID, payload: dict[str, Any]
-) -> list[AssistantContext]:
-    students = sync_self_links(db, actor_user_id, payload)
+def assistant_contexts(db: Session, actor_user_id: UUID) -> list[AssistantContext]:
+    students = sync_self_links(db, actor_user_id)
     if not students:
         return []
     by_id = {s.id: s for s in students}
@@ -132,12 +129,11 @@ def visible_items_query(db: Session, ctx: AssistantContext):
 def resolve_actor(
     db: Session,
     actor_user_id: UUID,
-    payload: dict[str, Any],
     item_id: UUID,
     classroom_id: UUID,
 ) -> Actor:
     """Permission for (item, class), or the uniform 404."""
-    for ctx in assistant_contexts(db, actor_user_id, payload):
+    for ctx in assistant_contexts(db, actor_user_id):
         if ctx.classroom_id != classroom_id:
             continue
         item = visible_items_query(db, ctx).filter(Item.id == item_id).first()

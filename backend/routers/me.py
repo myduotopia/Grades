@@ -1,12 +1,12 @@
 """User-scoped utility endpoints (seeding, identity)."""
 from datetime import date
-from typing import Annotated, Any
+from typing import Annotated
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from auth import get_current_user, require_user_id
+from auth import require_user_id
 from database import get_db
 from identity import is_student_only
 from models.classroom import Classroom
@@ -131,7 +131,6 @@ def _default_semester_for(today: date, terms_per_year: int) -> tuple[int, int]:
 
 @router.post("/seed", response_model=SeedResult)
 def seed(
-    payload: Annotated[dict[str, Any], Depends(get_current_user)],
     user_id: Annotated[UUID, Depends(require_user_id)],
     db: Annotated[Session, Depends(get_db)],
 ) -> SeedResult:
@@ -144,7 +143,7 @@ def seed(
     teacher, so it must not be onboarded with teacher data. The frontend
     already avoids calling this for them; this is the server-side backstop.
     """
-    if is_student_only(db, user_id, payload):
+    if is_student_only(db, user_id):
         return SeedResult(categories_created=0, semesters_created=0)
     existing_keys: set[str] = {
         key

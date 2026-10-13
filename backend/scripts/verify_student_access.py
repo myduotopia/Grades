@@ -13,7 +13,10 @@ touch savepoints. Nothing is ever committed; the shared test DB is left
 exactly as it was, even if a check fails or the script crashes.
 
 Auth is faked by overriding `get_current_user` with a hand-built JWT payload,
-so we can impersonate teachers and (Google / non-Google) students.
+so we can impersonate teachers and (Google / non-Google) students. Students
+also get a matching Supabase `auth.users` + `auth.identities` row (inside the
+same rolled-back transaction), because the trusted email is read from
+`auth.identities`, not from the JWT.
 
 Exit code 0 = every check passed; 1 = at least one failed.
 """
@@ -22,6 +25,7 @@ from __future__ import annotations
 import os
 import sys
 import traceback
+import json
 import uuid
 from collections.abc import Callable, Iterator
 from io import BytesIO
@@ -33,8 +37,10 @@ os.chdir(BACKEND_DIR)  # pydantic-settings reads .env from the CWD
 
 from fastapi.testclient import TestClient  # noqa: E402
 from openpyxl import Workbook  # noqa: E402
+from sqlalchemy import text  # noqa: E402
 from sqlalchemy.orm import Session  # noqa: E402
 
+import identity  # noqa: E402
 import main  # noqa: E402
 from auth import get_current_user  # noqa: E402
 from database import engine, get_db  # noqa: E402
@@ -81,8 +87,26 @@ class Harness:
         return Session(bind=self.conn, join_transaction_mode="create_savepoint")
 
     def as_user(self, payload: dict[str, Any]) -> "Harness":
+        ident = payload.pop("_identity", None)
+        if ident is not None:
+            self.set_identity(uuid.UUID(payload["sub"]), *ident)
         self.payload = payload
         return self
+
+    def set_identity(self, uid: uuid.UUID, provider: str, email: str) -> None:
+        """Make `uid` a Supabase user whose ONLY identity is (provider, email)."""
+        self.conn.execute(
+            # auth.users.email is unique; leave it NULL — only the identity
+            # row's email matters to the backend.
+            text("INSERT INTO auth.users (id) VALUES (:id) "
+                 "ON CONFLICT (id) DO NOTHING"), {"id": uid})
+        self.conn.execute(text("DELETE FROM auth.identities WHERE user_id = :id"),
+                          {"id": uid})
+        self.conn.execute(
+            text("INSERT INTO auth.identities (provider_id, user_id, identity_data, provider) "
+                 "VALUES (:pid, :uid, CAST(:d AS jsonb), :p)"),
+            {"pid": f"{uid.hex}-{provider}", "uid": uid, "p": provider,
+             "d": json.dumps({"email": email, "sub": uid.hex})})
 
     def req(self, method: str, url: str, **kw: Any) -> Any:
         return self.client.request(method, url, **kw)
@@ -102,14 +126,21 @@ def teacher(uid: uuid.UUID) -> dict[str, Any]:
 
 
 def student_payload(
-    uid: uuid.UUID, email: str, provider: str = "google"
+    uid: uuid.UUID,
+    email: str,
+    provider: str = "google",
+    identity_email: str | None = None,
 ) -> dict[str, Any]:
+    """JWT payload + (via Harness.as_user) the account's auth.identities row.
+    `identity_email` defaults to the JWT email; pass a different one to
+    prove the backend reads the identity, not the JWT claim."""
     return {
         "sub": str(uid),
         "email": email,
         "app_metadata": {"provider": provider, "providers": [provider]},
         # Must be ignored — users can write user_metadata themselves.
         "user_metadata": {"email_verified": True},
+        "_identity": (provider, identity_email if identity_email is not None else email),
     }
 
 
@@ -200,6 +231,52 @@ def verify_261(h: Harness) -> None:
     with h.session() as s:
         n = s.query(AccountLink).filter(AccountLink.auth_user_id == impostor).count()
     check(n == 0, "no account_link for the impostor")
+
+    section("#261 trusted email comes from auth.identities, not the JWT")
+    # JWT claims google + the student's email, but the account's google
+    # identity is a different address (e.g. primary email changed / another
+    # provider's email in the JWT) → not trusted.
+    spoof = uuid.uuid4()
+    h.as_user(student_payload(spoof, s_email, identity_email=f"{TAG}-other@example.com"))
+    me = h.req("GET", "/api/me").json()
+    check(me["identity"]["is_student"] is False,
+          "JWT email = student's, google identity email differs -> NOT a student")
+    # JWT app_metadata lists google among providers, but the only identity
+    # with the student's email is an email/password one → not trusted
+    # (the old `providers` fallback is gone).
+    mixed = uuid.uuid4()
+    p = student_payload(mixed, s_email, provider="email")
+    p["app_metadata"] = {"provider": "email", "providers": ["email", "google"]}
+    h.as_user(p)
+    me = h.req("GET", "/api/me").json()
+    check(me["identity"]["is_student"] is False,
+          "app_metadata.providers contains google but no google identity -> NOT a student")
+    # Google identity email matches even though the JWT email doesn't
+    # (and differs in case) → bound: the identity is the source of truth.
+    via_ident = uuid.uuid4()
+    h.as_user(student_payload(via_ident, f"{TAG}-jwt-only@example.com",
+                              identity_email=s_email.upper()))
+    me = h.req("GET", "/api/me").json()
+    check(me["identity"]["is_student"] is True,
+          "google identity email (any case) = student's, JWT email differs -> student")
+    with h.session() as s:
+        n = s.query(AccountLink).filter(AccountLink.auth_user_id == via_ident).count()
+    check(n == 1, "identity-matched account gets the self link")
+    # Lookup failure (e.g. no privilege on auth schema) degrades to untrusted.
+    orig_sql = identity._GOOGLE_IDENTITY_EMAIL_SQL
+    identity._GOOGLE_IDENTITY_EMAIL_SQL = text("SELECT email FROM auth.no_such_table")
+    try:
+        r = h.req("GET", "/api/me")
+        check(r.status_code == 200 and r.json()["identity"]["is_student"] is False,
+              "auth.identities lookup failure -> 200, untrusted (not a student)", r.text[:200])
+        r = h.req("POST", "/api/me/seed")
+        check(r.status_code == 200, "lookup failure doesn't poison the request transaction",
+              r.text[:200])
+    finally:
+        identity._GOOGLE_IDENTITY_EMAIL_SQL = orig_sql
+    # Restore stu_uid as the bound account for the following checks.
+    h.as_user(student_payload(stu_uid, s_email))
+    h.req("GET", "/api/me")
 
     # Unknown google account → new teacher (unchanged onboarding).
     stranger = uuid.uuid4()

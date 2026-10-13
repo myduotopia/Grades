@@ -5,7 +5,6 @@ import { useTranslation } from 'react-i18next'
 
 import { EnteredByBadge } from '../components/EnteredByBadge'
 import { useMe } from '../hooks/useMe'
-import { MinimalShell } from '../layout/MinimalShell'
 import { PageContainer } from '../layout/PageContainer'
 import { PageHeader } from '../layout/PageHeader'
 import {
@@ -27,9 +26,10 @@ const SELECT_CLS =
 const keyOf = (classroomId: string, itemId: string) => `${classroomId}|${itemId}`
 
 /**
- * Student 小老師 score-entry page (#262). Outside the teacher AppShell: a
- * top bar with "name（小老師）", a dropdown of the items the teacher assigned
- * (grouped by class / teacher), and seat / name / score / save.
+ * Student 小老師 score-entry page (#262). Rendered inside `MinimalShell`
+ * (its top bar shows "name（小老師）"), not the teacher AppShell: a dropdown
+ * of the items the teacher assigned (grouped by class / teacher), and
+ * seat / name / score / save.
  *
  * The UI mirrors the backend rules but does not enforce them — the backend
  * (/api/assistant/*) does: teacher-entered scores are read-only here and
@@ -57,8 +57,6 @@ export function Assistant() {
   }, [options, selected])
   const current = options.find((o) => o.key === selected)
 
-  const name =
-    current?.ctx.student_name ?? contexts.find((c) => c.student_name)?.student_name
   const classLabel = (c: AssistantContext) => {
     const cls = classroomDisplayName(c.classroom_grade, c.classroom_name, i18n.language)
     return c.teacher_label
@@ -74,56 +72,54 @@ export function Assistant() {
   }
 
   return (
-    <MinimalShell label={name ? t('assistant.header', { name }) : t('assistant.role')}>
-      <PageContainer>
-        <PageHeader
-          title={t('assistant.title')}
-          subtitle={t('assistant.subtitle')}
-          breadcrumb={false}
-        />
+    <PageContainer>
+      <PageHeader
+        title={t('assistant.title')}
+        subtitle={t('assistant.subtitle')}
+        breadcrumb={false}
+      />
 
-        {options.length === 0 ? (
-          <div className="bg-white border border-slate-200 rounded-xl p-6 lg:p-8 text-center">
-            <h2 className="text-lg font-semibold text-slate-900 tracking-tight mb-2">
-              {t('assistant.empty.heading')}
-            </h2>
-            <p className="text-sm text-slate-500">{t('assistant.empty.body')}</p>
-          </div>
-        ) : (
-          <>
-            <label className="block mb-6">
-              <span className="text-sm font-medium text-slate-700 mb-1.5 block">
-                {t('assistant.pick_item')}
-              </span>
-              <select
-                value={selected}
-                onChange={(e) => setSelected(e.target.value)}
-                className={SELECT_CLS}
-              >
-                {contexts
-                  .filter((c) => c.items.length > 0)
-                  .map((c) => (
-                    <optgroup key={c.classroom_id} label={classLabel(c)}>
-                      {c.items.map((i) => (
-                        <option key={i.item_id} value={keyOf(c.classroom_id, i.item_id)}>
-                          {itemLabel(i)}
-                        </option>
-                      ))}
-                    </optgroup>
-                  ))}
-              </select>
-            </label>
-            {current && (
-              <ScoreTable
-                key={current.key}
-                classroomId={current.ctx.classroom_id}
-                itemId={current.item.item_id}
-              />
-            )}
-          </>
-        )}
-      </PageContainer>
-    </MinimalShell>
+      {options.length === 0 ? (
+        <div className="bg-white border border-slate-200 rounded-xl p-6 lg:p-8 text-center">
+          <h2 className="text-lg font-semibold text-slate-900 tracking-tight mb-2">
+            {t('assistant.empty.heading')}
+          </h2>
+          <p className="text-sm text-slate-500">{t('assistant.empty.body')}</p>
+        </div>
+      ) : (
+        <>
+          <label className="block mb-6">
+            <span className="text-sm font-medium text-slate-700 mb-1.5 block">
+              {t('assistant.pick_item')}
+            </span>
+            <select
+              value={selected}
+              onChange={(e) => setSelected(e.target.value)}
+              className={SELECT_CLS}
+            >
+              {contexts
+                .filter((c) => c.items.length > 0)
+                .map((c) => (
+                  <optgroup key={c.classroom_id} label={classLabel(c)}>
+                    {c.items.map((i) => (
+                      <option key={i.item_id} value={keyOf(c.classroom_id, i.item_id)}>
+                        {itemLabel(i)}
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
+            </select>
+          </label>
+          {current && (
+            <ScoreTable
+              key={current.key}
+              classroomId={current.ctx.classroom_id}
+              itemId={current.item.item_id}
+            />
+          )}
+        </>
+      )}
+    </PageContainer>
   )
 }
 
