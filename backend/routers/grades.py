@@ -850,7 +850,7 @@ def _commit_grades(
     # Activate every imported item for this classroom (idempotent).
     # Import always targets the main bucket (snapshot_id IS NULL).
     for item in col_to_item.values():
-        _ensure_activation(db, user_id, classroom_id, item.id, None)
+        _ensure_activation(db, user_id, classroom.id, item.id, None)
 
     # Upsert grades.
     #
