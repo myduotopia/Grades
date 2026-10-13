@@ -793,7 +793,8 @@
       "duplicate_email": "Another student in this class has the same email, so this one can't be made an assistant",
       "invalid_assignment": "Some students aren't assistants of a class where this item is in use",
       "teacher_grade_locked": "This score was entered by the teacher and can't be changed by an assistant",
-      "forbidden_entries": "Some scores couldn't be saved (e.g. ones the teacher entered), so nothing was saved. Refresh and try again."
+      "forbidden_entries": "Some scores couldn't be saved (e.g. ones the teacher entered), so nothing was saved. Refresh and try again.",
+      "write_conflict": "This score was just changed by someone else. Refresh and try again."
     }
   },
   "archived_banner": {

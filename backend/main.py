@@ -159,7 +159,7 @@ def me(
     identity = build_identity(db, user_id, students)
     identity["assistant_contexts"] = [
         c.model_dump(mode="json")
-        for c in assistant_router.build_assistant_contexts(db, user_id)
+        for c in assistant_router.build_assistant_contexts(db, students)
     ]
     has_classes = (
         db.query(Classroom.id).filter(Classroom.user_id == user_id).first()

@@ -313,7 +313,7 @@ Teacher side:
 
 | Method | Path | Description |
 |---|---|---|
-| PUT | `/api/students/:id/assistant` | `{ "is_assistant": bool }`. 400 `errors.assistant.email_required` without email; 409 `errors.assistant.duplicate_email` if a classmate shares it. Unsetting removes item assignments; stamps stay. |
+| PUT | `/api/students/:id/assistant` | `{ "is_assistant": bool }`. 400 `errors.assistant.email_required` without email; 409 `errors.assistant.duplicate_email` if a classmate shares it (not checked when the student already is one, so re-saving them never 409s). Unsetting removes item assignments; stamps stay. |
 
 `StudentOut` includes `is_assistant`; `POST`/`PUT` student bodies accept an
 optional `is_assistant` (same rules) so the student form can save both at once.
@@ -322,8 +322,8 @@ Student side — separate endpoints, the teacher routes are unchanged:
 
 | Method | Path | Description |
 |---|---|---|
-| GET | `/api/assistant/items/:id/grades?classroom_id=` | Same shape as the teacher's item grades: whole class, names, scores, stamps. No email. |
-| POST | `/api/assistant/grades` | `{item_id, classroom_id, student_id, score}` upsert. |
+| GET | `/api/assistant/items/:id/grades?classroom_id=` | Teacher's item-grades shape minus `semester_id`: whole class, names, scores, stamps. No email; `entered_by_user_id` always null. |
+| POST | `/api/assistant/grades` | `{item_id, classroom_id, student_id, score}` upsert. If the cell is created concurrently, the existing row is re-read and the same rules apply (teacher-entered → 403); otherwise **409** `errors.assistant.write_conflict`. |
 | PUT | `/api/assistant/grades/:id` | `{score}` |
 | POST | `/api/assistant/grades/bulk` | `{item_id, classroom_id, entries:[{student_id, score}]}` |
 
@@ -337,7 +337,8 @@ is all-or-nothing: any violation → **403** `errors.assistant.forbidden_entries
 with `details.violations: [{student_id, reason}]` (`not_in_class`,
 `teacher_entered`, `duplicate`). Assistants may enter their own score and may
 overwrite other assistants' scores. Writes store the teacher's id in
-`grade.user_id`; the assistant's sub goes to `entered_by_user_id`.
+`grade.user_id`; the assistant's sub goes to `entered_by_user_id` (stored, but
+never returned by these endpoints — write responses also carry `null`).
 
 #### `GET /api/classrooms/:id/grades`
 

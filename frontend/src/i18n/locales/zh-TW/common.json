@@ -793,7 +793,8 @@
       "duplicate_email": "班上有其他學生使用相同 email，無法設為小老師",
       "invalid_assignment": "有學生不是此班的小老師，或此班尚未使用這個項目",
       "teacher_grade_locked": "這個分數是老師登記的，小老師不能修改",
-      "forbidden_entries": "部分分數不能儲存（例如老師登記的分數），整批都沒有儲存，請重新整理後再試"
+      "forbidden_entries": "部分分數不能儲存（例如老師登記的分數），整批都沒有儲存，請重新整理後再試",
+      "write_conflict": "這個分數剛被其他人修改，請重新整理後再試"
     }
   },
   "archived_banner": {

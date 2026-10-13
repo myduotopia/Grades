@@ -22,11 +22,12 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from assistant_access import (
     Actor,
-    assistant_contexts,
+    contexts_for_students,
     not_found,
     resolve_actor,
     visible_items_query,
@@ -43,10 +44,10 @@ from schemas import (
     AssistantGradeBulk,
     AssistantGradeCreate,
     AssistantGradeUpdate,
+    AssistantItemGradesView,
     GradeBulkResult,
     GradeWriteOut,
     ItemGradesStudentRow,
-    ItemGradesView,
 )
 
 router = APIRouter()
@@ -63,6 +64,19 @@ def _locked() -> HTTPException:
                 "code": "FORBIDDEN",
                 "message_key": "errors.assistant.teacher_grade_locked",
                 "message": "This score was entered by the teacher.",
+            }
+        },
+    )
+
+
+def _write_conflict() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail={
+            "error": {
+                "code": "CONFLICT",
+                "message_key": "errors.assistant.write_conflict",
+                "message": "This score was just changed by someone else. Refresh and try again.",
             }
         },
     )
@@ -121,11 +135,17 @@ def _write_out(grade: Grade) -> GradeWriteOut:
         student_id=grade.student_id,
         score=float(grade.score),
         awarded_points=0,  # points are the teacher's business; not exposed
-        entered_by_user_id=grade.entered_by_user_id,
+        # Auth account ids are never sent to assistants (the role is enough).
+        entered_by_user_id=None,
         entered_by_role=grade.entered_by_role,
         entered_at=grade.entered_at,
         updated_at=grade.updated_at,
     )
+
+
+def _stamp(grade: Grade, names: dict) -> dict:
+    """grade_stamp_fields without the writer's auth account id."""
+    return {**grade_stamp_fields(grade, names), "entered_by_user_id": None}
 
 
 def _teacher_labels(db: Session, owner_ids: set[UUID]) -> dict[UUID, str]:
@@ -150,13 +170,16 @@ def _teacher_labels(db: Session, owner_ids: set[UUID]) -> dict[UUID, str]:
 
 
 def build_assistant_contexts(
-    db: Session, user_id: UUID
+    db: Session, students: list[Student]
 ) -> list[AssistantContextOut]:
     """`identity.assistant_contexts` for GET /api/me — one per class where
     the student is a 小老師, with only the items they can currently see
     (assigned, live in the class, current semester). A context with no
-    items is still listed so the page can say "nothing assigned yet"."""
-    ctxs = assistant_contexts(db, user_id)
+    items is still listed so the page can say "nothing assigned yet".
+
+    `students` = the caller's `identity.sync_self_links` result; GET /api/me
+    syncs once and passes it here (and to build_identity)."""
+    ctxs = contexts_for_students(db, students)
     labels = _teacher_labels(db, {c.owner_user_id for c in ctxs})
     out: list[AssistantContextOut] = []
     for ctx in ctxs:
@@ -212,15 +235,18 @@ def build_assistant_contexts(
     return out
 
 
-@router.get("/api/assistant/items/{item_id}/grades", response_model=ItemGradesView)
+@router.get(
+    "/api/assistant/items/{item_id}/grades", response_model=AssistantItemGradesView
+)
 def assistant_item_grades(
     item_id: UUID,
     classroom_id: Annotated[UUID, Query()],
     user_id: UserId,
     db: Db,
-) -> ItemGradesView:
+) -> AssistantItemGradesView:
     """The item's live scores for the assistant's whole class (names, seat
-    numbers, scores, stamps — no email, no other items, no totals)."""
+    numbers, scores, stamps — no email, no other items, no totals, no
+    semester id, no auth account ids)."""
     actor = resolve_actor(db, user_id, item_id, classroom_id)
     item = actor.item
     roster = (
@@ -244,14 +270,13 @@ def assistant_item_grades(
     names = assistant_names(db, list(grades.values()))
     subj = db.get(Subject, item.subject_id)
     cat = db.get(Category, item.category_id)
-    return ItemGradesView(
+    return AssistantItemGradesView(
         item_id=item.id,
         item_name=item.name,
         subject_id=item.subject_id,
         subject_system_key=subj.system_key if subj else None,
         subject_display_name=subj.display_name if subj else None,
         category_system_key=cat.system_key if cat else "",
-        semester_id=item.semester_id,
         classroom_id=actor.classroom_id,
         students=[
             ItemGradesStudentRow(
@@ -260,7 +285,7 @@ def assistant_item_grades(
                 name=s.name,
                 grade_id=grades[s.id].id if s.id in grades else None,
                 score=float(grades[s.id].score) if s.id in grades else None,
-                **(grade_stamp_fields(grades[s.id], names) if s.id in grades else {}),
+                **(_stamp(grades[s.id], names) if s.id in grades else {}),
             )
             for s in roster
         ],
@@ -281,8 +306,21 @@ def assistant_create_grade(
     existing = _live_grade(db, actor, body.student_id)
     if _changes_teacher_score(existing, body.score):
         raise _locked()
-    grade = _write(db, actor, body.student_id, existing, body.score)
-    db.flush()
+    try:
+        with db.begin_nested():
+            grade = _write(db, actor, body.student_id, existing, body.score)
+            db.flush()
+    except IntegrityError:
+        # Someone (teacher or another assistant) created this cell between
+        # our read and our insert. Re-read it and apply the normal rules to
+        # the row that now exists — never blindly overwrite.
+        existing = _live_grade(db, actor, body.student_id)
+        if existing is None:
+            raise _write_conflict()
+        if _changes_teacher_score(existing, body.score):
+            raise _locked()
+        grade = _write(db, actor, body.student_id, existing, body.score)
+        db.flush()
     apply_auto_award(db, actor.owner_user_id, [grade])
     db.commit()
     db.refresh(grade)

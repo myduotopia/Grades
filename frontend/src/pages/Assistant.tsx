@@ -4,7 +4,7 @@ import toast from 'react-hot-toast'
 import { useTranslation } from 'react-i18next'
 
 import { EnteredByBadge } from '../components/EnteredByBadge'
-import { useMe } from '../hooks/useMe'
+import { meKey, useMe } from '../hooks/useMe'
 import { PageContainer } from '../layout/PageContainer'
 import { PageHeader } from '../layout/PageHeader'
 import {
@@ -143,6 +143,19 @@ function ScoreTable({ classroomId, itemId }: { classroomId: string; itemId: stri
   const [saving, setSaving] = useState(false)
   const [errKey, setErrKey] = useState<string | null>(null)
 
+  // 404 = this item is no longer open to us (unassigned, archived, role
+  // revoked…). Refresh /api/me so the dropdown — or the whole page, via
+  // IdentityGate — catches up instead of showing a dead item.
+  const refreshIdentityOn404 = (err: unknown) => {
+    if (err instanceof ApiError && err.status === 404) {
+      void qc.invalidateQueries({ queryKey: meKey })
+    }
+  }
+  useEffect(() => {
+    if (q.error) refreshIdentityOn404(q.error)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q.error])
+
   const rows = q.data?.students ?? EMPTY_ROWS
 
   // Validate every edited cell; collect the entries to send.
@@ -186,6 +199,7 @@ function ScoreTable({ classroomId, itemId }: { classroomId: string; itemId: stri
       )
       // The list may be stale (e.g. the teacher just entered a score).
       void qc.invalidateQueries({ queryKey })
+      refreshIdentityOn404(err)
     } finally {
       setSaving(false)
     }

@@ -419,6 +419,16 @@ def verify_262(h: Harness) -> None:
     r = h.req("PUT", f"/api/students/{dup}/assistant", json={"is_assistant": True})
     check(r.status_code == 409 and _code(r) == "errors.assistant.duplicate_email",
           "duplicate email in class -> 409", r.text)
+    # #262-2: an EXISTING assistant is never 409'd by a classmate's email.
+    r = h.req("PUT", f"/api/students/{a1}",
+              json={"seat_number": 1, "name": "小明改", "email": e1, "is_assistant": True})
+    check(r.status_code == 200 and r.json()["is_assistant"] is True
+          and r.json()["name"] == "小明改",
+          "existing assistant renamed via StudentModal (is_assistant sent) despite dup email -> 200",
+          r.text)
+    r = h.req("PUT", f"/api/students/{a1}/assistant", json={"is_assistant": True})
+    check(r.status_code == 200, "re-setting an existing assistant despite dup email -> 200", r.text)
+    h.req("PUT", f"/api/students/{a1}", json={"seat_number": 1, "name": "小明", "email": e1})
     h.req("DELETE", f"/api/students/{dup}")
     r = h.req("PUT", f"/api/students/{a4}",
               json={"seat_number": 4, "name": "小美", "email": e4, "is_assistant": True})
@@ -459,6 +469,10 @@ def verify_262(h: Harness) -> None:
     rows = r.json().get("students", []) if r.status_code == 200 else []
     check(r.status_code == 200 and len(rows) == 3 and all("email" not in x for x in rows),
           "GET assigned item X: whole class, no email field", r.text[:200])
+    check(r.status_code == 200 and "semester_id" not in r.json()
+          and all(x.get("entered_by_user_id") is None for x in rows),
+          "GET assistant view: no semester_id, entered_by_user_id null on every row",
+          r.text[:300])
     for label, it, cid in (
         ("unassigned item Y (same teacher)", item_y, cls_a),
         ("other teacher's item Z", item_z, cls_c),
@@ -474,6 +488,8 @@ def verify_262(h: Harness) -> None:
               json={"item_id": item_x, "classroom_id": cls_a, "student_id": a1, "score": 88})
     check(r.status_code == 201 and r.json()["entered_by_role"] == "assistant",
           "POST own score on X -> 201, stamped assistant", r.text)
+    check(r.status_code == 201 and r.json().get("entered_by_user_id") is None,
+          "POST response: entered_by_user_id is null (not the auth id)", r.text)
     g_a1 = r.json().get("id")
     with h.session() as s:
         g = s.get(Grade, uuid.UUID(g_a1))
@@ -502,6 +518,58 @@ def verify_262(h: Harness) -> None:
     check(r.status_code == 404, "PUT grade of another class -> 404", r.status_code)
     r = h.req("PUT", f"/api/assistant/grades/{g_a1}", json={"score": 89})
     check(r.status_code == 200 and r.json()["score"] == 89, "PUT own assistant-entered grade -> 200")
+    check(r.status_code == 200 and r.json().get("entered_by_user_id") is None,
+          "PUT response: entered_by_user_id is null", r.text)
+
+    section("#262 POST create races a concurrent insert (unique conflict)")
+    # Production has no DB-level unique for the live bucket (snapshot_id
+    # NULL is distinct in uq_grade_item_student_snapshot), so add a partial
+    # unique index inside this rolled-back transaction to make the race
+    # observable, and make the router's first read miss the existing row.
+    import routers.assistant as assistant_mod
+    h.conn.execute(text(
+        "CREATE UNIQUE INDEX zz_verify_live_grade ON grade (item_id, student_id) "
+        "WHERE snapshot_id IS NULL"))
+    real_live = assistant_mod._live_grade
+
+    def miss_first() -> Callable[..., Any]:
+        """First read returns None (the racing insert isn't visible yet),
+        later reads see the real row."""
+        calls: list[int] = []
+
+        def live(db: Any, actor: Any, sid: Any) -> Any:
+            calls.append(1)
+            return None if len(calls) == 1 else real_live(db, actor, sid)
+        return live
+
+    def always_miss(db: Any, actor: Any, sid: Any) -> Any:
+        return None
+
+    try:
+        assistant_mod._live_grade = miss_first()
+        r = h.req("POST", "/api/assistant/grades",
+                  json={"item_id": item_x, "classroom_id": cls_a, "student_id": a1, "score": 89})
+        check(r.status_code == 201 and r.json().get("id") == g_a1,
+              "conflict on assistant-entered cell -> re-read, overwrite the existing row", r.text)
+        assistant_mod._live_grade = miss_first()
+        r = h.req("POST", "/api/assistant/grades",
+                  json={"item_id": item_x, "classroom_id": cls_a, "student_id": a2, "score": 99})
+        check(r.status_code == 403 and _code(r) == "errors.assistant.teacher_grade_locked",
+              "conflict on teacher-entered cell -> re-read -> 403 (not overwritten)", r.text)
+        assistant_mod._live_grade = always_miss
+        r = h.req("POST", "/api/assistant/grades",
+                  json={"item_id": item_x, "classroom_id": cls_a, "student_id": a1, "score": 89})
+        check(r.status_code == 409 and _code(r) == "errors.assistant.write_conflict",
+              "conflict and re-read still finds nothing -> 409", r.text)
+    finally:
+        assistant_mod._live_grade = real_live
+    with h.session() as s:
+        t_score = float(s.get(Grade, uuid.UUID(g_a2)).score)
+        n_live = s.query(Grade).filter(Grade.item_id == uuid.UUID(item_x),
+                                       Grade.student_id == uuid.UUID(a1),
+                                       Grade.snapshot_id.is_(None)).count()
+    check(t_score == 70 and n_live == 1,
+          "after conflicts: teacher score intact, still one live row for A1")
 
     r = h.req("DELETE", f"/api/assistant/grades/{g_a1}")
     check(r.status_code == 405, "DELETE /api/assistant/grades/{id} -> 405 (no route)", r.status_code)
@@ -547,8 +615,11 @@ def verify_262(h: Harness) -> None:
     h.as_user(student_payload(u4, e4))
     h.req("GET", "/api/me")  # binds A4's account (as the app does on load)
     r = h.req("PUT", f"/api/assistant/grades/{g_a1}", json={"score": 91})
-    check(r.status_code == 200 and r.json()["entered_by_user_id"] == str(u4),
+    check(r.status_code == 200 and r.json()["score"] == 91,
           "assistant A4 overwrites A1's assistant-entered score", r.text)
+    with h.session() as s:
+        check(s.get(Grade, uuid.UUID(g_a1)).entered_by_user_id == u4,
+              "stamp (DB) now points at A4's account")
     h.as_user(teacher(t1))
     rows = {x["student_id"]: x for x in h.req(
         "GET", f"/api/items/{item_x}/grades", params={"classroom_id": cls_a}).json()["students"]}

@@ -68,7 +68,15 @@ class Actor:
 
 
 def assistant_contexts(db: Session, actor_user_id: UUID) -> list[AssistantContext]:
-    students = sync_self_links(db, actor_user_id)
+    """Re-sync the caller's self links (live email match) and return the
+    classes where they are a 小老師."""
+    return contexts_for_students(db, sync_self_links(db, actor_user_id))
+
+
+def contexts_for_students(
+    db: Session, students: list[Student]
+) -> list[AssistantContext]:
+    """Same, from an already-synced `sync_self_links` result."""
     if not students:
         return []
     by_id = {s.id: s for s in students}
@@ -216,6 +224,11 @@ def set_assistant(db: Session, student: Student, flag: bool) -> None:
             "errors.assistant.email_required",
             "A student needs an email before becoming an assistant.",
         )
+    # Already an assistant → nothing to do. Checked BEFORE the duplicate-
+    # email check so re-saving an existing assistant (StudentModal always
+    # sends is_assistant) isn't rejected for an unrelated classmate's email.
+    if is_assistant(db, student):
+        return
     dup = (
         db.query(Student.id)
         .filter(
@@ -232,8 +245,6 @@ def set_assistant(db: Session, student: Student, flag: bool) -> None:
             "errors.assistant.duplicate_email",
             "Another student in this class has the same email.",
         )
-    if is_assistant(db, student):
-        return
     # A row left over from a previous class (transfer) is replaced.
     revoke_assistant(db, student.id)
     db.add(

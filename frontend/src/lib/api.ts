@@ -478,6 +478,10 @@ export interface ItemGradesView {
   students: ItemGradesStudentRow[]
 }
 
+// GET /api/assistant/items/:id/grades (#262): no semester_id, and rows'
+// entered_by_user_id is always null for assistants.
+export type AssistantItemGradesView = Omit<ItemGradesView, 'semester_id'>
+
 export interface GradeWriteOut {
   id: string
   item_id: string
@@ -1079,7 +1083,7 @@ export const api = {
   // backend derives the owning teacher and enforces every permission.
   assistant: {
     forItem: (itemId: string, classroomId: string) =>
-      request<ItemGradesView>(
+      request<AssistantItemGradesView>(
         `/api/assistant/items/${itemId}/grades?classroom_id=${classroomId}`,
       ),
     bulk: (body: {

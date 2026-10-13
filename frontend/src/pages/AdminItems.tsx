@@ -490,17 +490,23 @@ function ItemModal({
   })
   const updateMut = useMutation({
     mutationFn: async ({ id, name: n }: { id: string; name: string }) => {
-      const item = await api.items.update(id, { name: n })
+      // Two independent saves: the name (skipped when unchanged) and the
+      // 小老師 assignment (skipped when untouched).
+      if (n !== existing?.name) {
+        await api.items.update(id, { name: n })
+      }
       if (assistantsDirty && assistantIds) {
         await api.items.setAssistants(id, [...assistantIds])
       }
-      return item
     },
     onSuccess: () => {
       onSaved()
       onClose()
     },
     onError: (err) => {
+      // The name may already be saved even if the assistant step failed —
+      // refresh the list so it doesn't show the old name.
+      onSaved()
       if (err instanceof ApiError && err.body?.message_key) {
         setErrKey(err.body.message_key)
       } else {

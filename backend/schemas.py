@@ -735,6 +735,21 @@ class ItemGradesView(BaseModel):
     students: list[ItemGradesStudentRow]
 
 
+class AssistantItemGradesView(BaseModel):
+    """`GET /api/assistant/items/{id}/grades` (#262): ItemGradesView minus
+    what a 小老師 doesn't need — no `semester_id`, and every row's
+    `entered_by_user_id` is null (other accounts' auth ids aren't exposed;
+    `entered_by_role` / `entered_by_name` carry the stamp)."""
+    item_id: UUID
+    item_name: str
+    subject_id: UUID
+    subject_system_key: str | None
+    subject_display_name: str | None
+    category_system_key: str
+    classroom_id: UUID
+    students: list[ItemGradesStudentRow]
+
+
 class GradeEntryOut(BaseModel):
     item_id: UUID
     student_id: UUID
