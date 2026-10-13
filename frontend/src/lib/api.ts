@@ -403,6 +403,11 @@ export interface ItemGradesStudentRow {
   name: string | null
   grade_id: string | null
   score: number | null
+  // "Entered by" stamp (#260); null when the student has no grade.
+  entered_by_user_id?: string | null
+  entered_by_role?: EnteredByRole | null
+  entered_by_name?: string | null
+  updated_at?: string | null
 }
 
 export interface ItemGradesView {
@@ -423,6 +428,9 @@ export interface GradeWriteOut {
   student_id: string
   score: number
   awarded_points: number
+  entered_by_user_id?: string | null
+  entered_by_role?: EnteredByRole
+  updated_at?: string | null
 }
 
 export interface GradeBulkEntry {
@@ -587,10 +595,17 @@ export interface GradeItem {
   activated_at: string | null
 }
 
+// Who last wrote a grade (#260). 'assistant' = student 小老師 (#262).
+export type EnteredByRole = 'teacher' | 'assistant'
+
 export interface GradeEntry {
   item_id: string
   student_id: string
   score: number
+  entered_by_user_id?: string | null
+  entered_by_role?: EnteredByRole
+  entered_by_name?: string | null
+  updated_at?: string | null
 }
 
 export interface ClassroomGradesView {

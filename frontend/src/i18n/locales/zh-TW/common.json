@@ -597,6 +597,11 @@
     "modal": {
       "add_title": "新增考試項目",
       "pick_subtitle": "選擇要輸入成績的項目；按儲存後會直接帶你到該班級的成績頁編輯這欄。"
+    },
+    "entered_by": {
+      "badge": "小",
+      "assistant_tooltip": "小老師 {{name}} · {{time}}",
+      "assistant_tooltip_no_name": "小老師 · {{time}}"
     }
   },
   "student_detail": {

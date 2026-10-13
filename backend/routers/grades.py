@@ -850,7 +850,7 @@ def _commit_grades(
     # Activate every imported item for this classroom (idempotent).
     # Import always targets the main bucket (snapshot_id IS NULL).
     for item in col_to_item.values():
-        _ensure_activation(db, user_id, classroom_id, item.id, None)
+        _ensure_activation(db, user_id, classroom.id, item.id, None)
 
     # Upsert grades.
     #
@@ -890,7 +890,7 @@ def _commit_grades(
                 continue
             existing_g = existing_by_key.get((item.id, r.student_id))
             if existing_g is not None:
-                existing_g.score = Decimal(str(score))
+                existing_g.write_score(Decimal(str(score)), user_id)
                 written_grades.append(existing_g)
             else:
                 g = Grade(
@@ -899,11 +899,28 @@ def _commit_grades(
                     student_id=r.student_id,
                     score=Decimal(str(score)),
                     source="manual",
+                    entered_by_user_id=user_id,
+                    entered_by_role="teacher",
                 )
                 db.add(g)
                 written_grades.append(g)
     db.flush()
     apply_auto_award(db, user_id, written_grades)
+
+
+def grade_stamp_fields(g: Grade) -> dict:
+    """The "entered by" stamp (#260) as response-schema kwargs.
+
+    `entered_by_name` is only meaningful for assistant (小老師) rows and
+    has no data source yet — #262 will resolve it from the assistant's
+    linked student. Teacher rows never need a name (no badge is shown).
+    """
+    return {
+        "entered_by_user_id": g.entered_by_user_id,
+        "entered_by_role": g.entered_by_role,
+        "entered_by_name": None,
+        "updated_at": g.updated_at,
+    }
 
 
 def apply_auto_award(
@@ -1361,6 +1378,7 @@ def get_classroom_grades(
                 item_id=g.item_id,
                 student_id=g.student_id,
                 score=float(g.score),
+                **grade_stamp_fields(g),
             )
             for g in grades
         ],
@@ -1749,6 +1767,7 @@ def get_snapshot_grades(
                 item_id=g.item_id,
                 student_id=g.student_id,
                 score=float(g.score),
+                **grade_stamp_fields(g),
             )
             for g in grades
         ],

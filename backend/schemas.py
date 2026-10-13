@@ -629,6 +629,10 @@ class GradeWriteOut(BaseModel):
     student_id: UUID
     score: float
     awarded_points: int  # points just awarded by this write (0 if no auto-award)
+    # "Entered by" stamp (#260).
+    entered_by_user_id: UUID | None = None
+    entered_by_role: Literal["teacher", "assistant"] = "teacher"
+    updated_at: datetime | None = None
 
 
 class GradeBulkEntry(BaseModel):
@@ -692,6 +696,13 @@ class ItemGradesStudentRow(BaseModel):
     name: str | None
     grade_id: UUID | None
     score: float | None
+    # "Entered by" stamp (#260); all None when the student has no grade.
+    entered_by_user_id: UUID | None = None
+    entered_by_role: Literal["teacher", "assistant"] | None = None
+    # Display name of the assistant (小老師) who entered it. Always None
+    # until #262 links assistant users to students.
+    entered_by_name: str | None = None
+    updated_at: datetime | None = None
 
 
 class ItemGradesView(BaseModel):
@@ -710,6 +721,11 @@ class GradeEntryOut(BaseModel):
     item_id: UUID
     student_id: UUID
     score: float
+    # "Entered by" stamp (#260). entered_by_name: see ItemGradesStudentRow.
+    entered_by_user_id: UUID | None = None
+    entered_by_role: Literal["teacher", "assistant"] = "teacher"
+    entered_by_name: str | None = None
+    updated_at: datetime | None = None
 
 
 class ClassroomGradesView(BaseModel):
