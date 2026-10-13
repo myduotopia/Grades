@@ -60,6 +60,12 @@ export function useEditLock(onLost: LockLostHandler) {
       const holder = lockHolderFromError(err)
       const gone = err instanceof ApiError && err.status === 404
       if (holder === null && !gone) return false // network blip: keep going
+      // 404 = permission gone (B7): still drop our row right away (release
+      // only ever deletes the caller's own lock) so others aren't blocked
+      // until the 90 s expiry.
+      if (gone && opsRef.current) {
+        void Promise.resolve(opsRef.current.release(false)).catch(() => {})
+      }
       opsRef.current = null
       set('off')
       onLostRef.current(holder)
