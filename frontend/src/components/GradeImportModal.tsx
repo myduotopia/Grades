@@ -1,11 +1,14 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { LockedItemsList } from './EditLockNotice'
 import {
   api,
   ApiError,
+  lockedItemsFromError,
   SYSTEM_SUBJECT_KEYS,
   type GradeImportResult,
+  type LockedItem,
   type SystemSubjectKey,
 } from '../lib/api'
 
@@ -29,6 +32,8 @@ export function GradeImportModal({ classroomId, onClose, onComplete }: Props) {
   const [busy, setBusy] = useState(false)
   const [errKey, setErrKey] = useState<string | null>(null)
   const [errMessage, setErrMessage] = useState<string | null>(null)
+  // Commit refused because someone is editing some of the items (#264 A7).
+  const [lockedItems, setLockedItems] = useState<LockedItem[]>([])
 
   async function onPreview() {
     if (!file) return
@@ -61,12 +66,15 @@ export function GradeImportModal({ classroomId, onClose, onComplete }: Props) {
     setBusy(true)
     setErrKey(null)
     setErrMessage(null)
+    setLockedItems([])
     try {
       await api.grades.commit(classroomId, file, chosen)
       onComplete?.()
       onClose()
     } catch (err) {
-      _captureError(err, setErrKey, setErrMessage)
+      const locked = lockedItemsFromError(err)
+      if (locked.length > 0) setLockedItems(locked)
+      else _captureError(err, setErrKey, setErrMessage)
     } finally {
       setBusy(false)
     }
@@ -134,6 +142,13 @@ export function GradeImportModal({ classroomId, onClose, onComplete }: Props) {
               setSubjects((s) => ({ ...s, [col]: key }))
             }
           />
+        )}
+
+        {lockedItems.length > 0 && (
+          <div className="mt-3 text-sm text-rose-600" role="alert">
+            {t('edit_lock.import_blocked')}
+            <LockedItemsList items={lockedItems} />
+          </div>
         )}
 
         {errKey && (

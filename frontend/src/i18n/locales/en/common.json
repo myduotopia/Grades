@@ -799,6 +799,11 @@
       "teacher_grade_locked": "This score was entered by the teacher and can't be changed by an assistant",
       "forbidden_entries": "Some scores couldn't be saved (e.g. ones the teacher entered), so nothing was saved. Refresh and try again.",
       "write_conflict": "This score was just changed by someone else. Refresh and try again."
+    },
+    "grade": {
+      "item_locked": "Someone else is editing this item; it can't be saved right now",
+      "student_not_in_class": "Some students aren't in this class; nothing was saved",
+      "write_conflict": "This score was just changed by someone else. Refresh and try again"
     }
   },
   "archived_banner": {
@@ -899,8 +904,8 @@
       "score": "Score"
     },
     "score_for": "Score for #{{seat}} {{name}}",
-    "locked": "Entered by teacher",
-    "locked_hint": "The teacher entered this score; it can't be changed",
+    "teacher_entered": "Entered by teacher",
+    "teacher_entered_hint": "The teacher entered this score; it can't be changed",
     "cannot_clear": "An entered score can't be cleared",
     "invalid_score": "Enter a number from 0 to 100",
     "pending": "{{n}} unsaved",
@@ -920,5 +925,27 @@
     "picker_archived": "This semester is archived; changes are disabled.",
     "picker_inactive": "This class hasn't used this item yet (save it once on that class's grade-entry page)",
     "picker_student": "#{{seat}} {{name}}"
+  },
+  "edit_lock": {
+    "holder_teacher": "The teacher",
+    "holder_assistant": "{{name}} (assistant)",
+    "holder_assistant_no_name": "An assistant",
+    "holder_unknown": "Someone else",
+    "badge": "{{who}} editing",
+    "editing_by": "{{who}} is editing",
+    "pencil_takeover": "{{who}} is editing — click to take over",
+    "takeover_confirm": "{{who}} is editing. Take over?\n\nTheir screen turns read-only within 30 seconds and anything they haven't saved will be discarded.",
+    "teacher_lost": "{{who}} has started editing this item; your input isn't saved yet. Choose “Take over and continue” to keep editing and save.",
+    "takeover_continue": "Take over and continue",
+    "paused": "Idle for 5 minutes, so editing was released. Keep typing to take it back automatically.",
+    "taken_over_by_teacher": "The teacher has taken over editing. Scores you hadn't saved were not stored.",
+    "taken_by_other": "{{who}} is editing now. Scores you hadn't saved were not stored.",
+    "lock_expired": "Your editing session expired. Scores you hadn't saved were not stored. Press “Edit scores” again.",
+    "assistant_edit": "Edit scores",
+    "assistant_view_hint": "View only. Press “Edit scores” to enter scores — only one person can edit this item at a time.",
+    "assistant_blocked": "{{who}} is editing; you can't enter scores right now (this updates within 30 seconds).",
+    "import_blocked": "Someone is editing these items, so nothing was imported. Try again once they're done:",
+    "import_item_line": "{{item}}: {{who}} is editing",
+    "unnamed_item": "This item"
   }
 }

@@ -799,6 +799,11 @@
       "teacher_grade_locked": "這個分數是老師登記的，小老師不能修改",
       "forbidden_entries": "部分分數不能儲存（例如老師登記的分數），整批都沒有儲存，請重新整理後再試",
       "write_conflict": "這個分數剛被其他人修改，請重新整理後再試"
+    },
+    "grade": {
+      "item_locked": "有人正在編輯這個項目，暫時不能儲存",
+      "student_not_in_class": "有學生不屬於這個班級，整批都沒有儲存",
+      "write_conflict": "這個分數剛被其他人修改，請重新整理後再試"
     }
   },
   "archived_banner": {
@@ -899,8 +904,8 @@
       "score": "分數"
     },
     "score_for": "{{seat}} 號 {{name}} 的分數",
-    "locked": "老師登記",
-    "locked_hint": "這個分數是老師登記的，不能修改",
+    "teacher_entered": "老師登記",
+    "teacher_entered_hint": "這個分數是老師登記的，不能修改",
     "cannot_clear": "不能清空已登記的分數",
     "invalid_score": "請輸入 0–100 的數字",
     "pending": "{{n}} 筆待儲存",
@@ -920,5 +925,27 @@
     "picker_archived": "此學期已封存，無法變更。",
     "picker_inactive": "此班尚未使用這個項目（先在該班成績輸入頁儲存一次）",
     "picker_student": "{{seat}} 號 {{name}}"
+  },
+  "edit_lock": {
+    "holder_teacher": "老師",
+    "holder_assistant": "{{name}}（小老師）",
+    "holder_assistant_no_name": "小老師",
+    "holder_unknown": "其他人",
+    "badge": "{{who}}編輯中",
+    "editing_by": "{{who}}正在編輯",
+    "pencil_takeover": "{{who}}正在編輯，按一下可接手",
+    "takeover_confirm": "{{who}}正在編輯，要接手嗎？\n\n接手後，對方的畫面會在 30 秒內轉為唯讀，他尚未儲存的輸入會作廢。",
+    "teacher_lost": "{{who}}已開始編輯這個項目，你的輸入還沒儲存。按「接手並繼續」即可繼續輸入與儲存。",
+    "takeover_continue": "接手並繼續",
+    "paused": "閒置超過 5 分鐘，已暫時釋放編輯權。繼續輸入就會自動重新取得。",
+    "taken_over_by_teacher": "老師已接手編輯，你尚未儲存的分數沒有存入。",
+    "taken_by_other": "{{who}}正在編輯，你尚未儲存的分數沒有存入。",
+    "lock_expired": "編輯權已失效，你尚未儲存的分數沒有存入。請重新按「編輯分數」。",
+    "assistant_edit": "編輯分數",
+    "assistant_view_hint": "目前是檢視模式，按「編輯分數」才能輸入。同一時間只能有一個人編輯這個項目。",
+    "assistant_blocked": "{{who}}正在編輯，暫時不能輸入（畫面約 30 秒內會更新）。",
+    "import_blocked": "以下項目有人正在編輯，整份成績都沒有匯入。請等對方完成後再試：",
+    "import_item_line": "{{item}}：{{who}}正在編輯",
+    "unnamed_item": "此項目"
   }
 }

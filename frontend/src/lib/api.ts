@@ -136,11 +136,41 @@ export class ApiError extends Error {
   }
 }
 
+// Last token handed out by authedToken(), for the one request that can't
+// wait for an async getSession(): releasing an edit lock while the page is
+// being left (#264, see sendKeepalive).
+let lastToken: string | null = null
+
 async function authedToken(): Promise<string> {
   const { data } = await supabase.auth.getSession()
   const token = data.session?.access_token
   if (!token) throw new ApiError(401, { code: 'UNAUTHORIZED', message_key: 'errors.auth.no_session', message: 'Not signed in' })
+  lastToken = token
   return token
+}
+
+/**
+ * Fire-and-forget request that survives the page unloading (#264 B10):
+ * `fetch(..., {keepalive: true})` issued synchronously with the cached
+ * token. sendBeacon can't carry an Authorization header, so it's not an
+ * option. Failures are ignored — the server-side lock expiry (90 s) is the
+ * fallback.
+ */
+function sendKeepalive(path: string, method: string, body?: unknown): void {
+  if (!lastToken) return
+  try {
+    void fetch(`${API_BASE}${path}`, {
+      method,
+      keepalive: true,
+      headers: {
+        Authorization: `Bearer ${lastToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    }).catch(() => {})
+  } catch {
+    // ignore — expiry frees the lock
+  }
 }
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -481,6 +511,64 @@ export interface ItemGradesView {
 // GET /api/assistant/items/:id/grades (#262): no semester_id, and rows'
 // entered_by_user_id is always null for assistants.
 export type AssistantItemGradesView = Omit<ItemGradesView, 'semester_id'>
+
+// ---------- grade-item edit locks (#264) ----------
+
+export type LockHolderRole = 'teacher' | 'assistant'
+
+/** Who holds an edit lock, as shown to others. `holder_role` null = the
+ *  caller just doesn't hold it (e.g. it expired) and nobody else does. */
+export interface LockHolder {
+  holder_role: LockHolderRole | null
+  holder_name: string | null
+}
+
+export interface ItemLock {
+  item_id: string
+  holder_role: LockHolderRole
+  holder_name: string | null
+  mine: boolean
+}
+
+export interface ItemLockList {
+  locks: ItemLock[]
+}
+
+export interface AssistantLockState {
+  locked: boolean
+  mine: boolean
+  holder_role: LockHolderRole | null
+  holder_name: string | null
+}
+
+/** One entry of a 409 `errors.grade.item_locked` (`details.locks`). */
+export interface LockedItem extends LockHolder {
+  item_id: string
+  item_name?: string | null
+}
+
+/** The holder named by a 409 `errors.grade.item_locked`, else null. */
+export function lockHolderFromError(err: unknown): LockHolder | null {
+  if (
+    err instanceof ApiError &&
+    err.status === 409 &&
+    err.body?.message_key === 'errors.grade.item_locked'
+  ) {
+    const d = (err.body.details ?? {}) as Partial<LockHolder>
+    return {
+      holder_role: (d.holder_role as LockHolderRole | null | undefined) ?? null,
+      holder_name: d.holder_name ?? null,
+    }
+  }
+  return null
+}
+
+/** All `details.locks` entries of a 409 `errors.grade.item_locked`. */
+export function lockedItemsFromError(err: unknown): LockedItem[] {
+  if (lockHolderFromError(err) === null) return []
+  const locks = (err as ApiError).body?.details?.locks
+  return Array.isArray(locks) ? (locks as LockedItem[]) : []
+}
 
 export interface GradeWriteOut {
   id: string
@@ -1095,6 +1183,46 @@ export const api = {
         method: 'POST',
         body: JSON.stringify(body),
       }),
+    // Edit lock (#264): POST = start editing / heartbeat, DELETE = stop.
+    lockState: (itemId: string, classroomId: string) =>
+      request<AssistantLockState>(
+        `/api/assistant/items/${itemId}/lock?classroom_id=${classroomId}`,
+      ),
+    acquireLock: (itemId: string, classroomId: string) =>
+      request<AssistantLockState>(
+        `/api/assistant/items/${itemId}/lock?classroom_id=${classroomId}`,
+        { method: 'POST' },
+      ),
+    releaseLock: (itemId: string, classroomId: string, keepalive = false) => {
+      const path = `/api/assistant/items/${itemId}/lock?classroom_id=${classroomId}`
+      if (keepalive) {
+        sendKeepalive(path, 'DELETE')
+        return Promise.resolve()
+      }
+      return request<void>(path, { method: 'DELETE' })
+    },
+  },
+  // Teacher-side edit locks (#264). Acquire is all-or-nothing and doubles
+  // as the heartbeat; `takeover` replaces a 小老師's lock.
+  itemLocks: {
+    list: (classroomId: string) =>
+      request<ItemLockList>(`/api/classrooms/${classroomId}/item-locks`),
+    acquire: (classroomId: string, itemIds: string[], takeover = false) =>
+      request<ItemLockList>(`/api/classrooms/${classroomId}/item-locks`, {
+        method: 'POST',
+        body: JSON.stringify({ item_ids: itemIds, takeover }),
+      }),
+    release: (classroomId: string, itemIds: string[], keepalive = false) => {
+      const path = `/api/classrooms/${classroomId}/item-locks/release`
+      if (keepalive) {
+        sendKeepalive(path, 'POST', { item_ids: itemIds })
+        return Promise.resolve()
+      }
+      return request<void>(path, {
+        method: 'POST',
+        body: JSON.stringify({ item_ids: itemIds }),
+      })
+    },
   },
   gradeEntry: {
     forItem: (itemId: string, classroomId: string) =>

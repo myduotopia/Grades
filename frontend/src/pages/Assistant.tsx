@@ -4,6 +4,8 @@ import toast from 'react-hot-toast'
 import { useTranslation } from 'react-i18next'
 
 import { EnteredByBadge } from '../components/EnteredByBadge'
+import { LockNotice, useLockHolderLabel } from '../components/EditLockNotice'
+import { LOCK_POLL_MS, useEditLock, type LockOps } from '../hooks/useEditLock'
 import { meKey, useMe } from '../hooks/useMe'
 import { PageContainer } from '../layout/PageContainer'
 import { PageHeader } from '../layout/PageHeader'
@@ -13,6 +15,8 @@ import {
   type AssistantContext,
   type AssistantContextItem,
   type ItemGradesStudentRow,
+  lockHolderFromError,
+  type LockHolder,
 } from '../lib/api'
 import { classroomDisplayName } from '../lib/classroomFormat'
 
@@ -32,8 +36,8 @@ const keyOf = (classroomId: string, itemId: string) => `${classroomId}|${itemId}
  * seat / name / score / save.
  *
  * The UI mirrors the backend rules but does not enforce them — the backend
- * (/api/assistant/*) does: teacher-entered scores are read-only here and
- * scores can't be cleared.
+ * (/api/assistant/*) does: teacher-entered scores are read-only here,
+ * scores can't be cleared, and writing needs the item's edit lock (#264).
  */
 export function Assistant() {
   const { t, i18n } = useTranslation()
@@ -127,13 +131,25 @@ type Draft = Record<string, string>
 
 const EMPTY_ROWS: ItemGradesStudentRow[] = []
 
-/** Last written by the teacher → read-only for the assistant. */
-const locked = (r: ItemGradesStudentRow) =>
+const SECONDARY_BTN =
+  'inline-flex items-center justify-center min-h-[44px] px-4 py-2 rounded-lg bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-medium shadow-sm transition-colors disabled:opacity-60 disabled:cursor-not-allowed'
+
+/** Last written by the teacher → read-only for the assistant (not to be
+ *  confused with the edit lock, #264 B13). */
+const teacherEntered = (r: ItemGradesStudentRow) =>
   r.grade_id !== null && r.entered_by_role === 'teacher'
 
+/**
+ * One item's scores for the assistant's class. View-only until the pencil
+ * ("編輯分數") takes the item's edit lock (#264): only one person edits an
+ * item at a time, the teacher always wins (a takeover turns this table
+ * read-only and drops unsaved input), and the lock is released on save /
+ * cancel / leaving, or after 5 idle minutes.
+ */
 function ScoreTable({ classroomId, itemId }: { classroomId: string; itemId: string }) {
   const { t } = useTranslation()
   const qc = useQueryClient()
+  const holderLabel = useLockHolderLabel()
   const queryKey = ['assistant-item-grades', itemId, classroomId]
   const q = useQuery({
     queryKey,
@@ -141,7 +157,10 @@ function ScoreTable({ classroomId, itemId }: { classroomId: string; itemId: stri
   })
   const [draft, setDraft] = useState<Draft>({})
   const [saving, setSaving] = useState(false)
+  const [starting, setStarting] = useState(false)
   const [errKey, setErrKey] = useState<string | null>(null)
+  // Why editing ended against our will (taken over, expired, …).
+  const [lostMsg, setLostMsg] = useState<string | null>(null)
 
   // 404 = this item is no longer open to us (unassigned, archived, role
   // revoked…). Refresh /api/me so the dropdown — or the whole page, via
@@ -156,6 +175,76 @@ function ScoreTable({ classroomId, itemId }: { classroomId: string; itemId: stri
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [q.error])
 
+  const lockKey = ['assistant-item-lock', itemId, classroomId]
+  const lock = useEditLock((holder) => {
+    // Taken over / expired / permission gone: read-only, unsaved input is
+    // discarded, reload the latest scores.
+    setDraft({})
+    setLostMsg(
+      holder === null
+        ? t('edit_lock.lock_expired')
+        : holder.holder_role === 'teacher'
+          ? t('edit_lock.taken_over_by_teacher')
+          : holder.holder_role === null
+            ? t('edit_lock.lock_expired')
+            : t('edit_lock.taken_by_other', { who: holderLabel(holder) }),
+    )
+    void qc.invalidateQueries({ queryKey })
+    void qc.invalidateQueries({ queryKey: lockKey })
+    if (holder === null) void qc.invalidateQueries({ queryKey: meKey })
+  })
+  const editing = lock.status !== 'off'
+
+  // Who is editing — polled while viewing (React Query pauses it while the
+  // tab is hidden); while we edit, the heartbeat tells us instead.
+  const lockQ = useQuery({
+    queryKey: lockKey,
+    queryFn: () => api.assistant.lockState(itemId, classroomId),
+    refetchInterval: LOCK_POLL_MS,
+    enabled: !editing,
+  })
+  const blockedBy: LockHolder | null =
+    !editing && lockQ.data?.locked && !lockQ.data.mine
+      ? { holder_role: lockQ.data.holder_role, holder_name: lockQ.data.holder_name }
+      : null
+
+  const ops: LockOps = {
+    acquire: () => api.assistant.acquireLock(itemId, classroomId),
+    release: (keepalive) => api.assistant.releaseLock(itemId, classroomId, keepalive),
+  }
+
+  async function startEditing() {
+    setStarting(true)
+    setErrKey(null)
+    setLostMsg(null)
+    try {
+      await lock.start(ops)
+      // Start from the latest scores (someone may have just saved).
+      setDraft({})
+      await q.refetch()
+    } catch (err) {
+      if (lockHolderFromError(err)) {
+        void qc.invalidateQueries({ queryKey: lockKey })
+      } else {
+        setErrKey(
+          err instanceof ApiError && err.body?.message_key
+            ? err.body.message_key
+            : 'common.error_generic',
+        )
+        refreshIdentityOn404(err)
+      }
+    } finally {
+      setStarting(false)
+    }
+  }
+
+  function stopEditing() {
+    lock.stop()
+    setDraft({})
+    setErrKey(null)
+    void qc.invalidateQueries({ queryKey: lockKey })
+  }
+
   const rows = q.data?.students ?? EMPTY_ROWS
 
   // Validate every edited cell; collect the entries to send.
@@ -164,7 +253,7 @@ function ScoreTable({ classroomId, itemId }: { classroomId: string; itemId: stri
     const bad = new Set<string>()
     for (const r of rows) {
       const raw = draft[r.student_id]
-      if (raw === undefined || locked(r)) continue
+      if (raw === undefined || teacherEntered(r)) continue
       const trimmed = raw.trim()
       if (trimmed === '') {
         // Clearing an existing score isn't allowed; an untouched empty is fine.
@@ -187,16 +276,40 @@ function ScoreTable({ classroomId, itemId }: { classroomId: string; itemId: stri
     setSaving(true)
     setErrKey(null)
     try {
+      // After an idle release, take the lock back first (A5).
+      const held = await lock.ensure()
+      if (held !== 'held') {
+        if (held === 'error') setErrKey('common.error_generic')
+        return
+      }
       await api.assistant.bulk({ item_id: itemId, classroom_id: classroomId, entries })
+      const n = entries.length
+      lock.stop()
       setDraft({})
       await qc.invalidateQueries({ queryKey })
-      toast.success(t('assistant.saved', { n: entries.length }))
+      void qc.invalidateQueries({ queryKey: lockKey })
+      toast.success(t('assistant.saved', { n }))
     } catch (err) {
-      setErrKey(
-        err instanceof ApiError && err.body?.message_key
-          ? err.body.message_key
-          : 'common.error_generic',
-      )
+      const holder = lockHolderFromError(err)
+      if (holder) {
+        // Lost the lock between heartbeats (e.g. the teacher took over).
+        lock.stop()
+        setDraft({})
+        setLostMsg(
+          holder.holder_role === 'teacher'
+            ? t('edit_lock.taken_over_by_teacher')
+            : holder.holder_role === null
+              ? t('edit_lock.lock_expired')
+              : t('edit_lock.taken_by_other', { who: holderLabel(holder) }),
+        )
+        void qc.invalidateQueries({ queryKey: lockKey })
+      } else {
+        setErrKey(
+          err instanceof ApiError && err.body?.message_key
+            ? err.body.message_key
+            : 'common.error_generic',
+        )
+      }
       // The list may be stale (e.g. the teacher just entered a score).
       void qc.invalidateQueries({ queryKey })
       refreshIdentityOn404(err)
@@ -232,6 +345,28 @@ function ScoreTable({ classroomId, itemId }: { classroomId: string; itemId: stri
 
   return (
     <div>
+      <div className="mb-4 space-y-2">
+        {lostMsg && <LockNotice tone="warn">{lostMsg}</LockNotice>}
+        {!editing && blockedBy && (
+          <LockNotice>{t('edit_lock.assistant_blocked', { who: holderLabel(blockedBy) })}</LockNotice>
+        )}
+        {lock.status === 'paused' && <LockNotice>{t('edit_lock.paused')}</LockNotice>}
+        {!editing && (
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <span className="text-sm text-slate-500">{t('edit_lock.assistant_view_hint')}</span>
+            <button
+              type="button"
+              onClick={startEditing}
+              disabled={starting || blockedBy !== null}
+              className={SECONDARY_BTN}
+            >
+              <span aria-hidden className="mr-1.5">✎</span>
+              {t('edit_lock.assistant_edit')}
+            </button>
+          </div>
+        )}
+      </div>
+
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
         <table className="w-full text-sm">
           <thead className="bg-slate-50 border-b border-slate-200 text-slate-600">
@@ -249,7 +384,7 @@ function ScoreTable({ classroomId, itemId }: { classroomId: string; itemId: stri
           </thead>
           <tbody>
             {rows.map((r) => {
-              const isLocked = locked(r)
+              const isTeacherEntered = teacherEntered(r)
               const value =
                 draft[r.student_id] ?? (r.score !== null ? String(r.score) : '')
               const bad = invalid.has(r.student_id)
@@ -267,7 +402,7 @@ function ScoreTable({ classroomId, itemId }: { classroomId: string; itemId: stri
                         type="text"
                         inputMode="decimal"
                         value={value}
-                        disabled={isLocked || saving}
+                        disabled={!editing || isTeacherEntered || saving}
                         onChange={(e) =>
                           setDraft((d) => ({ ...d, [r.student_id]: e.target.value }))
                         }
@@ -276,16 +411,18 @@ function ScoreTable({ classroomId, itemId }: { classroomId: string; itemId: stri
                           name: r.name ?? '',
                         })}
                         aria-invalid={bad}
-                        title={isLocked ? t('assistant.locked_hint') : undefined}
+                        title={
+                          isTeacherEntered ? t('assistant.teacher_entered_hint') : undefined
+                        }
                         className={`w-full min-h-[44px] border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 disabled:bg-slate-100 disabled:text-slate-500 ${
                           bad ? 'border-rose-400' : 'border-slate-300'
                         }`}
                       />
                       <EnteredByBadge stamp={r} />
                     </div>
-                    {isLocked && (
+                    {isTeacherEntered && editing && (
                       <span className="block text-xs text-slate-400 mt-0.5">
-                        {t('assistant.locked')}
+                        {t('assistant.teacher_entered')}
                       </span>
                     )}
                     {bad && (
@@ -309,19 +446,29 @@ function ScoreTable({ classroomId, itemId }: { classroomId: string; itemId: stri
         </p>
       )}
 
-      <div className="mt-6 flex items-center justify-end gap-3">
-        <span className="text-sm text-slate-500">
-          {t('assistant.pending', { n: entries.length })}
-        </span>
-        <button
-          type="button"
-          onClick={save}
-          disabled={saving || entries.length === 0 || invalid.size > 0}
-          className={PRIMARY_BTN}
-        >
-          {saving ? t('common.saving') : t('common.save')}
-        </button>
-      </div>
+      {editing && (
+        <div className="mt-6 flex flex-wrap items-center justify-end gap-3">
+          <span className="text-sm text-slate-500">
+            {t('assistant.pending', { n: entries.length })}
+          </span>
+          <button
+            type="button"
+            onClick={stopEditing}
+            disabled={saving}
+            className={SECONDARY_BTN}
+          >
+            {t('common.cancel')}
+          </button>
+          <button
+            type="button"
+            onClick={save}
+            disabled={saving || entries.length === 0 || invalid.size > 0}
+            className={PRIMARY_BTN}
+          >
+            {saving ? t('common.saving') : t('common.save')}
+          </button>
+        </div>
+      )}
     </div>
   )
 }
