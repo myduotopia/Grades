@@ -319,6 +319,48 @@ When PUT sets `is_current=true`, the backend automatically sets all other rows f
 Grade payloads carry the stamp fields `entered_by_user_id`, `entered_by_role`,
 `entered_by_name` (assistant's roster name) and `entered_at` (#260 / #262).
 
+**Live-bucket rules (#264).** `POST /api/grades/bulk` without `snapshot_id`
+requires every listed student to be in `classroom_id` — otherwise **400**
+`errors.grade.student_not_in_class` with `details.student_ids` and nothing is
+saved (a student of another class would bypass that class's edit lock).
+Students of other teachers are still skipped silently. Snapshot bulk edits are
+unchanged. Single `POST` / `PUT` / `DELETE` use the student's current class.
+Every live write (single, bulk, Excel import) is refused with **409**
+`errors.grade.item_locked` while a 小老師 holds a live edit lock on that item in
+that class (see *Grade-item edit locks*). A teacher does not need to hold the
+lock to write — only nobody else may. There is at most one live grade per
+(item, student) (`uq_grade_live_item_student`); writers insert with
+`ON CONFLICT DO NOTHING` and update the row that exists instead.
+
+#### Grade-item edit locks (#264)
+
+One lock per (class, item) — "someone is entering this item for this class".
+A lock is live while `expires_at > now()` (DB clock). Repeating the acquire call
+is the heartbeat (the UI sends it every ~25 s; the server TTL is 90 s, so a
+closed tab / lost connection frees the item within 90 s). The frontend also
+releases after 5 minutes without typing/clicking. Two tabs of the same account
+share one lock. Snapshots are never locked.
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/api/classrooms/:id/item-locks` | Live locks in the class: `{locks: [{item_id, holder_role, holder_name, mine}]}`. Polled by the grades page while visible. |
+| POST | `/api/classrooms/:id/item-locks` | `{item_ids: [...], takeover?: bool}` — acquire or renew, **all or nothing** (row edit locks every item of the subject at once). A 小老師's live lock → **409** unless `takeover: true` (the UI asks 「要接手嗎？」 first). Items must be the teacher's (**404** `errors.item.not_found`) and in the current semester (**403** `errors.semester.archived`). |
+| POST | `/api/classrooms/:id/item-locks/release` | `{item_ids: [...]}` → 204. Deletes only the caller's own locks. Sent with `fetch(..., {keepalive: true})` when the page is left. |
+
+`holder_role` is `teacher` / `assistant`; `holder_name` is the assistant's roster
+name (or the teacher's Google name, may be null). The holder's account id is
+never returned. Error shape:
+
+```json
+{"error": {"code": "CONFLICT", "message_key": "errors.grade.item_locked",
+  "details": {"holder_role": "assistant", "holder_name": "小明",
+              "locks": [{"item_id": "…", "holder_role": "assistant", "holder_name": "小明"}]}}}
+```
+
+`holder_role` / `holder_name` are `null` when the caller (a 小老師) simply doesn't
+hold the lock and nobody else does — e.g. it expired. The Excel import adds
+`item_name` to each `locks[]` entry.
+
 ### Student assistants (小老師, #262)
 
 Teacher side:
@@ -346,9 +388,12 @@ Student side — separate endpoints, the teacher routes are unchanged:
 | Method | Path | Description |
 |---|---|---|
 | GET | `/api/assistant/items/:id/grades?classroom_id=` | Teacher's item-grades shape minus `semester_id`: whole class, names, scores, stamps. No email; `entered_by_user_id` always null. |
-| POST | `/api/assistant/grades` | `{item_id, classroom_id, student_id, score}` upsert. If the cell is created concurrently, the existing row is re-read and the same rules apply (teacher-entered → 403); otherwise **409** `errors.assistant.write_conflict`. **Note:** this re-read / 409 path only fires once a live unique constraint exists — `grade` currently has no `UNIQUE (item_id, student_id) WHERE snapshot_id IS NULL`, so two concurrent creates both succeed and leave duplicate live rows (tracked as a follow-up issue). |
+| POST | `/api/assistant/grades` | `{item_id, classroom_id, student_id, score}` upsert. If the cell is created concurrently, the live unique index (`uq_grade_live_item_student`, #264) turns the INSERT into a no-op; the existing row is re-read and the same rules apply (teacher-entered → 403); if it still can't be found, **409** `errors.assistant.write_conflict`. |
 | PUT | `/api/assistant/grades/:id` | `{score}` |
-| POST | `/api/assistant/grades/bulk` | `{item_id, classroom_id, entries:[{student_id, score}]}` |
+| POST | `/api/assistant/grades/bulk` | `{item_id, classroom_id, entries:[{student_id, score}]}`. A cell created concurrently with a teacher-entered value → **409** `errors.assistant.write_conflict`, nothing saved. |
+| GET | `/api/assistant/items/:id/lock?classroom_id=` | Edit-lock state `{locked, mine, holder_role, holder_name}` (#264). |
+| POST | `/api/assistant/items/:id/lock?classroom_id=` | Start editing (the pencil) / heartbeat. Free or already mine → 200 state; anyone else's live lock → **409** `errors.grade.item_locked` naming the holder. Never takes over. |
+| DELETE | `/api/assistant/items/:id/lock?classroom_id=` | Stop editing → 204. Deletes only the caller's own lock, so it needs no permission check (reveals nothing, and still frees the item right after the role is revoked). |
 
 Rules (enforced server-side): only assigned, live, current-semester items in
 the assistant's own class, otherwise **404** (`errors.item.not_found` /
@@ -362,6 +407,14 @@ with `details.violations: [{student_id, reason}]` (`not_in_class`,
 overwrite other assistants' scores. Writes store the teacher's id in
 `grade.user_id`; the assistant's sub goes to `entered_by_user_id` (stored, but
 never returned by these endpoints — write responses also carry `null`).
+
+**Edit lock (#264).** Every assistant write (`POST`, `PUT`, non-empty bulk)
+also needs the caller to hold the item's live edit lock in that class, checked
+after the 404 rules above (so the lock never reveals whether an id exists):
+otherwise **409** `errors.grade.item_locked`. A teacher taking over makes the
+assistant's next heartbeat / save answer 409 with `holder_role: "teacher"`;
+the page then turns read-only and drops the unsaved input. When the role or
+assignment is revoked, the heartbeat answers 404 like any other route.
 
 #### `GET /api/classrooms/:id/grades`
 

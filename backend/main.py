@@ -39,6 +39,7 @@ from routers import grouping as grouping_router
 from routers import home as home_router
 from routers import item as item_router
 from routers import item_assistant as item_assistant_router
+from routers import item_lock as item_lock_router
 from routers import me as me_router
 from routers import points as points_router
 from routers import semester as semester_router
@@ -141,6 +142,7 @@ app.include_router(home_router.router, tags=["home"])
 app.include_router(grade_entry_router.router, tags=["grade-entry"])
 app.include_router(item_router.router, tags=["items"])
 app.include_router(item_assistant_router.router, tags=["items"])
+app.include_router(item_lock_router.router, tags=["item-locks"])
 # Student 小老師 endpoints (#262) — separate from the teacher grade routes.
 app.include_router(assistant_router.router, tags=["assistant"])
 app.include_router(subjects_router.router, tags=["subjects"])

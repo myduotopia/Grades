@@ -65,6 +65,9 @@ class Actor:
     classroom_id: UUID
     item: Item = field(compare=False, hash=False)
     allowed_student_ids: frozenset[UUID] = frozenset()
+    # The assistant's own roster name in this class — shown to others as
+    # the edit-lock holder ("小明（小老師）正在編輯", #264).
+    actor_name: str | None = None
 
 
 def assistant_contexts(db: Session, actor_user_id: UUID) -> list[AssistantContext]:
@@ -168,6 +171,7 @@ def resolve_actor(
             classroom_id=ctx.classroom_id,
             item=item,
             allowed_student_ids=frozenset(roster),
+            actor_name=ctx.student.name,
         )
     raise not_found("item")
 

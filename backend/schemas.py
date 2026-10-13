@@ -985,3 +985,41 @@ class AssistantGradeBulk(BaseModel):
     item_id: UUID
     classroom_id: UUID
     entries: list[AssistantBulkEntry]
+
+
+# ---------- grade-item edit locks (#264) ----------
+
+class ItemLockOut(BaseModel):
+    """A live edit lock. Never carries the holder's auth account id."""
+    item_id: UUID
+    holder_role: str  # 'teacher' | 'assistant'
+    holder_name: str | None
+    mine: bool
+
+
+class ItemLockList(BaseModel):
+    locks: list[ItemLockOut]
+
+
+class TeacherLockAcquire(BaseModel):
+    """Acquire / renew (heartbeat) locks on items of one class, all or
+    nothing. `takeover` replaces a 小老師's lock (the UI confirms first)."""
+    model_config = ConfigDict(extra="forbid")
+
+    item_ids: list[UUID] = Field(min_length=1, max_length=200)
+    takeover: bool = False
+
+
+class TeacherLockRelease(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    item_ids: list[UUID] = Field(min_length=1, max_length=200)
+
+
+class AssistantLockState(BaseModel):
+    """Lock state of one item for the 小老師 page. `locked` = someone holds
+    a live lock; `mine` = it's the caller."""
+    locked: bool
+    mine: bool
+    holder_role: str | None
+    holder_name: str | None

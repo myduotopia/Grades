@@ -1,5 +1,6 @@
-"""Repeatable verification for student login binding (#261) and 小老師
-access control (#262).
+"""Repeatable verification for student login binding (#261), 小老師
+access control (#262) and grade-item edit locks + the live-grade unique
+index (#264).
 
 Run from the backend directory (uses backend/.env → the configured DB):
 
@@ -566,6 +567,10 @@ def verify_262(h: Harness) -> None:
               f"GET {label} -> uniform 404", r.status_code)
 
     section("#262 assistant: writes")
+    # #264: every assistant write needs the item's edit lock (the pencil).
+    r = h.req("POST", f"/api/assistant/items/{item_x}/lock", params={"classroom_id": cls_a})
+    check(r.status_code == 200 and r.json()["mine"] is True,
+          "A1 takes the edit lock on X (pencil)", r.text)
     r = h.req("POST", "/api/assistant/grades",
               json={"item_id": item_x, "classroom_id": cls_a, "student_id": a1, "score": 88})
     check(r.status_code == 201 and r.json()["entered_by_role"] == "assistant",
@@ -615,14 +620,9 @@ def verify_262(h: Harness) -> None:
     check(n == 1 and score == 89, "after lookup failure: link kept, score untouched")
 
     section("#262 POST create races a concurrent insert (unique conflict)")
-    # Production has no DB-level unique for the live bucket (snapshot_id
-    # NULL is distinct in uq_grade_item_student_snapshot), so add a partial
-    # unique index inside this rolled-back transaction to make the race
-    # observable, and make the router's first read miss the existing row.
+    # The live unique index (uq_grade_live_item_student, #264) makes the
+    # race observable; make the router's first read miss the existing row.
     import routers.assistant as assistant_mod
-    h.conn.execute(text(
-        "CREATE UNIQUE INDEX zz_verify_live_grade ON grade (item_id, student_id) "
-        "WHERE snapshot_id IS NULL"))
     real_live = assistant_mod._live_grade
 
     def miss_first() -> Callable[..., Any]:
@@ -705,8 +705,11 @@ def verify_262(h: Harness) -> None:
     check(r.status_code == 404, "bulk on unassigned/inactive item -> 404 (never activates)")
 
     section("#262 another assistant may overwrite; stamp name")
+    h.req("DELETE", f"/api/assistant/items/{item_x}/lock", params={"classroom_id": cls_a})
     h.as_user(student_payload(u4, e4))
     h.req("GET", "/api/me")  # binds A4's account (as the app does on load)
+    r = h.req("POST", f"/api/assistant/items/{item_x}/lock", params={"classroom_id": cls_a})
+    check(r.status_code == 200, "A4 takes the lock after A1 released it", r.text)
     r = h.req("PUT", f"/api/assistant/grades/{g_a1}", json={"score": 91})
     check(r.status_code == 200 and r.json()["score"] == 91,
           "assistant A4 overwrites A1's assistant-entered score", r.text)
@@ -720,6 +723,8 @@ def verify_262(h: Harness) -> None:
           and rows[a1]["entered_at"],
           "teacher view: entered_by_name resolved to 小美 + entered_at", rows[a1])
     check(rows[a2]["entered_by_role"] == "teacher", "teacher-entered row unchanged")
+    h.as_user(student_payload(u4, e4))
+    h.req("DELETE", f"/api/assistant/items/{item_x}/lock", params={"classroom_id": cls_a})
 
     section("#262 archived (封存) is invisible")
     with h.session() as s:
@@ -756,6 +761,7 @@ def verify_262(h: Harness) -> None:
 
     section("#262 revocation")
     h.as_user(student_payload(u1, e1))
+    h.req("POST", f"/api/assistant/items/{item_x}/lock", params={"classroom_id": cls_a})
     r = h.req("POST", "/api/assistant/grades", json={**base, "student_id": a1, "score": 80})
     check(r.status_code == 201, "precondition: A1 can write again after re-activation", r.text)
     g_new = r.json().get("id")
@@ -770,6 +776,16 @@ def verify_262(h: Harness) -> None:
     h.as_user(student_payload(u1, e1))
     r = h.req("POST", "/api/assistant/grades", json={**base, "student_id": a1, "score": 81})
     check(r.status_code == 404, "revoked assistant write -> 404", r.status_code)
+    r = h.req("POST", f"/api/assistant/items/{item_x}/lock", params={"classroom_id": cls_a})
+    check(r.status_code == 404, "#264 B7: revoked assistant's heartbeat -> 404", r.status_code)
+    # Release needs no permission (it only ever deletes the caller's own
+    # row), so a revoked assistant still frees the item at once.
+    r = h.req("DELETE", f"/api/assistant/items/{item_x}/lock", params={"classroom_id": cls_a})
+    with h.session() as s:
+        from models.grading import GradeItemLock
+        n_lock = s.query(GradeItemLock).filter(GradeItemLock.holder_user_id == u1).count()
+    check(r.status_code == 204 and n_lock == 0,
+          "#264: revoked assistant can still release its own lock", r.status_code)
     me = h.req("GET", "/api/me").json()["identity"]
     check(me["assistant_contexts"] == [] and me["is_student"] is True,
           "revoked assistant: no contexts (frontend -> /no-access)")
@@ -797,8 +813,10 @@ def verify_262(h: Harness) -> None:
     r = h.req("POST", "/api/assistant/grades", json={**base, "student_id": a1, "score": 70})
     check(r.status_code == 404, "non-google account with the new email -> 404", r.status_code)
     h.as_user(student_payload(uuid.uuid4(), e1b))
+    h.req("POST", f"/api/assistant/items/{item_x}/lock", params={"classroom_id": cls_a})
     r = h.req("POST", "/api/assistant/grades", json={**base, "student_id": a1, "score": 70})
     check(r.status_code == 201, "google account with the new email can write", r.text)
+    h.req("DELETE", f"/api/assistant/items/{item_x}/lock", params={"classroom_id": cls_a})
 
     # Transfer into a class where an assistant already has the same email -> 409.
     h.as_user(teacher(t1))
@@ -916,7 +934,450 @@ def verify_262(h: Harness) -> None:
           "/api/me/reset cascades through class_assistant / item_assistant", r.text[:200])
 
 
-SECTIONS: list[Callable[[Harness], None]] = [verify_261, verify_262]
+# ---------------------------------------------------------------------------
+# #264 — grade-item edit locks + one live grade per cell
+# ---------------------------------------------------------------------------
+
+def _details(r: Any) -> dict[str, Any]:
+    try:
+        return r.json()["detail"]["error"].get("details") or {}
+    except Exception:
+        return {}
+
+
+def verify_264(h: Harness) -> None:
+    from models.curriculum import Semester
+    from models.grading import Grade, GradeItemLock
+
+    section("#264 setup (T1: classes A, B; assistants 小明 + 小美 on X in A; T2: class C)")
+    t1, t2 = uuid.uuid4(), uuid.uuid4()
+    h.as_user(teacher(t1))
+    h.req("POST", "/api/me/seed")
+    cls_a = h.req("POST", "/api/classrooms", json={"grade": 7, "name": f"{TAG}-LA"}).json()["id"]
+    cls_b = h.req("POST", "/api/classrooms", json={"grade": 7, "name": f"{TAG}-LB"}).json()["id"]
+    subj = h.req("GET", "/api/subjects").json()["data"][0]
+    quiz_id = next(c["id"] for c in h.req("GET", "/api/categories").json()["data"]
+                   if c["system_key"] == "quiz")
+    sem_id = next(x["id"] for x in h.req("GET", "/api/semesters").json()["data"]
+                  if x["is_current"])
+
+    def mk_item(name: str) -> str:
+        r = h.req("POST", "/api/items", json={
+            "subject_id": subj["id"], "category_id": quiz_id,
+            "semester_id": sem_id, "name": f"{TAG}-{name}"})
+        assert r.status_code == 201, r.text
+        return r.json()["id"]
+
+    def mk_student(cid: str, seat: int, name: str, email: str | None) -> str:
+        r = h.req("POST", f"/api/classrooms/{cid}/students",
+                  json={"seat_number": seat, "name": name, "email": email})
+        assert r.status_code == 201, r.text
+        return r.json()["id"]
+
+    item_x, item_y = mk_item("LX"), mk_item("LY")
+    e1, e4 = f"{TAG}-l1@example.com", f"{TAG}-l4@example.com"
+    a1 = mk_student(cls_a, 1, "小明", e1)
+    a2 = mk_student(cls_a, 2, "小華", None)
+    a4 = mk_student(cls_a, 4, "小美", e4)
+    b1 = mk_student(cls_b, 1, "乙一", None)
+    for it, cid in ((item_x, cls_a), (item_y, cls_a), (item_x, cls_b)):
+        h.req("POST", "/api/grades/bulk", json={"item_id": it, "classroom_id": cid, "entries": []})
+    for sid in (a1, a4):
+        h.req("PUT", f"/api/students/{sid}/assistant", json={"is_assistant": True})
+    r = h.req("PUT", f"/api/items/{item_x}/assistants", json={"student_ids": [a1, a4]})
+    assert r.status_code == 200, r.text
+    g_a2 = h.req("POST", "/api/grades", json={"item_id": item_x, "student_id": a2,
+                                              "score": 70}).json()["id"]
+    h.as_user(teacher(t2))
+    h.req("POST", "/api/me/seed")
+    cls_c = h.req("POST", "/api/classrooms", json={"grade": 7, "name": f"{TAG}-LC"}).json()["id"]
+    sem2 = next(x["id"] for x in h.req("GET", "/api/semesters").json()["data"] if x["is_current"])
+    quiz2 = next(c["id"] for c in h.req("GET", "/api/categories").json()["data"]
+                 if c["system_key"] == "quiz")
+    item_z = h.req("POST", "/api/items", json={
+        "subject_id": subj["id"], "category_id": quiz2,
+        "semester_id": sem2, "name": f"{TAG}-LZ"}).json()["id"]
+
+    u1, u4 = uuid.uuid4(), uuid.uuid4()
+    lock_x = f"/api/assistant/items/{item_x}/lock"
+    pa = {"classroom_id": cls_a}
+    base = {"item_id": item_x, "classroom_id": cls_a}
+
+    section("#264 assistant: lock required, first come first served")
+    h.as_user(student_payload(u4, e4))
+    h.req("GET", "/api/me")
+    h.as_user(student_payload(u1, e1))
+    r = h.req("GET", lock_x, params=pa)
+    check(r.status_code == 200 and r.json() == {"locked": False, "mine": False,
+                                                "holder_role": None, "holder_name": None},
+          "GET lock state: free", r.text)
+    r = h.req("POST", "/api/assistant/grades/bulk",
+              json={**base, "entries": [{"student_id": a1, "score": 80}]})
+    check(r.status_code == 409 and _code(r) == "errors.grade.item_locked"
+          and _details(r).get("holder_role") is None,
+          "assistant bulk WITHOUT the lock -> 409 item_locked (holder null)", r.text)
+    r = h.req("POST", "/api/assistant/grades",
+              json={**base, "student_id": a1, "score": 80})
+    check(r.status_code == 409 and _code(r) == "errors.grade.item_locked",
+          "assistant POST without the lock -> 409", r.text)
+    r = h.req("POST", lock_x, params=pa)
+    check(r.status_code == 200 and r.json()["mine"] is True and r.json()["locked"] is True,
+          "小明 takes the lock (pencil)", r.text)
+    r = h.req("POST", lock_x, params=pa)
+    check(r.status_code == 200 and r.json()["mine"] is True,
+          "heartbeat (repeat acquire) by the holder renews", r.text)
+    r = h.req("POST", "/api/assistant/grades/bulk",
+              json={**base, "entries": [{"student_id": a1, "score": 80}]})
+    check(r.status_code == 200 and r.json()["written"] == 1, "holder can write", r.text)
+    g_a1 = h.req("GET", f"/api/assistant/items/{item_x}/grades", params=pa).json()
+    g_a1 = next(x["grade_id"] for x in g_a1["students"] if x["student_id"] == a1)
+
+    h.as_user(student_payload(u4, e4))
+    r = h.req("GET", lock_x, params=pa)
+    body = r.json() if r.status_code == 200 else {}
+    check(r.status_code == 200 and body.get("locked") is True and body.get("mine") is False
+          and body.get("holder_role") == "assistant" and body.get("holder_name") == "小明",
+          "other assistant sees '小明（小老師）' holding it", r.text)
+    check("holder_user_id" not in r.text and str(u1) not in r.text,
+          "assistant lock state never carries the holder's account id")
+    r = h.req("POST", lock_x, params=pa)
+    check(r.status_code == 409 and _code(r) == "errors.grade.item_locked"
+          and _details(r).get("holder_name") == "小明"
+          and _details(r).get("holder_role") == "assistant"
+          and str(u1) not in r.text,
+          "second assistant cannot take it -> 409 naming 小明 (no account id)", r.text)
+    for label, method, url, kw in (
+        ("bulk", "POST", "/api/assistant/grades/bulk",
+         {"json": {**base, "entries": [{"student_id": a4, "score": 60}]}}),
+        ("POST", "POST", "/api/assistant/grades",
+         {"json": {**base, "student_id": a4, "score": 60}}),
+        ("PUT", "PUT", f"/api/assistant/grades/{g_a1}", {"json": {"score": 61}}),
+    ):
+        r = h.req(method, url, **kw)
+        check(r.status_code == 409 and _code(r) == "errors.grade.item_locked",
+              f"non-holder assistant {label} -> 409", r.text)
+    r = h.req("DELETE", lock_x, params=pa)
+    with h.session() as s:
+        holder = s.query(GradeItemLock.holder_user_id).filter(
+            GradeItemLock.item_id == uuid.UUID(item_x),
+            GradeItemLock.classroom_id == uuid.UUID(cls_a)).scalar()
+    check(r.status_code == 204 and holder == u1,
+          "assistant releasing someone else's lock: 204 but lock untouched")
+    r = h.req("POST", f"/api/classrooms/{cls_a}/item-locks",
+              json={"item_ids": [item_x], "takeover": True})
+    check(r.status_code == 404, "assistant calling the teacher takeover route -> 404", r.status_code)
+
+    section("#264 lock routes: uniform 404 / 403")
+    for label, it, cid in (
+        ("unassigned item Y", item_y, cls_a),
+        ("assigned X, other class B", item_x, cls_b),
+        ("other teacher's item Z", item_z, cls_c),
+        ("non-existent item", str(uuid.uuid4()), cls_a),
+    ):
+        for method in ("GET", "POST"):
+            r = h.req(method, f"/api/assistant/items/{it}/lock", params={"classroom_id": cid})
+            check(r.status_code == 404 and _code(r) == "errors.item.not_found",
+                  f"assistant {method} lock on {label} -> uniform 404", r.status_code)
+    h.as_user(teacher(t2))
+    r = h.req("GET", f"/api/classrooms/{cls_a}/item-locks")
+    check(r.status_code == 404, "T2 lists T1's class locks -> 404", r.status_code)
+    r = h.req("POST", f"/api/classrooms/{cls_a}/item-locks",
+              json={"item_ids": [item_x], "takeover": True})
+    check(r.status_code == 404, "T2 takes over in T1's class -> 404", r.status_code)
+    r = h.req("POST", f"/api/classrooms/{cls_a}/item-locks/release", json={"item_ids": [item_x]})
+    check(r.status_code == 404, "T2 releases in T1's class -> 404", r.status_code)
+    r = h.req("POST", f"/api/classrooms/{cls_c}/item-locks", json={"item_ids": [item_x]})
+    check(r.status_code == 404 and _code(r) == "errors.item.not_found",
+          "T2 locks T1's item in T2's own class -> 404 item", r.text)
+
+    section("#264 teacher first: blocked writes, takeover")
+    h.as_user(teacher(t1))
+    r = h.req("GET", f"/api/classrooms/{cls_a}/item-locks")
+    locks = r.json().get("locks", []) if r.status_code == 200 else []
+    check(r.status_code == 200 and len(locks) == 1 and locks[0]["item_id"] == item_x
+          and locks[0]["holder_role"] == "assistant" and locks[0]["holder_name"] == "小明"
+          and locks[0]["mine"] is False and "holder_user_id" not in r.text,
+          "teacher sees X locked by 小明 (no account id)", r.text)
+    for label, method, url, kw in (
+        ("bulk", "POST", "/api/grades/bulk",
+         {"json": {**base, "entries": [{"student_id": a2, "score": 71}]}}),
+        ("POST", "POST", "/api/grades", {"json": {"item_id": item_x, "student_id": a2, "score": 71}}),
+        ("PUT", "PUT", f"/api/grades/{g_a2}", {"json": {"score": 71}}),
+        ("DELETE", "DELETE", f"/api/grades/{g_a2}", {}),
+    ):
+        r = h.req(method, url, **kw)
+        check(r.status_code == 409 and _code(r) == "errors.grade.item_locked"
+              and _details(r).get("holder_name") == "小明",
+              f"teacher {label} while 小明 holds X -> 409 naming him", r.text)
+    with h.session() as s:
+        check(float(s.get(Grade, uuid.UUID(g_a2)).score) == 70, "blocked teacher writes saved nothing")
+    r = h.req("POST", "/api/grades/bulk", json={"item_id": item_x, "classroom_id": cls_b,
+                                                "entries": [{"student_id": b1, "score": 55}]})
+    check(r.status_code == 200 and r.json()["written"] == 1,
+          "lock is per class: teacher writes X in class B freely", r.text)
+    r = h.req("POST", "/api/grades/bulk",
+              json={**base, "entries": [{"student_id": b1, "score": 99}]})
+    check(r.status_code == 400 and _code(r) == "errors.grade.student_not_in_class"
+          and _details(r).get("student_ids") == [b1],
+          "B2: teacher bulk for class A smuggling a class-B student -> 400", r.text)
+    r = h.req("POST", "/api/grades/bulk",
+              json={"item_id": item_x, "classroom_id": cls_b,
+                    "entries": [{"student_id": a2, "score": 99}]})
+    check(r.status_code == 400 and _code(r) == "errors.grade.student_not_in_class",
+          "B2: class-A student sent under class B (would bypass A's lock) -> 400", r.text)
+    with h.session() as s:
+        check(float(s.get(Grade, uuid.UUID(g_a2)).score) == 70, "B2 rejection saved nothing")
+    r = h.req("POST", f"/api/classrooms/{cls_a}/item-locks", json={"item_ids": [item_x]})
+    check(r.status_code == 409 and _details(r).get("holder_name") == "小明",
+          "teacher pencil without takeover -> 409 (UI asks 要接手嗎)", r.text)
+    # Row edit: all items of the subject at once, all or nothing.
+    r = h.req("POST", f"/api/classrooms/{cls_a}/item-locks", json={"item_ids": [item_y, item_x]})
+    locks = h.req("GET", f"/api/classrooms/{cls_a}/item-locks").json()["locks"]
+    check(r.status_code == 409 and not any(lk["item_id"] == item_y for lk in locks),
+          "multi-item acquire blocked by one -> 409 and Y NOT left locked (all or nothing)",
+          locks)
+    r = h.req("POST", f"/api/classrooms/{cls_a}/item-locks",
+              json={"item_ids": [item_y, item_x], "takeover": True})
+    mine = {lk["item_id"] for lk in r.json().get("locks", []) if lk["mine"]} if r.status_code == 200 else set()
+    check(r.status_code == 200 and mine == {item_x, item_y},
+          "teacher takeover (row edit) -> holds X and Y", r.text)
+    r = h.req("POST", "/api/grades/bulk",
+              json={**base, "entries": [{"student_id": a2, "score": 72}]})
+    check(r.status_code == 200, "teacher (holder) writes X", r.text)
+
+    h.as_user(student_payload(u1, e1))
+    r = h.req("POST", lock_x, params=pa)
+    check(r.status_code == 409 and _details(r).get("holder_role") == "teacher",
+          "taken-over assistant's heartbeat -> 409 holder_role teacher", r.text)
+    r = h.req("POST", "/api/assistant/grades/bulk",
+              json={**base, "entries": [{"student_id": a1, "score": 81}]})
+    check(r.status_code == 409 and _code(r) == "errors.grade.item_locked",
+          "taken-over assistant's pending save -> 409 (input discarded)", r.text)
+    r = h.req("GET", lock_x, params=pa)
+    check(r.status_code == 200 and r.json()["holder_role"] == "teacher"
+          and r.json()["mine"] is False, "assistant view: 老師正在編輯", r.text)
+    h.as_user(student_payload(u4, e4))
+    r = h.req("POST", lock_x, params=pa)
+    check(r.status_code == 409 and _details(r).get("holder_role") == "teacher",
+          "no assistant can take a teacher's lock", r.text)
+
+    h.as_user(teacher(t1))
+    r = h.req("POST", f"/api/classrooms/{cls_a}/item-locks", json={"item_ids": [item_x, item_y]})
+    check(r.status_code == 200, "teacher heartbeat (own locks) renews", r.text)
+    r = h.req("POST", f"/api/classrooms/{cls_a}/item-locks/release",
+              json={"item_ids": [item_x, item_y]})
+    locks = h.req("GET", f"/api/classrooms/{cls_a}/item-locks").json()["locks"]
+    check(r.status_code == 204 and locks == [], "teacher release frees X and Y", locks)
+    r = h.req("POST", "/api/grades", json={"item_id": item_x, "student_id": a2, "score": 73})
+    check(r.status_code == 201, "teacher write with no lock held by anyone -> allowed", r.text)
+
+    section("#264 expiry (90 s, judged by the DB clock)")
+    h.as_user(student_payload(u1, e1))
+    r = h.req("POST", lock_x, params=pa)
+    check(r.status_code == 200, "小明 takes X again", r.text)
+    h.conn.execute(text(
+        "UPDATE grade_item_lock SET expires_at = now() - interval '1 second' "
+        "WHERE item_id = :i AND classroom_id = :c"), {"i": item_x, "c": cls_a})
+    r = h.req("GET", lock_x, params=pa)
+    check(r.status_code == 200 and r.json()["locked"] is False, "expired lock reads as free", r.text)
+    r = h.req("POST", "/api/assistant/grades/bulk",
+              json={**base, "entries": [{"student_id": a1, "score": 82}]})
+    check(r.status_code == 409, "expired holder can no longer write", r.status_code)
+    h.as_user(teacher(t1))
+    r = h.req("PUT", f"/api/grades/{g_a2}", json={"score": 74})
+    check(r.status_code == 200, "teacher not blocked by an expired assistant lock", r.text)
+    h.as_user(student_payload(u4, e4))
+    r = h.req("POST", lock_x, params=pa)
+    check(r.status_code == 200 and r.json()["mine"] is True,
+          "another assistant takes over an expired lock", r.text)
+    h.as_user(student_payload(u1, e1))
+    r = h.req("POST", lock_x, params=pa)
+    check(r.status_code == 409 and _details(r).get("holder_name") == "小美",
+          "idle/expired assistant coming back: lock taken -> 409 naming 小美", r.text)
+
+    section("#264 Excel import vs locks (A7)")
+    h.as_user(teacher(t1))
+    wb = Workbook()
+    ws = wb.active
+    ws.append(["座號", "小考"])
+    ws.append([None, "2026-10-01"])
+    ws.append([None, f"{TAG}-LX"])
+    ws.append([1, 66])
+    ws.append([2, 67])
+    buf = BytesIO()
+    wb.save(buf)
+    files = {"file": ("g.xlsx", buf.getvalue(),
+                      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")}
+    subjects = json.dumps({"1": subj["system_key"]})
+    r = h.req("POST", f"/api/classrooms/{cls_a}/grades/import?dry_run=false",
+              files=files, data={"subjects": subjects})
+    locks = _details(r).get("locks", [])
+    check(r.status_code == 409 and _code(r) == "errors.grade.item_locked"
+          and locks and locks[0].get("item_name") == f"{TAG}-LX"
+          and locks[0].get("holder_name") == "小美",
+          "import touching an assistant-locked item -> 409 listing item + holder", r.text)
+    with h.session() as s:
+        check(float(s.get(Grade, uuid.UUID(g_a2)).score) == 74, "blocked import saved nothing")
+    h.as_user(student_payload(u4, e4))
+    h.req("DELETE", lock_x, params=pa)
+    h.as_user(teacher(t1))
+    r = h.req("POST", f"/api/classrooms/{cls_a}/grades/import?dry_run=false",
+              files=files, data={"subjects": subjects})
+    check(r.status_code == 200, "import once the lock is released -> 200", r.text[:300])
+    with h.session() as s:
+        g = s.get(Grade, uuid.UUID(g_a2))
+        n_live = s.query(Grade).filter(Grade.item_id == uuid.UUID(item_x),
+                                       Grade.student_id == uuid.UUID(a1),
+                                       Grade.snapshot_id.is_(None)).count()
+    check(float(g.score) == 67 and n_live == 1,
+          "import updated existing cells, no duplicate live rows", (float(g.score), n_live))
+
+    section("#264 archived semester (B9)")
+    with h.session() as s:
+        s.get(Semester, uuid.UUID(sem_id)).is_current = False
+        s.commit()
+    r = h.req("POST", f"/api/classrooms/{cls_a}/item-locks", json={"item_ids": [item_x]})
+    check(r.status_code == 403 and _code(r) == "errors.semester.archived",
+          "teacher lock on an archived-semester item -> 403", r.text)
+    h.as_user(student_payload(u1, e1))
+    r = h.req("POST", lock_x, params=pa)
+    check(r.status_code == 404, "assistant lock on archived item -> 404", r.status_code)
+    with h.session() as s:
+        s.get(Semester, uuid.UUID(sem_id)).is_current = True
+        s.commit()
+
+    section("#264 live unique index + concurrent duplicate writes")
+    from sqlalchemy.exc import IntegrityError
+    from models.grading import insert_live_grades
+    h.as_user(teacher(t1))
+    with h.session() as s:
+        try:
+            with s.begin_nested():
+                s.add(Grade(user_id=t1, item_id=uuid.UUID(item_x), student_id=uuid.UUID(a2),
+                            score=1, source="manual"))
+                s.flush()
+            dup_ok = True
+        except IntegrityError:
+            dup_ok = False
+        check(not dup_ok, "DB refuses a second live grade for the same cell")
+        # The insert every writer uses: a cell that already exists (as if a
+        # concurrent writer created it after our read) is skipped, not
+        # duplicated and not an error; a new cell in the same batch lands.
+        got = insert_live_grades(s, [
+            {"user_id": t1, "item_id": uuid.UUID(item_x), "student_id": uuid.UUID(a2),
+             "score": 1, "source": "manual", "entered_by_user_id": t1,
+             "entered_by_role": "teacher"},
+            {"user_id": t1, "item_id": uuid.UUID(item_y), "student_id": uuid.UUID(a2),
+             "score": 2, "source": "manual", "entered_by_user_id": t1,
+             "entered_by_role": "teacher"},
+        ])
+        check(got == {(uuid.UUID(item_y), uuid.UUID(a2))},
+              "insert_live_grades: existing cell skipped (ON CONFLICT), new cell inserted", got)
+        s.rollback()
+    import routers.grade_entry as ge
+    real_live = ge._live_grade
+    calls: list[int] = []
+
+    def miss_first(db: Any, item_id: Any, student_id: Any) -> Any:
+        calls.append(1)
+        return None if len(calls) == 1 else real_live(db, item_id, student_id)
+
+    try:
+        ge._live_grade = miss_first
+        r = h.req("POST", "/api/grades", json={"item_id": item_x, "student_id": a2, "score": 75})
+    finally:
+        ge._live_grade = real_live
+    check(r.status_code == 201 and r.json()["id"] == g_a2 and r.json()["score"] == 75,
+          "teacher POST racing a concurrent create -> overwrites the existing row", r.text)
+    r = h.req("POST", "/api/grades/bulk",
+              json={**base, "entries": [{"student_id": a2, "score": 76},
+                                        {"student_id": a4, "score": 50},
+                                        {"student_id": a4, "score": 51}]})
+    check(r.status_code == 200 and r.json()["written"] == 2,
+          "teacher bulk: update + new cell (duplicate entry for one student collapses)", r.text)
+    rows = h.conn.execute(text(
+        "SELECT student_id, count(*) FROM grade WHERE item_id = :i AND snapshot_id IS NULL "
+        "GROUP BY student_id"), {"i": item_x}).all()
+    check(len(rows) == 4 and all(n == 1 for _, n in rows),  # A: 1,2,4 + B: 1
+          "still exactly one live row per student", rows)
+
+    section("#264 cascade")
+    h.as_user(teacher(t1))
+    h.req("POST", f"/api/classrooms/{cls_b}/item-locks", json={"item_ids": [item_x]})
+    r = h.req("DELETE", f"/api/classrooms/{cls_b}")
+    with h.session() as s:
+        n = s.query(GradeItemLock).filter(GradeItemLock.classroom_id == uuid.UUID(cls_b)).count()
+    check(r.status_code in (200, 204) and n == 0, "deleting a class cascades its locks", r.status_code)
+
+
+def verify_264_migration(h: Harness) -> None:
+    """Runs the duplicate-merge SQL of migration u4p5q6r7s8t9 on planted
+    duplicates. LAST section on purpose: DROP INDEX takes an exclusive lock
+    on `grade` until the final ROLLBACK, so keep that window short."""
+    import importlib.util
+
+    section("#264 migration: merge duplicate live grades")
+    path = os.path.join(BACKEND_DIR, "alembic", "versions", "u4p5q6r7s8t9_grade_live_unique.py")
+    spec = importlib.util.spec_from_file_location("mig_u4", path)
+    mig = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(mig)
+
+    t = uuid.uuid4()
+    h.as_user(teacher(t))
+    h.req("POST", "/api/me/seed")
+    cid = h.req("POST", "/api/classrooms", json={"grade": 9, "name": f"{TAG}-M"}).json()["id"]
+    sid = h.req("POST", f"/api/classrooms/{cid}/students",
+                json={"seat_number": 1, "name": "重"}).json()["id"]
+    subj = h.req("GET", "/api/subjects").json()["data"][0]["id"]
+    quiz = next(c["id"] for c in h.req("GET", "/api/categories").json()["data"]
+                if c["system_key"] == "quiz")
+    sem = next(x["id"] for x in h.req("GET", "/api/semesters").json()["data"] if x["is_current"])
+    it = h.req("POST", "/api/items", json={"subject_id": subj, "category_id": quiz,
+                                           "semester_id": sem, "name": f"{TAG}-M"}).json()["id"]
+    c = h.conn
+    c.execute(text("DROP INDEX uq_grade_live_item_student"))
+    ids = []
+    for score, age in ((10, 3), (20, 2), (30, 1)):  # 30 is the newest
+        ids.append(c.execute(text(
+            "INSERT INTO grade (user_id, item_id, student_id, score, source, updated_at) "
+            "VALUES (:u, :i, :s, :sc, 'manual', now() - make_interval(mins => :a)) RETURNING id"),
+            {"u": t, "i": it, "s": sid, "sc": score, "a": age}).scalar())
+    # The oldest duplicate carries a point_record; the newest has none.
+    c.execute(text("INSERT INTO point_record (user_id, student_id, points, source_grade_id) "
+                   "VALUES (:u, :s, 5, :g)"), {"u": t, "s": sid, "g": ids[0]})
+    mig.op = _AlembicOpShim(c)
+    mig.upgrade()
+    rows = c.execute(text("SELECT id, score FROM grade WHERE item_id = :i AND snapshot_id IS NULL"),
+                     {"i": it}).all()
+    check(len(rows) == 1 and rows[0][0] == ids[2] and float(rows[0][1]) == 30,
+          "merge keeps only the most recently updated live row", rows)
+    pr = c.execute(text("SELECT source_grade_id FROM point_record WHERE student_id = :s"),
+                   {"s": sid}).all()
+    check(pr == [(ids[2],)], "the duplicate's point_record moved onto the kept row", pr)
+    idx = c.execute(text("SELECT indexdef FROM pg_indexes WHERE indexname = "
+                         "'uq_grade_live_item_student'")).scalar()
+    check(idx is not None and "snapshot_id IS NULL" in idx, "partial unique index re-created", idx)
+    mig.upgrade()  # idempotent
+    n = c.execute(text("SELECT count(*) FROM grade WHERE item_id = :i"), {"i": it}).scalar()
+    check(n == 1, "re-running the upgrade is a no-op")
+
+
+class _AlembicOpShim:
+    """Just enough of `alembic.op` (execute) to run a migration's SQL on
+    the harness connection inside the rolled-back transaction."""
+
+    def __init__(self, conn: Any) -> None:
+        self.conn = conn
+
+    def execute(self, sql: str) -> None:
+        self.conn.execute(text(sql))
+
+
+SECTIONS: list[Callable[[Harness], None]] = [
+    verify_261, verify_262, verify_264,
+    verify_264_migration,  # keep last: holds an exclusive lock on grade
+]
 
 
 def main_() -> int:

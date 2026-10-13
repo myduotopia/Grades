@@ -12,7 +12,10 @@ Rules (all enforced here, not just hidden in the UI):
 - may enter their own score and overwrite other assistants' scores;
 - may NOT change a score last written by the teacher (403);
 - may NOT delete / clear scores (no DELETE route; null scores rejected);
-- bulk: no snapshot_id, never activates the item, all-or-nothing.
+- bulk: no snapshot_id, never activates the item, all-or-nothing;
+- every write needs the item's edit lock in that class (#264): taken with
+  POST /api/assistant/items/:id/lock (the pencil), renewed by repeating it;
+  a teacher's lock (or another assistant's) -> 409 errors.grade.item_locked.
 """
 from __future__ import annotations
 
@@ -22,8 +25,9 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import text
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
+
+import item_lock
 
 from assistant_access import (
     Actor,
@@ -36,7 +40,7 @@ from auth import require_user_id
 from database import get_db
 from models.classroom import Classroom, Student
 from models.curriculum import Category, Item, Subject
-from models.grading import SCORE_QUANTUM, Grade
+from models.grading import SCORE_QUANTUM, Grade, insert_live_grades
 from routers.grades import apply_auto_award, assistant_names, grade_stamp_fields
 from schemas import (
     AssistantContextItemOut,
@@ -45,6 +49,7 @@ from schemas import (
     AssistantGradeCreate,
     AssistantGradeUpdate,
     AssistantItemGradesView,
+    AssistantLockState,
     GradeBulkResult,
     GradeWriteOut,
     ItemGradesStudentRow,
@@ -56,7 +61,7 @@ UserId = Annotated[UUID, Depends(require_user_id)]
 Db = Annotated[Session, Depends(get_db)]
 
 
-def _locked() -> HTTPException:
+def _teacher_entered() -> HTTPException:
     return HTTPException(
         status_code=status.HTTP_403_FORBIDDEN,
         detail={
@@ -109,23 +114,46 @@ def _live_grade(db: Session, actor: Actor, student_id: UUID) -> Grade | None:
     )
 
 
-def _write(
-    db: Session, actor: Actor, student_id: UUID, existing: Grade | None, score: float
-) -> Grade:
-    if existing is not None:
-        existing.write_score(Decimal(str(score)), actor.actor_user_id, "assistant")
-        return existing
-    g = Grade(
-        user_id=actor.owner_user_id,  # NEVER the assistant's sub
-        item_id=actor.item.id,
-        student_id=student_id,
-        score=_q(score),
-        source="manual",
-        entered_by_user_id=actor.actor_user_id,
-        entered_by_role="assistant",
+def _write(db: Session, actor: Actor, existing: Grade, score: float) -> Grade:
+    """Overwrite an existing live grade as this assistant (the stamp moves
+    only when the score changes -- see Grade.write_score)."""
+    existing.write_score(Decimal(str(score)), actor.actor_user_id, "assistant")
+    return existing
+
+
+def _new_row(actor: Actor, student_id: UUID, score: float) -> dict:
+    return {
+        "user_id": actor.owner_user_id,  # NEVER the assistant's sub
+        "item_id": actor.item.id,
+        "student_id": student_id,
+        "score": _q(score),
+        "source": "manual",
+        "entered_by_user_id": actor.actor_user_id,
+        "entered_by_role": "assistant",
+    }
+
+
+def _fetch_live(db: Session, actor: Actor, student_ids: list[UUID]) -> dict[UUID, Grade]:
+    return {
+        g.student_id: g
+        for g in db.query(Grade).filter(
+            Grade.item_id == actor.item.id,
+            Grade.user_id == actor.owner_user_id,
+            Grade.student_id.in_(student_ids or [None]),
+            Grade.snapshot_id.is_(None),
+        )
+    }
+
+
+def _require_lock(db: Session, actor: Actor) -> None:
+    """The caller must hold this item's edit lock in their class (#264)."""
+    item_lock.assert_writable(
+        db,
+        actor.classroom_id,
+        [actor.item.id],
+        user_id=actor.actor_user_id,
+        require_held=True,
     )
-    db.add(g)
-    return g
 
 
 def _write_out(grade: Grade) -> GradeWriteOut:
@@ -303,24 +331,28 @@ def assistant_create_grade(
     actor = resolve_actor(db, user_id, body.item_id, body.classroom_id)
     if body.student_id not in actor.allowed_student_ids:
         raise not_found("student")
+    _require_lock(db, actor)
     existing = _live_grade(db, actor, body.student_id)
     if _changes_teacher_score(existing, body.score):
-        raise _locked()
-    try:
-        with db.begin_nested():
-            grade = _write(db, actor, body.student_id, existing, body.score)
-            db.flush()
-    except IntegrityError:
-        # Someone (teacher or another assistant) created this cell between
-        # our read and our insert. Re-read it and apply the normal rules to
-        # the row that now exists — never blindly overwrite.
-        existing = _live_grade(db, actor, body.student_id)
-        if existing is None:
-            raise _write_conflict()
-        if _changes_teacher_score(existing, body.score):
-            raise _locked()
-        grade = _write(db, actor, body.student_id, existing, body.score)
-        db.flush()
+        raise _teacher_entered()
+    if existing is not None:
+        grade = _write(db, actor, existing, body.score)
+    else:
+        inserted = insert_live_grades(db, [_new_row(actor, body.student_id, body.score)])
+        if (actor.item.id, body.student_id) in inserted:
+            grade = _fetch_live(db, actor, [body.student_id])[body.student_id]
+        else:
+            # Someone (teacher or another assistant) created this cell
+            # between our read and our insert -- the live unique index made
+            # the INSERT a no-op (#264). Re-read it and apply the normal
+            # rules to the row that now exists; never blindly overwrite.
+            existing = _live_grade(db, actor, body.student_id)
+            if existing is None:
+                raise _write_conflict()
+            if _changes_teacher_score(existing, body.score):
+                raise _teacher_entered()
+            grade = _write(db, actor, existing, body.score)
+    db.flush()
     apply_auto_award(db, actor.owner_user_id, [grade])
     db.commit()
     db.refresh(grade)
@@ -351,9 +383,10 @@ def assistant_update_grade(
         or grade.student_id not in actor.allowed_student_ids
     ):
         raise not_found("grade")
+    _require_lock(db, actor)
     if _changes_teacher_score(grade, body.score):
-        raise _locked()
-    _write(db, actor, grade.student_id, grade, body.score)
+        raise _teacher_entered()
+    _write(db, actor, grade, body.score)
     db.flush()
     apply_auto_award(db, actor.owner_user_id, [grade])
     db.commit()
@@ -368,6 +401,7 @@ def assistant_bulk_grades(
     actor = resolve_actor(db, user_id, body.item_id, body.classroom_id)
     if not body.entries:
         return GradeBulkResult(written=0, deleted=0, awarded=0, revoked=0)
+    _require_lock(db, actor)
 
     existing = {
         g.student_id: g
@@ -405,12 +439,94 @@ def assistant_bulk_grades(
         )
 
     written: list[Grade] = []
+    new_cells: dict[UUID, float] = {}
     for e in body.entries:
         g = existing.get(e.student_id)
-        if g is not None and Decimal(g.score) == _q(e.score):
-            continue  # unchanged — don't touch stamps
-        written.append(_write(db, actor, e.student_id, g, e.score))
+        if g is None:
+            new_cells[e.student_id] = e.score
+            continue
+        if Decimal(g.score) == _q(e.score):
+            continue  # unchanged -- don't touch stamps
+        written.append(_write(db, actor, g, e.score))
     db.flush()
+    if new_cells:
+        inserted = insert_live_grades(
+            db, [_new_row(actor, sid, score) for sid, score in new_cells.items()]
+        )
+        fresh = _fetch_live(db, actor, list(new_cells))
+        for sid, score in new_cells.items():
+            g = fresh.get(sid)
+            if (actor.item.id, sid) in inserted and g is not None:
+                written.append(g)
+                continue
+            # Created concurrently by someone else (#264): same rules as an
+            # existing row; a teacher-entered value aborts the whole batch.
+            if g is None or _changes_teacher_score(g, score):
+                raise _write_conflict()
+            if Decimal(g.score) != _q(score):
+                written.append(_write(db, actor, g, score))
+        db.flush()
     apply_auto_award(db, actor.owner_user_id, written)
     db.commit()
     return GradeBulkResult(written=len(written), deleted=0, awarded=0, revoked=0)
+
+
+# ---------- edit lock (#264) ----------
+
+def _lock_state(db: Session, actor: Actor, user_id: UUID) -> AssistantLockState:
+    views = item_lock.live_locks(db, actor.classroom_id, user_id, [actor.item.id])
+    if not views:
+        return AssistantLockState(locked=False, mine=False, holder_role=None, holder_name=None)
+    v = views[0]
+    return AssistantLockState(
+        locked=True, mine=v.mine, holder_role=v.holder_role, holder_name=v.holder_name
+    )
+
+
+@router.get(
+    "/api/assistant/items/{item_id}/lock", response_model=AssistantLockState
+)
+def assistant_lock_state(
+    item_id: UUID, classroom_id: Annotated[UUID, Query()], user_id: UserId, db: Db
+) -> AssistantLockState:
+    """Who is editing this item in the assistant's class (polled while the
+    page is visible). Same uniform 404 as every other assistant route."""
+    actor = resolve_actor(db, user_id, item_id, classroom_id)
+    return _lock_state(db, actor, user_id)
+
+
+@router.post(
+    "/api/assistant/items/{item_id}/lock", response_model=AssistantLockState
+)
+def assistant_acquire_lock(
+    item_id: UUID, classroom_id: Annotated[UUID, Query()], user_id: UserId, db: Db
+) -> AssistantLockState:
+    """Start editing (pencil) or renew (heartbeat). Succeeds when nobody
+    holds a live lock or the caller already does; otherwise 409
+    errors.grade.item_locked naming the holder. Never takes over."""
+    actor = resolve_actor(db, user_id, item_id, classroom_id)
+    item_lock.acquire(
+        db,
+        actor.classroom_id,
+        [actor.item.id],
+        user_id=user_id,
+        role="assistant",
+        name=actor.actor_name,
+    )
+    db.commit()
+    return _lock_state(db, actor, user_id)
+
+
+@router.delete(
+    "/api/assistant/items/{item_id}/lock", status_code=status.HTTP_204_NO_CONTENT
+)
+def assistant_release_lock(
+    item_id: UUID, classroom_id: Annotated[UUID, Query()], user_id: UserId, db: Db
+) -> None:
+    """Stop editing. Only ever deletes the CALLER's own lock row, so it is
+    answered 204 without `resolve_actor`: it reveals nothing (same answer
+    whether or not anything existed) and still works right after the role
+    was revoked, freeing the item for others at once instead of after the
+    90-second expiry."""
+    item_lock.release(db, classroom_id, [item_id], user_id)
+    db.commit()

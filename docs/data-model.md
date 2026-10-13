@@ -215,13 +215,50 @@ grade
 ├─ entered_by_user_id   uuid NULL      ← auth user who last wrote the score (#260)
 ├─ entered_by_role      varchar(16) DEFAULT 'teacher' + CHECK IN ('teacher','assistant')
 ├─ entered_at           timestamptz NULL DEFAULT now()  ← when the stamped writer last changed the score (#262)
+├─ snapshot_id          uuid NULL FK → grade_snapshot CASCADE  ← NULL = live row (#169)
 ├─ created_at, updated_at  timestamptz
-└─ UNIQUE (item_id, student_id)
+├─ UNIQUE (item_id, student_id, snapshot_id)            ← snapshot buckets
+└─ UNIQUE (item_id, student_id) WHERE snapshot_id IS NULL ← uq_grade_live_item_student (#264)
 ```
+
+**One live grade per cell (#264).** The three-column constraint can't protect
+the live bucket (NULL snapshot ids are distinct), so concurrent saves used to
+leave duplicate live rows that then broke every read of that cell (500). The
+partial unique index fixes that; its migration first merged existing
+duplicates (kept the most recently updated row; a removed duplicate's
+point_record moves onto the kept row if it had none — not reversible on
+downgrade). All writers (teacher single/bulk, Excel import, 小老師) insert new
+live rows with `INSERT ... ON CONFLICT DO NOTHING` and then update whatever row
+exists, applying their normal rules (`models.grading.insert_live_grades`).
 
 **"Entered by" stamp (#260).** `user_id` is the *owning* teacher; `entered_by_*` records who last *wrote* the score — the teacher, or a student assistant (小老師, #262). The stamp is refreshed only when the score actually changes (or the row is created), because bulk save and Excel import resend every row and re-saving an untouched assistant score must not relabel it as the teacher's. A teacher overwriting an assistant's score flips the stamp back to `teacher`. Rows that predate the column were backfilled with `entered_by_user_id = user_id`, `entered_by_role = 'teacher'`. The UI shows a small corner badge + tooltip (assistant name · `MM/DD HH:mm` from `entered_at`, falling back to `updated_at`) only for `assistant` rows. `entered_at` (#262) is set by `Grade.write_score` whenever the score changes; unlike `updated_at` it does not move on bookkeeping updates such as archiving into a snapshot. Pre-existing rows were backfilled from `updated_at`. The assistant's display name (`entered_by_name` in API responses) is resolved per response: the roster name of the owning teacher's student self-linked (`account_link`) to `entered_by_user_id`; it becomes unknown (badge says just 小老師) if the teacher later changes that student's email.
 
 **Duotopia import upsert key:** `(user_id, item_id, student_id)` — same as the natural unique constraint. Re-importing the same item × student overwrites the prior row, including any local edits. By design.
+
+### `grade_item_lock` (#264)
+
+```
+grade_item_lock
+├─ id              uuid PK
+├─ classroom_id    uuid FK → classroom CASCADE
+├─ item_id         uuid FK → item CASCADE
+├─ holder_user_id  uuid      ← holder's auth account (teacher or 小老師 sub); never returned to clients
+├─ holder_role     varchar(16) CHECK IN ('teacher','assistant')
+├─ holder_name     varchar(255) NULL  ← assistant roster name / teacher Google name
+├─ expires_at      timestamptz        ← live while > now() (DB clock); heartbeat = now() + 90 s
+├─ created_at, updated_at  timestamptz
+└─ UNIQUE (classroom_id, item_id)
+```
+
+"Someone is editing this item for this class." Rules (`backend/item_lock.py`):
+teacher first — a teacher can take over a 小老師's lock (after confirming in the
+UI), a 小老師 can never take anyone's; between 小老師 first come first served.
+Acquire is a conditional upsert that only lands when the row is free, expired
+or already the caller's, so concurrent acquirers serialise on the unique row.
+Every live-grade write checks the row with `SELECT ... FOR UPDATE` in its own
+transaction: teachers are refused only when someone else holds a live lock,
+小老師 must hold it. Rows are transient: a released lock is deleted, an expired
+one is simply overwritten by the next acquirer. Snapshots are not locked.
 
 ### `student_standard`
 
@@ -319,13 +356,13 @@ Cascades the related `point_record` (FK constraint).
 
 | Delete | Cascades to | Blocked by |
 |---|---|---|
-| `class` | `student`s, their grades & point_records | — |
+| `class` | `student`s, their grades & point_records, `grade_item_lock` | — |
 | `student` | grades, point_records, standards, account_link, class_assistant, item_assistant | — |
 | `subject` | — | `item`s referencing it (return 409) |
 | `category` (user-custom) | `student_standard`, `point_rule` | `item`s referencing it (return 409) |
 | `category` (system default) | — | always blocked (return 403) |
 | `semester` | — | `item`s referencing it (return 409) |
-| `item` | grades, point_records via grades, item_classroom, item_assistant | — |
+| `item` | grades, point_records via grades, item_classroom, item_assistant, grade_item_lock | — |
 
 ### Seeding on signup
 
