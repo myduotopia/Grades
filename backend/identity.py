@@ -22,6 +22,7 @@ from __future__ import annotations
 import logging
 from uuid import UUID
 
+from fastapi import HTTPException, status
 from sqlalchemy import text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
@@ -46,24 +47,53 @@ _GOOGLE_IDENTITY_EMAIL_SQL = text(
 )
 
 
+class IdentityUnknown(Exception):
+    """The `auth.identities` lookup itself failed, so we CAN'T TELL whether
+    this account is a student — which is not the same as "not a student".
+
+    Callers must not act on it as if the answer were "no match":
+    - `sync_self_links` neither creates nor deletes links (it raises before
+      touching anything);
+    - `GET /api/me` answers 503 for an account that owns no class (the
+      frontend shows retry); a class owner is still served as a teacher
+      (routing doesn't depend on student status), with no 小老師 contexts;
+    - `POST /api/me/seed` doesn't seed a non-teacher account (503);
+    - 小老師 endpoints (`resolve_actor`) fail closed with the usual 404.
+    """
+
+
+def identity_unavailable() -> HTTPException:
+    """The 503 for `IdentityUnknown` on `/api/me` and `/api/me/seed`."""
+    return HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail={
+            "error": {
+                "code": "SERVICE_UNAVAILABLE",
+                "message_key": "errors.identity.unavailable",
+                "message": "Could not determine your identity. Please retry.",
+            }
+        },
+    )
+
+
 def trusted_email(db: Session, user_id: UUID) -> str | None:
     """The account's Google identity email, normalised, or None.
 
     None (= "not trustworthy", nothing gets bound) when the account has no
-    Google identity, has several Google identities with different emails,
-    or the lookup fails for any reason (e.g. missing privilege on the auth
-    schema). The query runs in a savepoint so a failure can't poison the
-    request's transaction.
+    Google identity or has several Google identities with different emails.
+    Raises `IdentityUnknown` when the lookup fails (e.g. missing privilege
+    on the auth schema, DB hiccup). The query runs in a savepoint so a
+    failure can't poison the request's transaction.
     """
     try:
         with db.begin_nested():
             rows = db.execute(
                 _GOOGLE_IDENTITY_EMAIL_SQL, {"uid": user_id}
             ).all()
-    except Exception:
-        logger.warning("auth.identities lookup failed; treating email as untrusted",
+    except Exception as exc:
+        logger.warning("auth.identities lookup failed; identity unknown",
                        exc_info=True)
-        return None
+        raise IdentityUnknown() from exc
     emails = {normalize_email(e) for (e,) in rows} - {None}
     if len(emails) != 1:
         return None
@@ -95,6 +125,8 @@ def sync_self_links(db: Session, user_id: UUID) -> list[Student]:
       first — `ix_account_link_one_self_per_student` allows one per student.
 
     Commits only when something changed. Returns the matched students.
+    Raises `IdentityUnknown` (from `trusted_email`, before any change) when
+    the identity lookup fails — existing links are left exactly as they are.
     """
     students = matched_students(db, trusted_email(db, user_id))
     matched_ids = {s.id for s in students}
@@ -164,7 +196,8 @@ def build_identity(
 
 def is_student_only(db: Session, user_id: UUID) -> bool:
     """True for an account that matches a roster entry and owns no class —
-    such an account must not be onboarded as a new teacher (no seeding)."""
+    such an account must not be onboarded as a new teacher (no seeding).
+    Raises `IdentityUnknown` for a classless account whose lookup failed."""
     if owns_any_classroom(db, user_id):
         return False
     return bool(matched_students(db, trusted_email(db, user_id)))

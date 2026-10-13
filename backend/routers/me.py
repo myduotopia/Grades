@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from auth import require_user_id
 from database import get_db
-from identity import is_student_only
+from identity import IdentityUnknown, identity_unavailable, is_student_only
 from models.classroom import Classroom
 from models.curriculum import (
     SUBJECT_WEIGHT_PROFILES,
@@ -143,7 +143,13 @@ def seed(
     teacher, so it must not be onboarded with teacher data. The frontend
     already avoids calling this for them; this is the server-side backstop.
     """
-    if is_student_only(db, user_id):
+    try:
+        student_only = is_student_only(db, user_id)
+    except IdentityUnknown:
+        # Can't tell whether this classless account is a student → don't
+        # onboard it as a teacher; 503 so the next sign-in tries again.
+        raise identity_unavailable()
+    if student_only:
         return SeedResult(categories_created=0, semesters_created=0)
     existing_keys: set[str] = {
         key

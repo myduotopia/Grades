@@ -43,7 +43,7 @@ function canEnter(area: Area, identity: MeIdentity | undefined): boolean {
 /** Layout route: renders children only when the user belongs to `area`. */
 export function IdentityGate({ area }: { area: Area }) {
   const { t } = useTranslation()
-  const { data, isLoading, isError, isFetching, refetch } = useMe()
+  const { data, isLoading, isFetching, refetch } = useMe()
 
   if (isLoading) {
     return (
@@ -55,7 +55,10 @@ export function IdentityGate({ area }: { area: Area }) {
   // /api/me failed: we don't know who this is, so don't guess — letting
   // them into the teacher AppShell would onboard a student as a new teacher.
   // Show an error with retry (and sign-out, in case the session is broken).
-  if (isError || !data) {
+  // Only when there is NO identity at all: a failed background refetch
+  // keeps the last good `data`, and tearing the page down then would
+  // throw away whatever the user was typing.
+  if (!data) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4">
         <div className="bg-white border border-slate-200 rounded-xl p-6 max-w-md w-full text-center">

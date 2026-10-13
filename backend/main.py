@@ -20,7 +20,13 @@ from starlette.responses import JSONResponse
 from auth import get_current_user, require_user_id
 from config import settings
 from database import get_db
-from identity import build_identity, sync_self_links
+from identity import (
+    IdentityUnknown,
+    build_identity,
+    identity_unavailable,
+    owns_any_classroom,
+    sync_self_links,
+)
 from models.classroom import Classroom
 from models.curriculum import Semester, Subject
 from models.settings import UserSettings
@@ -155,7 +161,18 @@ def me(
     student 小老師 page, or the no-access page. Computing it also re-syncs the
     caller's student `account_link` rows (see identity.sync_self_links).
     """
-    students = sync_self_links(db, user_id)
+    try:
+        students = sync_self_links(db, user_id)
+    except IdentityUnknown:
+        # "Can't tell" ≠ "not a student". For an account that owns no class,
+        # a teacher-looking answer would send a student into new-teacher
+        # onboarding → 503 (frontend shows retry). A class owner is routed to
+        # the teacher app regardless of student status, so serve them —
+        # links untouched, no 小老師 contexts this time — rather than lock
+        # every teacher out while the lookup is broken.
+        if not owns_any_classroom(db, user_id):
+            raise identity_unavailable()
+        students = []
     identity = build_identity(db, user_id, students)
     identity["assistant_contexts"] = [
         c.model_dump(mode="json")
