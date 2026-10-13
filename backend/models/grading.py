@@ -24,6 +24,9 @@ if TYPE_CHECKING:
     from models.classroom import Student
     from models.curriculum import Category, Item, Subject
 
+# Who last wrote a grade (#260). 'assistant' = student 小老師 (#262).
+ENTERED_BY_ROLE_VALUES = ("teacher", "assistant")
+
 
 class Grade(Base, UserScopedMixin, TimestampMixin):
     __tablename__ = "grade"
@@ -58,6 +61,32 @@ class Grade(Base, UserScopedMixin, TimestampMixin):
     score: Mapped[Decimal] = mapped_column(Numeric(4, 1), nullable=False)
     source: Mapped[str] = mapped_column(String(32), nullable=False, default="manual")
     source_external_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # "Entered by" stamp (#260). `user_id` is the owning teacher; these two
+    # record who last WROTE the score. Refreshed whenever the score changes,
+    # so a teacher overwriting an assistant's score flips it back to teacher.
+    entered_by_user_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), nullable=True
+    )
+    entered_by_role: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="teacher", server_default="teacher"
+    )
+
+    def write_score(
+        self, score: Decimal, entered_by_user_id: UUID, role: str = "teacher"
+    ) -> bool:
+        """Set the score and refresh the "entered by" stamp (#260).
+
+        The stamp only moves when the score actually changes (or the row is
+        new): bulk save and Excel import resend every row, and re-saving an
+        untouched assistant score must not silently relabel it as the
+        teacher's. Returns True when the score changed.
+        """
+        if self.score is not None and Decimal(self.score) == score:
+            return False
+        self.score = score
+        self.entered_by_user_id = entered_by_user_id
+        self.entered_by_role = role
+        return True
 
     item: Mapped["Item"] = relationship(back_populates="grades")
     student: Mapped["Student"] = relationship(back_populates="grades")
@@ -76,6 +105,10 @@ class Grade(Base, UserScopedMixin, TimestampMixin):
         CheckConstraint(
             f"source IN {SOURCE_VALUES!r}",
             name="ck_grade_source",
+        ),
+        CheckConstraint(
+            f"entered_by_role IN {ENTERED_BY_ROLE_VALUES!r}",
+            name="ck_grade_entered_by_role",
         ),
     )
 

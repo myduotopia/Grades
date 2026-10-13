@@ -10,6 +10,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 
 import { ArchivedSemesterBanner } from '../components/ArchivedSemesterBanner'
+import { EnteredByBadge, type EnteredByStamp } from '../components/EnteredByBadge'
 import { StandardsMatrix } from '../components/StandardsMatrix'
 import { StudentNameLink } from '../components/StudentNameLink'
 import { PageContainer } from '../layout/PageContainer'
@@ -1089,6 +1090,16 @@ function BySubjectView({
     return s
   }, [view.grades])
 
+  // "Entered by" stamps (#260), keyed `${student_id}:${item_id}`. Only
+  // assistant (小老師) entries are kept — teacher scores show no badge.
+  const assistantStamps = useMemo(() => {
+    const m = new Map<string, EnteredByStamp>()
+    for (const g of view.grades) {
+      if (g.entered_by_role === 'assistant') m.set(`${g.student_id}:${g.item_id}`, g)
+    }
+    return m
+  }, [view.grades])
+
   const deactivateMut = useMutation({
     mutationFn: (itemId: string) =>
       api.classrooms.deactivateItem(classroomId, itemId, snapshotId),
@@ -1544,9 +1555,10 @@ function BySubjectView({
                       return (
                         <td
                           key={i.id}
-                          className={`px-3 py-2.5 text-slate-700 max-w-[8rem] truncate ${catBg} ${rowBorder}`}
+                          className={`relative px-3 py-2.5 text-slate-700 max-w-[8rem] truncate ${catBg} ${rowBorder}`}
                         >
                           {formatScore(lookup[s.id]?.[i.id])}
+                          <EnteredByBadge stamp={assistantStamps.get(`${s.id}:${i.id}`)} />
                         </td>
                       )
                     })}
