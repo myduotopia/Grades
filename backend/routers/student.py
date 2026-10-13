@@ -26,6 +26,8 @@ from sqlalchemy.orm import Session
 
 from auth import require_user_id
 from database import get_db
+from email_validation import InvalidEmail, clean_email, duplicate_emails
+from models.access import AccountLink
 from models.classroom import Classroom, Student
 from schemas import (
     ImportPreviewSummary,
@@ -80,6 +82,33 @@ def _bad_request(message_key: str, message: str) -> HTTPException:
             }
         },
     )
+
+
+def _invalid_email() -> HTTPException:
+    return _bad_request("errors.student.invalid_email", "Email is invalid.")
+
+
+def _clean_email_or_400(raw: str | None) -> str | None:
+    try:
+        return clean_email(raw)
+    except InvalidEmail:
+        raise _invalid_email()
+
+
+def _on_email_changed(db: Session, student: Student, old_email: str | None) -> None:
+    """Side effects of a roster email change (#261).
+
+    The student's `account_link(self)` belonged to whoever signed in with the
+    OLD email; drop it so the account that owns the new email can bind on
+    its next sign-in (`ix_account_link_one_self_per_student` allows only
+    one self link per student).
+    """
+    if (old_email or None) == (student.email or None):
+        return
+    db.query(AccountLink).filter(
+        AccountLink.student_id == student.id,
+        AccountLink.link_role == "self",
+    ).delete(synchronize_session=False)
 
 
 # ---------- lookups ----------
@@ -152,12 +181,13 @@ def create_student(
     db: Annotated[Session, Depends(get_db)],
 ) -> StudentOut:
     _get_owned_classroom(db, user_id, classroom_id)
+    email = _clean_email_or_400(body.email)
     student = Student(
         user_id=user_id,
         classroom_id=classroom_id,
         seat_number=body.seat_number,
         name=body.name,
-        email=body.email,
+        email=email,
         source="manual",
     )
     db.add(student)
@@ -182,12 +212,15 @@ def update_student(
     db: Annotated[Session, Depends(get_db)],
 ) -> StudentOut:
     student = _get_owned_student(db, user_id, student_id)
+    email = _clean_email_or_400(body.email)
     if body.classroom_id is not None and body.classroom_id != student.classroom_id:
         _get_owned_classroom(db, user_id, body.classroom_id)  # ensures ownership
         student.classroom_id = body.classroom_id
     student.seat_number = body.seat_number
     student.name = body.name
-    student.email = body.email
+    old_email = student.email
+    student.email = email
+    _on_email_changed(db, student, old_email)
     try:
         db.flush()
     except IntegrityError:
@@ -308,12 +341,14 @@ async def import_students(
         if row is None or all(c is None or c == "" for c in row):
             continue
         preview_rows.append(_parse_row(row_idx, row, header_map, by_seat, seen_seats))
+    _flag_duplicate_emails(preview_rows, existing_students)
 
     summary = ImportPreviewSummary(
         total_rows=len(preview_rows),
         to_create=sum(1 for r in preview_rows if r.action == "create"),
         to_update=sum(1 for r in preview_rows if r.action == "update"),
         errors=sum(1 for r in preview_rows if r.action == "error"),
+        warnings=sum(1 for r in preview_rows if r.warnings),
     )
 
     if dry_run:
@@ -409,10 +444,15 @@ def _parse_row(
     name_raw = cell("姓名")
     name = str(name_raw).strip() if name_raw not in (None, "") else None
 
-    # email (optional)
-    email_raw = cell("email") or cell("Email")
-    email = str(email_raw).strip() if email_raw not in (None, "") else None
-    if email and "@" not in email:
+    # email (optional) — same normalise/validate helper as the single form.
+    email_raw = cell("email")
+    if email_raw in (None, ""):
+        email_raw = cell("Email")
+    email: str | None
+    try:
+        email = clean_email(email_raw)
+    except InvalidEmail:
+        email = str(email_raw).strip()
         errors.append("email is invalid")
 
     if errors:
@@ -426,6 +466,14 @@ def _parse_row(
         )
 
     existing = by_seat.get(seat) if seat is not None else None
+    warnings: list[str] = []
+    if existing is not None and email is None:
+        # Blank email cell on an UPDATE row means "leave it alone", not
+        # "clear it" (#261) — teachers often re-import a roster that only
+        # carries seat + name. Preview shows the email that will remain.
+        email = existing.email
+        if email:
+            warnings.append("email_unchanged")
     return ImportRowPreview(
         row_number=row_idx,
         action="update" if existing else "create",
@@ -433,7 +481,28 @@ def _parse_row(
         name=name,
         email=email,
         existing_id=existing.id if existing else None,
+        warnings=warnings,
     )
+
+
+def _flag_duplicate_emails(
+    rows: list[ImportRowPreview], existing_students: list[Student]
+) -> None:
+    """Warn (not block) when, after this import, two students in the class
+    would share an email. Computed on the post-import state: existing
+    students keyed by seat, overridden by the file's rows."""
+    final_by_seat: dict[int, str | None] = {
+        s.seat_number: s.email for s in existing_students
+    }
+    for r in rows:
+        if r.action != "error" and r.seat_number is not None:
+            final_by_seat[r.seat_number] = r.email
+    dupes = duplicate_emails(final_by_seat.values())
+    if not dupes:
+        return
+    for r in rows:
+        if r.action != "error" and r.email and r.email.lower() in dupes:
+            r.warnings.append("duplicate_email")
 
 
 # ---------- commit ----------
@@ -451,7 +520,11 @@ def _commit_import(
         if r.action == "update" and r.existing_id is not None:
             student = by_seat[r.seat_number]
             student.name = r.name
+            # Blank cell → r.email was filled with the stored value in
+            # _parse_row, so this is a no-op; a filled cell updates it.
+            old_email = student.email
             student.email = r.email
+            _on_email_changed(db, student, old_email)
         else:
             student = Student(
                 user_id=user_id,

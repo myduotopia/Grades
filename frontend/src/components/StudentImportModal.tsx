@@ -178,6 +178,9 @@ function PreviewTable({ result }: { result: ImportResult }) {
           </span>
         )}
       </div>
+      <p className="text-xs text-slate-500 mb-3">
+        {t('students.import.email_note')}
+      </p>
       <div className="overflow-x-auto border border-slate-200 rounded-lg">
         <table className="min-w-full text-xs">
           <thead className="bg-slate-50 text-slate-600">
@@ -231,8 +234,17 @@ function PreviewTable({ result }: { result: ImportResult }) {
                   <td className="px-2 py-1.5 text-slate-500 break-all">
                     {r.email ?? '—'}
                   </td>
-                  <td className="px-2 py-1.5 text-rose-700">
-                    {r.errors.join('; ')}
+                  <td className="px-2 py-1.5">
+                    {r.errors.length > 0 && (
+                      <span className="block text-rose-700">
+                        {r.errors.join('; ')}
+                      </span>
+                    )}
+                    {(r.warnings ?? []).map((w) => (
+                      <span key={w} className="block text-amber-700">
+                        {t(`students.import.warning.${w}`, { defaultValue: w })}
+                      </span>
+                    ))}
                   </td>
                 </tr>
               )

@@ -493,6 +493,12 @@ class ImportRowPreview(BaseModel):
     email: str | None
     existing_id: UUID | None = None
     errors: list[str] = []
+    # Non-blocking notices (#261), as codes the frontend translates:
+    #   "duplicate_email" — after import, another student in this class
+    #                       would share this email.
+    #   "email_unchanged" — update row with a blank email cell: the stored
+    #                       email is kept (shown in `email`), not cleared.
+    warnings: list[str] = []
 
 
 class ImportPreviewSummary(BaseModel):
@@ -500,6 +506,7 @@ class ImportPreviewSummary(BaseModel):
     to_create: int
     to_update: int
     errors: int
+    warnings: int = 0
 
 
 class ImportResult(BaseModel):

@@ -97,12 +97,24 @@ Returns the user's identity and a setup status flag the frontend uses to decide 
     "has_classes": true,
     "has_subjects": true,
     "has_current_semester": true
+  },
+  "identity": {
+    "is_teacher": true,
+    "is_student": false,
+    "assistant_contexts": []
   }
 }
 ```
 
+`identity` (#261): `is_teacher` = owns ≥1 classroom; `is_student` = the
+Google-verified JWT email matches ≥1 `student.email` (any teacher).
+`assistant_contexts` lists the classes where this student is a 小老師 (#262).
+Calling this endpoint also syncs the caller's `account_link(self)` rows — see
+data-model.md §account_link. The frontend routes on it: teacher app,
+`/assistant`, or `/no-access`.
+
 #### `POST /api/me/seed`
-Idempotent. Called by `/auth/callback` on first sign-in to create the 7 default categories and one default semester. Safe to call repeatedly — checks before inserting.
+Idempotent. Called by `/auth/callback` on first sign-in to create the 7 default categories and one default semester. Safe to call repeatedly — checks before inserting. Returns zeros without seeding for a roster student who owns no classroom (#261).
 
 ### Classrooms
 
@@ -162,6 +174,8 @@ on the website (single-student modal), not in Excel.
 
 - `seat_number` required, 1–99
 - `name`, `email` optional (null allowed)
+- `email` is trimmed + lowercased; an invalid format returns
+  `400` `errors.student.invalid_email` (#261)
 - `standards` is an optional map of `{ category.system_key: threshold }`.
   Unknown keys are ignored; keys not in the payload are left untouched.
 - PUT-only: include `classroom_id` to transfer the student to a different
@@ -210,6 +224,14 @@ Response:
 
 A `dry_run=false` request returns `400 BAD_REQUEST` (`errors.import.has_errors`)
 if any row has `action: "error"` — fix the file and re-upload.
+
+Email rules (#261): same normaliser/validator as the single form (invalid →
+row error `email is invalid`). Each row also carries `warnings` (codes, not
+blocking; `summary.warnings` counts rows with any):
+- `duplicate_email` — after the import, another student in this class would
+  have the same email;
+- `email_unchanged` — an **update** row whose email cell is blank keeps the
+  stored email (shown in `email`) instead of clearing it.
 
 ### Subjects
 

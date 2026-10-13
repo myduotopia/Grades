@@ -48,7 +48,9 @@ student
 
 **Class transfer:** allowed by updating `student.classroom_id`. Edge case, not optimized.
 
-**`email`** is optional. When present, it's the target of a Supabase Auth invitation (`auth.admin.inviteUserByEmail`) and the matching key for linking the student/parent to a Supabase auth user (see `account_link`).
+**`email`** is optional. When present, it's the matching key for linking the student to the Google account they sign in with (see `account_link`).
+
+**Email normalisation (#261):** every write path (single create/update, Excel import) goes through `backend/email_validation.py` — `trim()` + `lower()`, blank → NULL, format-checked (400 `errors.student.invalid_email`). Migration `r1m2n3o4p5q6` normalised pre-existing rows. Two students in the same class sharing an email is only a **warning** (form hint / import-preview warning); it blocks making either of them a 小老師 (#262). On an Excel **update** row a blank email cell keeps the stored email (it does not clear it). Changing or clearing a student's email deletes that student's `account_link(self)` so the new address can bind.
 
 ### `account_link`
 
@@ -68,12 +70,15 @@ account_link
 
 **Why `link_role` not `relationship`?** Avoids shadowing SQLAlchemy's `relationship()` function inside the model class.
 
-**Linking flow:**
-1. Teacher sets `student.email` (manually, via Excel, or auto-populated by Duotopia/Classroom import)
-2. Backend calls `supabase.auth.admin.invite_user_by_email(email)` → Supabase sends magic link
-3. Recipient clicks link → completes Supabase Auth flow → frontend gets a session
-4. Frontend calls `POST /api/me/link` (TBD endpoint)
-5. Backend matches `student WHERE email = current_user.email` → INSERT `account_link` rows
+**Linking flow — student self (#261, implemented in `backend/identity.py`):**
+1. Teacher sets `student.email` (manually or via Excel).
+2. The student signs in with Google. Every `GET /api/me` calls `sync_self_links`: it matches `lower(student.email) = JWT email` across **all** teachers' rosters, inserts a missing `account_link(link_role='self', linked_via='email_invite')` for each match, and deletes this user's self links whose student no longer matches. If a matched student is still self-linked to a different account (email was reassigned), that stale link is removed first (partial unique index).
+3. The JWT email is only trusted when `app_metadata.provider == 'google'` (or `'google'` is in `app_metadata.providers`). `app_metadata` is server-controlled; `user_metadata.email_verified` is **not** trusted because users can edit `user_metadata`. This stops someone from registering with a student's address to inherit that student's access.
+4. Authorisation on student-facing endpoints re-checks the live email match; the link alone is not sufficient.
+
+Parent links (QR flow) are a separate issue; the `invite_user_by_email` path is not used.
+
+**Identity (`GET /api/me` → `identity`):** teacher = owns ≥1 classroom; student = has ≥1 matched roster row. "Teacher" is not a security boundary — every teacher endpoint already filters by `user_id = sub`, so a student calling one sees only their own (empty) data. A roster student who owns no class is never seeded (`POST /api/me/seed` returns zeros) and is routed to `/assistant` or `/no-access`; an account that matches no roster keeps the new-teacher onboarding.
 
 **Multiple parents per student:** `link_role='parent'` rows are unconstrained — mom + dad can both link to the same student. UI displays them as "Parent 1 / Parent 2" by `created_at` order.
 

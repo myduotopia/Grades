@@ -20,6 +20,7 @@ from starlette.responses import JSONResponse
 from auth import get_current_user, require_user_id
 from config import settings
 from database import get_db
+from identity import build_identity
 from models.classroom import Classroom
 from models.curriculum import Semester, Subject
 from models.settings import UserSettings
@@ -143,7 +144,13 @@ def me(
     user_id: Annotated[UUID, Depends(require_user_id)],
     db: Annotated[Session, Depends(get_db)],
 ) -> dict[str, Any]:
-    """Returns the current user's identity, setup status, and preferences."""
+    """Returns the current user's identity, setup status, and preferences.
+
+    `identity` (#261) tells the frontend which shell to show: teacher app,
+    student 小老師 page, or the no-access page. Computing it also re-syncs the
+    caller's student `account_link` rows (see identity.sync_self_links).
+    """
+    identity = build_identity(db, user_id, user)
     has_classes = (
         db.query(Classroom.id).filter(Classroom.user_id == user_id).first()
         is not None
@@ -168,6 +175,7 @@ def me(
             "id": user["sub"],
             "email": user.get("email"),
         },
+        "identity": identity,
         "setup": {
             "has_classes": has_classes,
             "has_subjects": has_subjects,

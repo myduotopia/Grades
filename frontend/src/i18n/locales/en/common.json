@@ -573,11 +573,19 @@
         "create": "{{n}} to create",
         "update": "{{n}} to update",
         "errors": "{{n}} with errors"
+      },
+      "email_note": "Emails are converted to lowercase. On \"update\" rows, a blank email cell keeps the existing email instead of clearing it.",
+      "warning": {
+        "duplicate_email": "Note: another student in this class has the same email",
+        "email_unchanged": "Email cell blank — existing email kept"
       }
     },
     "errors": {
-      "duplicate_seat": "Seat number already exists in this class"
-    }
+      "duplicate_seat": "Seat number already exists in this class",
+      "invalid_email": "Email format is invalid"
+    },
+    "email_hint": "Optional. Enter the student's Google account email so they can sign in and be made a student assistant.",
+    "email_duplicate_warning": "Another student in this class uses this email (you can still save, but neither can be made a student assistant)."
   },
   "grade_entry": {
     "title": "Enter scores",
@@ -855,5 +863,17 @@
       "name_required": "Group name is required",
       "duplicate_name": "A group with this name already exists in this class"
     }
+  },
+  "no_access": {
+    "title": "No access yet",
+    "body": "Your account has nothing to use yet. If you are a student, ask your teacher to add your Google account email to the class roster and make you a student assistant.",
+    "signed_in_as": "Signed in as {{email}}",
+    "switch_account": "Sign in with another account"
+  },
+  "assistant": {
+    "role": "Student assistant",
+    "header": "{{name}} (student assistant)",
+    "title": "Enter scores",
+    "subtitle": "Only the grade items your teacher assigned to you are listed."
   }
 }

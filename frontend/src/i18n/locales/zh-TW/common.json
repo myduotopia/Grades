@@ -573,11 +573,19 @@
         "create": "{{n}} 筆新增",
         "update": "{{n}} 筆更新",
         "errors": "{{n}} 筆錯誤"
+      },
+      "email_note": "email 會自動轉成小寫；「更新」的列若 email 欄空白，會保留原本的 email，不會清除。",
+      "warning": {
+        "duplicate_email": "提醒：班上有其他學生使用相同 email",
+        "email_unchanged": "email 欄空白，保留原本的 email"
       }
     },
     "errors": {
-      "duplicate_seat": "這個班級已經有相同座號的學生了"
-    }
+      "duplicate_seat": "這個班級已經有相同座號的學生了",
+      "invalid_email": "Email 格式不正確"
+    },
+    "email_hint": "選填。填入學生的 Google 帳號 email，學生才能登入並被設為小老師。",
+    "email_duplicate_warning": "班上已有其他學生使用這個 email（仍可儲存，但這兩位都無法設為小老師）。"
   },
   "grade_entry": {
     "title": "線上輸入成績",
@@ -855,5 +863,17 @@
       "name_required": "請輸入組名",
       "duplicate_name": "這個班級已有同名的組別"
     }
+  },
+  "no_access": {
+    "title": "尚無權限",
+    "body": "你的帳號目前沒有可以使用的功能。如果你是學生，請老師在學生名單填上你的 Google 帳號 email，並把你設為小老師。",
+    "signed_in_as": "目前登入：{{email}}",
+    "switch_account": "換一個帳號登入"
+  },
+  "assistant": {
+    "role": "小老師",
+    "header": "{{name}}（小老師）",
+    "title": "小老師登記成績",
+    "subtitle": "只會列出老師指定給你的成績項目。"
   }
 }

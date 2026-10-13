@@ -21,6 +21,7 @@ import {
 } from '../hooks/useStudents'
 import { api, ApiError, type Student } from '../lib/api'
 import { classroomDisplayName } from '../lib/classroomFormat'
+import { isValidEmail, normalizeEmail } from '../lib/email'
 
 const PRIMARY_BTN =
   'inline-flex items-center px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white text-sm font-medium shadow-sm transition-colors disabled:bg-slate-300'
@@ -350,6 +351,8 @@ function StudentModal({ mode, classroomId, student, onClose }: ModalProps) {
   const create = useCreateStudent(classroomId)
   const update = useUpdateStudent(classroomId)
   const del = useDeleteStudent(classroomId)
+  // Same query the page already loaded — used for the duplicate-email hint.
+  const classmates = useStudents(classroomId).data?.data ?? []
 
   const [seat, setSeat] = useState<number | ''>(student?.seat_number ?? '')
   const [name, setName] = useState(student?.name ?? '')
@@ -357,7 +360,17 @@ function StudentModal({ mode, classroomId, student, onClose }: ModalProps) {
   const [errKey, setErrKey] = useState<string | null>(null)
 
   const submitting = create.isPending || update.isPending || del.isPending
-  const canSubmit = seat !== '' && !submitting
+  const normalizedEmail = normalizeEmail(email)
+  const emailInvalid = normalizedEmail !== null && !isValidEmail(normalizedEmail)
+  // Warn only (#261): two students may legitimately share a family address,
+  // but such a student can't later be made a 小老師.
+  const emailDuplicate =
+    normalizedEmail !== null &&
+    !emailInvalid &&
+    classmates.some(
+      (c) => c.id !== student?.id && normalizeEmail(c.email) === normalizedEmail,
+    )
+  const canSubmit = seat !== '' && !emailInvalid && !submitting
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -367,7 +380,7 @@ function StudentModal({ mode, classroomId, student, onClose }: ModalProps) {
       const body = {
         seat_number: Number(seat),
         name: name.trim() || null,
-        email: email.trim() || null,
+        email: normalizedEmail,
       }
       if (mode === 'add') {
         await create.mutateAsync(body)
@@ -378,6 +391,11 @@ function StudentModal({ mode, classroomId, student, onClose }: ModalProps) {
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) {
         setErrKey('students.errors.duplicate_seat')
+      } else if (
+        err instanceof ApiError &&
+        err.body?.message_key === 'errors.student.invalid_email'
+      ) {
+        setErrKey('students.errors.invalid_email')
       } else {
         setErrKey('common.error_generic')
       }
@@ -450,11 +468,29 @@ function StudentModal({ mode, classroomId, student, onClose }: ModalProps) {
           <input
             type="email"
             inputMode="email"
+            autoComplete="off"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             maxLength={255}
-            className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+            aria-invalid={emailInvalid}
+            aria-describedby="student-email-hint"
+            className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 ${
+              emailInvalid ? 'border-rose-400' : 'border-slate-300'
+            }`}
           />
+          <span id="student-email-hint" className="mt-1.5 block text-xs">
+            {emailInvalid ? (
+              <span className="text-rose-600">
+                {t('students.errors.invalid_email')}
+              </span>
+            ) : emailDuplicate ? (
+              <span className="text-amber-700">
+                {t('students.email_duplicate_warning')}
+              </span>
+            ) : (
+              <span className="text-slate-500">{t('students.email_hint')}</span>
+            )}
+          </span>
         </label>
 
         {errKey && <p className="mt-3 text-sm text-rose-600">{t(errKey)}</p>}

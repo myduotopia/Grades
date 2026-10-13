@@ -86,6 +86,16 @@ For granular per-item scores (accuracy / fluency / pronunciation / completeness,
 - **Login rate limit is aggressive (3/min).** Don't retry login automatically on failure.
 - **Casbin role sync at Duotopia startup can fail-loop** — if Duotopia is down or its DB is missing the right `TeacherOrganization` / `TeacherSchool` rows, classroom queries return empty / 403. This is a Duotopia-side data problem, not a Grades bug.
 
+## Constraint for the future roster import (#16)
+
+Grades' `student.email` is what student Google sign-in binds against (#261,
+see data-model.md §account_link). When the Duotopia roster import is built it
+**must not overwrite a non-empty local `student.email`** — only fill it when
+the local value is NULL — and must pass any value it writes through
+`backend/email_validation.py:clean_email` (trim + lowercase + format check).
+Overwriting would silently re-point (or break) a student's login and 小老師
+access.
+
 ## CORS
 
 Configured in `backend/main.py:71-109` from env vars (the `cors.json` file is unused at runtime).

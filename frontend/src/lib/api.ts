@@ -16,8 +16,38 @@ if (RAW_API_BASE.endsWith('/')) {
 }
 const API_BASE = RAW_API_BASE.replace(/\/+$/, '')
 
+// One class where the signed-in student is a 小老師 (#262). Empty until
+// #262 ships; declared here so the identity shape is stable.
+export interface AssistantContextItem {
+  item_id: string
+  item_name: string
+  subject_id: string
+  subject_system_key: string | null
+  subject_display_name: string | null
+  category_system_key: string
+}
+
+export interface AssistantContext {
+  classroom_id: string
+  classroom_name: string
+  classroom_grade: number
+  teacher_label: string
+  student_id: string
+  student_name: string | null
+  items: AssistantContextItem[]
+}
+
+// Who the signed-in user is (#261). Teacher = owns ≥1 class; student =
+// Google email matches a roster entry. See backend/identity.py.
+export interface MeIdentity {
+  is_teacher: boolean
+  is_student: boolean
+  assistant_contexts: AssistantContext[]
+}
+
 export interface MeResponse {
   user: { id: string; email: string | null }
+  identity: MeIdentity
   setup: {
     has_classes: boolean
     has_subjects: boolean
@@ -370,6 +400,8 @@ export interface ImportRowPreview {
   email: string | null
   existing_id: string | null
   errors: string[]
+  // Non-blocking notices (#261): 'duplicate_email' | 'email_unchanged'.
+  warnings?: string[]
 }
 
 export interface ImportResult {
@@ -379,6 +411,7 @@ export interface ImportResult {
     to_create: number
     to_update: number
     errors: number
+    warnings?: number
   }
   rows: ImportRowPreview[]
 }
