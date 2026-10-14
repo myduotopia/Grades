@@ -2,14 +2,17 @@ import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
 
 import { AuthProvider } from './auth/AuthProvider'
+import { IdentityGate } from './auth/IdentityGate'
 import { ProtectedRoute } from './auth/ProtectedRoute'
 import { AppShell } from './layout/AppShell'
+import { MinimalShell } from './layout/MinimalShell'
 import { SemesterViewProvider } from './state/SemesterView'
 import { AdminItems } from './pages/AdminItems'
 import { Alerts } from './pages/Alerts'
 import { AdminReasons } from './pages/AdminReasons'
 import { AdminSemesters } from './pages/AdminSemesters'
 import { AdminSubjects } from './pages/AdminSubjects'
+import { Assistant } from './pages/Assistant'
 import { AuthCallback } from './pages/AuthCallback'
 import { ClassGroups } from './pages/ClassGroups'
 import { Classes } from './pages/Classes'
@@ -19,6 +22,7 @@ import { Grades } from './pages/Grades'
 import { Snapshots } from './pages/Snapshots'
 import { Home } from './pages/Home'
 import { Login } from './pages/Login'
+import { NoAccess } from './pages/NoAccess'
 import { Lottery } from './pages/Lottery'
 import { Points } from './pages/Points'
 import { PrintGradeCards } from './pages/PrintGradeCards'
@@ -41,52 +45,65 @@ function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/auth/callback" element={<AuthCallback />} />
           <Route element={<ProtectedRoute />}>
-            <Route
-              element={
-                <SemesterViewProvider>
-                  <AppShell />
-                </SemesterViewProvider>
-              }
-            >
-              <Route path="/" element={<Home />} />
-              <Route path="/classes" element={<Classes />} />
-              <Route
-                path="/classes/:classroomId/students"
-                element={<Students />}
-              />
-              <Route
-                path="/classes/:classroomId/groups"
-                element={<ClassGroups />}
-              />
-              <Route
-                path="/classes/:classroomId/grades"
-                element={<Grades />}
-              />
-              <Route
-                path="/classes/:classroomId/grades/entry"
-                element={<GradeEntry />}
-              />
-              <Route path="/snapshots" element={<Snapshots />} />
-              <Route
-                path="/snapshots/:snapshotId/grades"
-                element={<Grades />}
-              />
-              <Route path="/students/:studentId" element={<StudentDetail />} />
-              <Route path="/admin/subjects" element={<AdminSubjects />} />
-              <Route path="/admin/semesters" element={<AdminSemesters />} />
-              <Route path="/admin/items" element={<AdminItems />} />
-              <Route path="/admin/reasons" element={<AdminReasons />} />
-              <Route path="/alerts" element={<Alerts />} />
-              <Route path="/points" element={<Points />} />
-              <Route
-                path="/points/:classroomId"
-                element={<ClassroomPoints />}
-              />
-              <Route path="/lottery" element={<Lottery />} />
-              <Route path="/settings" element={<Settings />} />
+            {/* Student areas (#261): outside AppShell, no teacher chrome. */}
+            <Route element={<IdentityGate area="assistant" />}>
+              <Route element={<MinimalShell />}>
+                <Route path="/assistant" element={<Assistant />} />
+              </Route>
             </Route>
-            {/* Chrome-free print page (no sidebar/header), still behind auth */}
-            <Route path="/classes/print" element={<PrintGradeCards />} />
+            <Route element={<IdentityGate area="no_access" />}>
+              <Route element={<MinimalShell />}>
+                <Route path="/no-access" element={<NoAccess />} />
+              </Route>
+            </Route>
+            <Route element={<IdentityGate area="teacher" />}>
+              <Route
+                element={
+                  <SemesterViewProvider>
+                    <AppShell />
+                  </SemesterViewProvider>
+                }
+              >
+                <Route path="/" element={<Home />} />
+                <Route path="/classes" element={<Classes />} />
+                <Route
+                  path="/classes/:classroomId/students"
+                  element={<Students />}
+                />
+                <Route
+                  path="/classes/:classroomId/groups"
+                  element={<ClassGroups />}
+                />
+                <Route
+                  path="/classes/:classroomId/grades"
+                  element={<Grades />}
+                />
+                <Route
+                  path="/classes/:classroomId/grades/entry"
+                  element={<GradeEntry />}
+                />
+                <Route path="/snapshots" element={<Snapshots />} />
+                <Route
+                  path="/snapshots/:snapshotId/grades"
+                  element={<Grades />}
+                />
+                <Route path="/students/:studentId" element={<StudentDetail />} />
+                <Route path="/admin/subjects" element={<AdminSubjects />} />
+                <Route path="/admin/semesters" element={<AdminSemesters />} />
+                <Route path="/admin/items" element={<AdminItems />} />
+                <Route path="/admin/reasons" element={<AdminReasons />} />
+                <Route path="/alerts" element={<Alerts />} />
+                <Route path="/points" element={<Points />} />
+                <Route
+                  path="/points/:classroomId"
+                  element={<ClassroomPoints />}
+                />
+                <Route path="/lottery" element={<Lottery />} />
+                <Route path="/settings" element={<Settings />} />
+              </Route>
+              {/* Chrome-free print page (no sidebar/header), still behind auth */}
+              <Route path="/classes/print" element={<PrintGradeCards />} />
+            </Route>
           </Route>
         </Routes>
       </BrowserRouter>

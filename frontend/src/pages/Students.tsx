@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 
+import { AssistantSwitch } from '../components/AssistantSwitch'
 import { StudentImportModal } from '../components/StudentImportModal'
 import {
   StudentGroupBadges,
@@ -21,6 +22,7 @@ import {
 } from '../hooks/useStudents'
 import { api, ApiError, type Student } from '../lib/api'
 import { classroomDisplayName } from '../lib/classroomFormat'
+import { isValidEmail, normalizeEmail } from '../lib/email'
 
 const PRIMARY_BTN =
   'inline-flex items-center px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white text-sm font-medium shadow-sm transition-colors disabled:bg-slate-300'
@@ -170,6 +172,7 @@ export function Students() {
 
       {!isLoading && !isError && students.length > 0 && view === 'list' && (
         <StudentTable
+          classroomId={classroomId}
           students={students}
           groupIndex={groupIndex}
           showGroups={hasGroups}
@@ -179,6 +182,7 @@ export function Students() {
 
       {!isLoading && !isError && students.length > 0 && view === 'card' && (
         <StudentCards
+          classroomId={classroomId}
           students={students}
           groupIndex={groupIndex}
           onEdit={(s) => setModal({ kind: 'edit', student: s })}
@@ -216,11 +220,13 @@ export function Students() {
 // ---------- list view ----------
 
 function StudentTable({
+  classroomId,
   students,
   groupIndex,
   showGroups,
   onEdit,
 }: {
+  classroomId: string
   students: Student[]
   groupIndex: Map<string, StudentGroupRef[]>
   showGroups: boolean
@@ -247,6 +253,9 @@ function StudentTable({
               <th className="px-4 py-3 text-left font-medium">
                 {t('students.col.email')}
               </th>
+              <th className="px-4 py-3 text-center font-medium whitespace-nowrap">
+                {t('students.col.assistant')}
+              </th>
               <th className="px-4 py-3 text-right font-medium">
                 {t('students.col.actions')}
               </th>
@@ -269,6 +278,9 @@ function StudentTable({
                 <td className="px-4 py-3 text-slate-500 break-all">
                   {s.email || <span className="text-slate-400">—</span>}
                 </td>
+                <td className="px-4 py-3 text-center">
+                  <AssistantSwitch student={s} classroomId={classroomId} />
+                </td>
                 <td className="px-4 py-3 text-right">
                   <button
                     onClick={() => onEdit(s)}
@@ -289,10 +301,12 @@ function StudentTable({
 // ---------- card view ----------
 
 function StudentCards({
+  classroomId,
   students,
   groupIndex,
   onEdit,
 }: {
+  classroomId: string
   students: Student[]
   groupIndex: Map<string, StudentGroupRef[]>
   onEdit: (s: Student) => void
@@ -322,7 +336,11 @@ function StudentCards({
               />
             </div>
           </div>
-          <div className="mt-auto pt-2 border-t border-slate-100 flex justify-end">
+          <div className="mt-auto pt-2 border-t border-slate-100 flex items-center justify-between">
+            <span className="flex items-center gap-1 text-xs text-slate-500">
+              <AssistantSwitch student={s} classroomId={classroomId} />
+              {t('students.col.assistant')}
+            </span>
             <button
               onClick={() => onEdit(s)}
               className="text-amber-700 hover:text-amber-900 font-medium text-sm"
@@ -350,14 +368,29 @@ function StudentModal({ mode, classroomId, student, onClose }: ModalProps) {
   const create = useCreateStudent(classroomId)
   const update = useUpdateStudent(classroomId)
   const del = useDeleteStudent(classroomId)
+  // Same query the page already loaded — used for the duplicate-email hint.
+  const classmates = useStudents(classroomId).data?.data ?? []
 
   const [seat, setSeat] = useState<number | ''>(student?.seat_number ?? '')
   const [name, setName] = useState(student?.name ?? '')
   const [email, setEmail] = useState(student?.email ?? '')
+  const [isAssistant, setIsAssistant] = useState(!!student?.is_assistant)
   const [errKey, setErrKey] = useState<string | null>(null)
 
   const submitting = create.isPending || update.isPending || del.isPending
-  const canSubmit = seat !== '' && !submitting
+  const normalizedEmail = normalizeEmail(email)
+  const emailInvalid = normalizedEmail !== null && !isValidEmail(normalizedEmail)
+  // Warn only (#261): two students may legitimately share a family address,
+  // but such a student can't later be made a 小老師.
+  const emailDuplicate =
+    normalizedEmail !== null &&
+    !emailInvalid &&
+    classmates.some(
+      (c) => c.id !== student?.id && normalizeEmail(c.email) === normalizedEmail,
+    )
+  const canSubmit = seat !== '' && !emailInvalid && !submitting
+  // 小老師 needs an email (#262); clearing the email unticks it.
+  const assistantAllowed = normalizedEmail !== null && !emailInvalid
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -367,7 +400,8 @@ function StudentModal({ mode, classroomId, student, onClose }: ModalProps) {
       const body = {
         seat_number: Number(seat),
         name: name.trim() || null,
-        email: email.trim() || null,
+        email: normalizedEmail,
+        is_assistant: isAssistant && assistantAllowed,
       }
       if (mode === 'add') {
         await create.mutateAsync(body)
@@ -378,6 +412,16 @@ function StudentModal({ mode, classroomId, student, onClose }: ModalProps) {
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) {
         setErrKey('students.errors.duplicate_seat')
+      } else if (
+        err instanceof ApiError &&
+        err.body?.message_key === 'errors.student.invalid_email'
+      ) {
+        setErrKey('students.errors.invalid_email')
+      } else if (
+        err instanceof ApiError &&
+        err.body?.message_key?.startsWith('errors.assistant.')
+      ) {
+        setErrKey(err.body.message_key)
       } else {
         setErrKey('common.error_generic')
       }
@@ -450,11 +494,57 @@ function StudentModal({ mode, classroomId, student, onClose }: ModalProps) {
           <input
             type="email"
             inputMode="email"
+            autoComplete="off"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             maxLength={255}
-            className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+            aria-invalid={emailInvalid}
+            aria-describedby="student-email-hint"
+            className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 ${
+              emailInvalid ? 'border-rose-400' : 'border-slate-300'
+            }`}
           />
+          <span id="student-email-hint" className="mt-1.5 block text-xs">
+            {emailInvalid ? (
+              <span className="text-rose-600">
+                {t('students.errors.invalid_email')}
+              </span>
+            ) : emailDuplicate ? (
+              <span className="text-amber-700">
+                {t('students.email_duplicate_warning')}
+              </span>
+            ) : (
+              <span className="text-slate-500">{t('students.email_hint')}</span>
+            )}
+          </span>
+        </label>
+
+        <label
+          className={`mt-3 flex items-start gap-2 min-h-[44px] ${
+            assistantAllowed ? 'cursor-pointer' : 'cursor-not-allowed'
+          }`}
+        >
+          <input
+            type="checkbox"
+            checked={isAssistant && assistantAllowed}
+            disabled={!assistantAllowed}
+            onChange={(e) => setIsAssistant(e.target.checked)}
+            className="mt-0.5 h-4 w-4 rounded border-slate-300 text-amber-500 focus:ring-amber-500"
+          />
+          <span>
+            <span
+              className={`block text-sm font-medium ${
+                assistantAllowed ? 'text-slate-700' : 'text-slate-400'
+              }`}
+            >
+              {t('assistant_admin.checkbox')}
+            </span>
+            <span className="block text-xs text-slate-500">
+              {assistantAllowed
+                ? t('assistant_admin.checkbox_hint')
+                : t('assistant_admin.needs_email')}
+            </span>
+          </span>
         </label>
 
         {errKey && <p className="mt-3 text-sm text-rose-600">{t(errKey)}</p>}

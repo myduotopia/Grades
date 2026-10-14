@@ -48,3 +48,14 @@ export function useDeleteStudent(classroomId: string) {
       qc.invalidateQueries({ queryKey: studentsKey(classroomId) }),
   })
 }
+
+/** 小老師 on/off from the student list (#262). */
+export function useSetStudentAssistant(classroomId: string) {
+  const qc = useQueryClient()
+  return useMutation<Student, Error, { id: string; isAssistant: boolean }>({
+    mutationFn: ({ id, isAssistant }) =>
+      api.students.setAssistant(id, isAssistant),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: studentsKey(classroomId) }),
+  })
+}

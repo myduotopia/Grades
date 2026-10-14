@@ -457,6 +457,8 @@ class StudentCreate(BaseModel):
     seat_number: int = Field(ge=1, le=99)
     name: str | None = Field(default=None, max_length=200)
     email: str | None = Field(default=None, max_length=255)
+    # 小老師 toggle (#262). None = leave unchanged; True requires an email.
+    is_assistant: bool | None = None
 
 
 class StudentUpdate(BaseModel):
@@ -464,6 +466,11 @@ class StudentUpdate(BaseModel):
     seat_number: int = Field(ge=1, le=99)
     name: str | None = Field(default=None, max_length=200)
     email: str | None = Field(default=None, max_length=255)
+    is_assistant: bool | None = None
+
+
+class StudentAssistantUpdate(BaseModel):
+    is_assistant: bool
 
 
 class StudentOut(BaseModel):
@@ -477,6 +484,8 @@ class StudentOut(BaseModel):
     source: str
     created_at: datetime
     updated_at: datetime
+    # 小老師 of this class (#262).
+    is_assistant: bool = False
 
 
 class StudentList(BaseModel):
@@ -493,6 +502,12 @@ class ImportRowPreview(BaseModel):
     email: str | None
     existing_id: UUID | None = None
     errors: list[str] = []
+    # Non-blocking notices (#261), as codes the frontend translates:
+    #   "duplicate_email" — after import, another student in this class
+    #                       would share this email.
+    #   "email_unchanged" — update row with a blank email cell: the stored
+    #                       email is kept (shown in `email`), not cleared.
+    warnings: list[str] = []
 
 
 class ImportPreviewSummary(BaseModel):
@@ -500,6 +515,7 @@ class ImportPreviewSummary(BaseModel):
     to_create: int
     to_update: int
     errors: int
+    warnings: int = 0
 
 
 class ImportResult(BaseModel):
@@ -632,6 +648,7 @@ class GradeWriteOut(BaseModel):
     # "Entered by" stamp (#260).
     entered_by_user_id: UUID | None = None
     entered_by_role: Literal["teacher", "assistant"] = "teacher"
+    entered_at: datetime | None = None
     updated_at: datetime | None = None
 
 
@@ -699,9 +716,10 @@ class ItemGradesStudentRow(BaseModel):
     # "Entered by" stamp (#260); all None when the student has no grade.
     entered_by_user_id: UUID | None = None
     entered_by_role: Literal["teacher", "assistant"] | None = None
-    # Display name of the assistant (小老師) who entered it. Always None
-    # until #262 links assistant users to students.
+    # Display name of the assistant (小老師) who entered it (#262): the
+    # roster name of the teacher's student self-linked to that account.
     entered_by_name: str | None = None
+    entered_at: datetime | None = None
     updated_at: datetime | None = None
 
 
@@ -717,6 +735,21 @@ class ItemGradesView(BaseModel):
     students: list[ItemGradesStudentRow]
 
 
+class AssistantItemGradesView(BaseModel):
+    """`GET /api/assistant/items/{id}/grades` (#262): ItemGradesView minus
+    what a 小老師 doesn't need — no `semester_id`, and every row's
+    `entered_by_user_id` is null (other accounts' auth ids aren't exposed;
+    `entered_by_role` / `entered_by_name` carry the stamp)."""
+    item_id: UUID
+    item_name: str
+    subject_id: UUID
+    subject_system_key: str | None
+    subject_display_name: str | None
+    category_system_key: str
+    classroom_id: UUID
+    students: list[ItemGradesStudentRow]
+
+
 class GradeEntryOut(BaseModel):
     item_id: UUID
     student_id: UUID
@@ -725,6 +758,7 @@ class GradeEntryOut(BaseModel):
     entered_by_user_id: UUID | None = None
     entered_by_role: Literal["teacher", "assistant"] = "teacher"
     entered_by_name: str | None = None
+    entered_at: datetime | None = None
     updated_at: datetime | None = None
 
 
@@ -871,3 +905,121 @@ class GroupWrite(BaseModel):
 
 class GroupOrderUpdate(BaseModel):
     group_ids: list[UUID]
+
+
+# ---------- 小老師 / student assistants (#262) ----------
+
+class ItemAssistantCandidate(BaseModel):
+    """A 小老師 of one of the teacher's classes, as offered in the item
+    editor. `item_active` = the item is live in that class (classroom_item,
+    main bucket) — assignment requires it."""
+    student_id: UUID
+    seat_number: int
+    name: str | None
+    classroom_id: UUID
+    classroom_grade: int
+    classroom_name: str
+    item_active: bool
+
+
+class ItemAssistantsView(BaseModel):
+    item_id: UUID
+    # False when the item's semester is archived — the editor is read-only.
+    writable: bool
+    assigned_student_ids: list[UUID]
+    candidates: list[ItemAssistantCandidate]
+
+
+class ItemAssistantsUpdate(BaseModel):
+    student_ids: list[UUID]
+
+
+class AssistantContextItemOut(BaseModel):
+    item_id: UUID
+    item_name: str
+    subject_id: UUID
+    subject_system_key: str | None
+    subject_display_name: str | None
+    category_system_key: str
+
+
+class AssistantContextOut(BaseModel):
+    classroom_id: UUID
+    classroom_grade: int
+    classroom_name: str
+    teacher_label: str | None
+    student_id: UUID
+    student_name: str | None
+    items: list[AssistantContextItemOut]
+
+
+class AssistantGradeCreate(BaseModel):
+    # extra="forbid": unknown fields (e.g. snapshot_id) are rejected (422).
+    model_config = ConfigDict(extra="forbid")
+
+    item_id: UUID
+    classroom_id: UUID
+    student_id: UUID
+    score: float = Field(ge=0, le=100)
+
+
+class AssistantGradeUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    score: float = Field(ge=0, le=100)
+
+
+class AssistantBulkEntry(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    student_id: UUID
+    # Not Optional: assistants cannot clear / delete scores.
+    score: float = Field(ge=0, le=100)
+
+
+class AssistantGradeBulk(BaseModel):
+    """Assistant bulk save. No `snapshot_id` (forbidden), never activates
+    the item, null scores rejected; any invalid entry rejects the batch."""
+    model_config = ConfigDict(extra="forbid")
+
+    item_id: UUID
+    classroom_id: UUID
+    entries: list[AssistantBulkEntry]
+
+
+# ---------- grade-item edit locks (#264) ----------
+
+class ItemLockOut(BaseModel):
+    """A live edit lock. Never carries the holder's auth account id."""
+    item_id: UUID
+    holder_role: str  # 'teacher' | 'assistant'
+    holder_name: str | None
+    mine: bool
+
+
+class ItemLockList(BaseModel):
+    locks: list[ItemLockOut]
+
+
+class TeacherLockAcquire(BaseModel):
+    """Acquire / renew (heartbeat) locks on items of one class, all or
+    nothing. `takeover` replaces a 小老師's lock (the UI confirms first)."""
+    model_config = ConfigDict(extra="forbid")
+
+    item_ids: list[UUID] = Field(min_length=1, max_length=200)
+    takeover: bool = False
+
+
+class TeacherLockRelease(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    item_ids: list[UUID] = Field(min_length=1, max_length=200)
+
+
+class AssistantLockState(BaseModel):
+    """Lock state of one item for the 小老師 page. `locked` = someone holds
+    a live lock; `mine` = it's the caller."""
+    locked: bool
+    mine: bool
+    holder_role: str | None
+    holder_name: str | None

@@ -1,5 +1,5 @@
 """Grade, StudentStandard, PointRule, PointRecord."""
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import ROUND_HALF_UP, Decimal
 from typing import TYPE_CHECKING
 from uuid import UUID
@@ -8,6 +8,7 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     ForeignKey,
+    Index,
     Numeric,
     String,
     Text,
@@ -15,7 +16,8 @@ from sqlalchemy import (
     text,
 )
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.orm import Mapped, Session, mapped_column, relationship
 
 from models.base import Base, TimestampMixin, UserScopedMixin
 from models.classroom import SOURCE_VALUES
@@ -29,6 +31,12 @@ ENTERED_BY_ROLE_VALUES = ("teacher", "assistant")
 
 # Grade.score is Numeric(4, 1) — one decimal place.
 SCORE_QUANTUM = Decimal("0.1")
+
+# Partial unique index: one live (snapshot_id IS NULL) grade per item × student.
+LIVE_GRADE_UNIQUE_INDEX = "uq_grade_live_item_student"
+
+# Who holds a grade-item edit lock (#264).
+LOCK_HOLDER_ROLE_VALUES = ("teacher", "assistant")
 
 
 class Grade(Base, UserScopedMixin, TimestampMixin):
@@ -73,6 +81,12 @@ class Grade(Base, UserScopedMixin, TimestampMixin):
     entered_by_role: Mapped[str] = mapped_column(
         String(16), nullable=False, default="teacher", server_default="teacher"
     )
+    # When the stamped writer last CHANGED the score (#262). Unlike
+    # `updated_at` it does not move on bookkeeping updates (e.g. archiving
+    # into a snapshot), so the 小老師 tooltip shows the real entry time.
+    entered_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, server_default=text("now()")
+    )
 
     def write_score(
         self, score: Decimal, entered_by_user_id: UUID, role: str = "teacher"
@@ -94,6 +108,7 @@ class Grade(Base, UserScopedMixin, TimestampMixin):
         self.score = score
         self.entered_by_user_id = entered_by_user_id
         self.entered_by_role = role
+        self.entered_at = datetime.now(timezone.utc)
         return True
 
     item: Mapped["Item"] = relationship(back_populates="grades")
@@ -108,6 +123,16 @@ class Grade(Base, UserScopedMixin, TimestampMixin):
         UniqueConstraint(
             "item_id", "student_id", "snapshot_id",
             name="uq_grade_item_student_snapshot",
+        ),
+        # The constraint above can't stop duplicate LIVE rows (NULL
+        # snapshot_id values are distinct). This partial index can (#264):
+        # at most one live grade per (item, student). Writers insert with
+        # ON CONFLICT against it (see models.grading.insert_live_grades).
+        Index(
+            LIVE_GRADE_UNIQUE_INDEX,
+            "item_id", "student_id",
+            unique=True,
+            postgresql_where=text("snapshot_id IS NULL"),
         ),
         CheckConstraint("score >= 0 AND score <= 100", name="ck_grade_score_range"),
         CheckConstraint(
@@ -356,3 +381,83 @@ class PointRecord(Base, UserScopedMixin):
 
     student: Mapped["Student"] = relationship(back_populates="point_records")
     source_grade: Mapped["Grade | None"] = relationship(back_populates="point_record")
+
+
+class GradeItemLock(Base):
+    """Edit lock on ONE grade item in ONE class (#264).
+
+    While someone holds a live lock (expires_at > now()), other editors see
+    that item's column read-only. Teachers always win: a teacher can take
+    over an assistant's lock, an assistant can never take a teacher's.
+    Every live-grade write path checks this row (SELECT ... FOR UPDATE)
+    inside its own transaction — see `item_lock.py`.
+
+    `holder_user_id` is the holder's auth account (teacher sub or the
+    小老師's own sub) — never returned to assistants. `holder_name` is a
+    display name (assistant: roster name; teacher: Google full name or
+    NULL). Expiry is judged with the DB clock; heartbeats push
+    `expires_at` forward. Only the live bucket is locked (snapshots aren't).
+    """
+    __tablename__ = "grade_item_lock"
+
+    id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        primary_key=True,
+        server_default=text("gen_random_uuid()"),
+    )
+    classroom_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("classroom.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    item_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("item.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    holder_user_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False)
+    holder_role: Mapped[str] = mapped_column(String(16), nullable=False)
+    holder_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "classroom_id", "item_id", name="uq_grade_item_lock_classroom_item"
+        ),
+        CheckConstraint(
+            f"holder_role IN {LOCK_HOLDER_ROLE_VALUES!r}",
+            name="ck_grade_item_lock_holder_role",
+        ),
+    )
+
+
+def insert_live_grades(db: Session, rows: list[dict]) -> set[tuple[UUID, UUID]]:
+    """INSERT new live grade rows, skipping any (item, student) whose live
+    row already exists — e.g. created a moment ago by a concurrent writer
+    (#264). Uses ON CONFLICT DO NOTHING against the live partial unique
+    index, so it never raises on a race and never overwrites.
+
+    Returns the (item_id, student_id) keys actually inserted; callers
+    re-read the skipped ones and apply their normal update rules to the row
+    that now exists. Every dict in `rows` must have the same keys.
+    """
+    if not rows:
+        return set()
+    stmt = (
+        pg_insert(Grade)
+        .values(rows)
+        .on_conflict_do_nothing(
+            index_elements=["item_id", "student_id"],
+            index_where=text("snapshot_id IS NULL"),
+        )
+        .returning(Grade.item_id, Grade.student_id)
+    )
+    return {(r[0], r[1]) for r in db.execute(stmt)}
