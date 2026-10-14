@@ -15,11 +15,11 @@ from sqlalchemy.orm import Session
 
 from auth import require_user_id
 from database import get_db
+from item_lock import assert_writable
 from models.classroom import Classroom, Student
 from models.curriculum import Category, ClassroomItem, Item, Semester, Subject
-from models.grading import Grade, PointRecord
-from sqlalchemy.dialects.postgresql import insert as pg_insert
-from routers.grades import apply_auto_award, grade_stamp_fields
+from models.grading import Grade, PointRecord, insert_live_grades
+from routers.grades import apply_auto_award, assistant_names, grade_stamp_fields
 from schemas import (
     GradeBulkResult,
     GradeBulkUpsert,
@@ -151,6 +151,7 @@ def get_item_grades(
         else {}
     )
 
+    names = assistant_names(db, list(grades_by_student.values()))
     return ItemGradesView(
         item_id=item.id,
         item_name=item.name,
@@ -160,18 +161,25 @@ def get_item_grades(
         category_system_key=cat.system_key if cat else "",
         semester_id=item.semester_id,
         classroom_id=classroom_id,
-        students=[_student_row(s, grades_by_student.get(s.id)) for s in roster],
+        students=[
+            _student_row(s, grades_by_student.get(s.id), names)
+            for s in roster
+        ],
     )
 
 
-def _student_row(s: Student, g: Grade | None) -> ItemGradesStudentRow:
+def _student_row(
+    s: Student,
+    g: Grade | None,
+    names: dict[tuple[UUID, UUID], str | None] | None = None,
+) -> ItemGradesStudentRow:
     return ItemGradesStudentRow(
         student_id=s.id,
         seat_number=s.seat_number,
         name=s.name,
         grade_id=g.id if g is not None else None,
         score=float(g.score) if g is not None else None,
-        **(grade_stamp_fields(g) if g is not None else {}),
+        **(grade_stamp_fields(g, names) if g is not None else {}),
     )
 
 
@@ -184,6 +192,7 @@ def _write_out(db: Session, grade: Grade) -> GradeWriteOut:
         awarded_points=_award_points_for(db, grade),
         entered_by_user_id=grade.entered_by_user_id,
         entered_by_role=grade.entered_by_role,
+        entered_at=grade.entered_at,
         updated_at=grade.updated_at,
     )
 
@@ -213,34 +222,81 @@ def create_grade(
             "errors.grade.student_not_found",
             "Student not found.",
         )
-    existing = (
-        db.query(Grade)
-        .filter(
-            Grade.item_id == item.id,
-            Grade.student_id == student.id,
-            Grade.snapshot_id.is_(None),  # live bucket only (#169)
-        )
-        .one_or_none()
+    # Edit lock (#264): refused while a 小老師 holds this item in the
+    # student's class. Checked in this transaction, before writing.
+    assert_writable(
+        db, student.classroom_id, [item.id], user_id=user_id, require_held=False
     )
-    if existing is not None:
-        existing.write_score(Decimal(str(body.score)), user_id)
-        grade = existing
-    else:
-        grade = Grade(
-            user_id=user_id,
-            item_id=item.id,
-            student_id=student.id,
-            score=Decimal(str(body.score)),
-            source="manual",
-            entered_by_user_id=user_id,
-            entered_by_role="teacher",
-        )
-        db.add(grade)
+    grade = _upsert_live_teacher_grade(db, user_id, item.id, student.id, body.score)
     db.flush()
     apply_auto_award(db, user_id, [grade])
     db.commit()
     db.refresh(grade)
     return _write_out(db, grade)
+
+
+def _live_grade(db: Session, item_id: UUID, student_id: UUID) -> Grade | None:
+    return (
+        db.query(Grade)
+        .filter(
+            Grade.item_id == item_id,
+            Grade.student_id == student_id,
+            Grade.snapshot_id.is_(None),  # live bucket only (#169)
+        )
+        .one_or_none()
+    )
+
+
+def _upsert_live_teacher_grade(
+    db: Session, user_id: UUID, item_id: UUID, student_id: UUID, score: float
+) -> Grade:
+    """Create or overwrite one live grade as the teacher. A concurrent
+    create of the same cell can't produce a second live row (unique index,
+    #264): the INSERT is skipped and the row that now exists is updated."""
+    existing = _live_grade(db, item_id, student_id)
+    if existing is None:
+        inserted = insert_live_grades(db, [_new_teacher_row(user_id, item_id, student_id, score)])
+        existing = _live_grade(db, item_id, student_id)
+        if existing is None:  # pragma: no cover — the row must exist now
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail={
+                "error": {
+                    "code": "CONFLICT",
+                    "message_key": "errors.grade.write_conflict",
+                    "message": "This score was just changed by someone else. Refresh and try again.",
+                }
+            })
+        if (item_id, student_id) in inserted:
+            return existing
+    existing.write_score(Decimal(str(score)), user_id)
+    return existing
+
+
+def _new_teacher_row(
+    user_id: UUID, item_id: UUID, student_id: UUID, score: float
+) -> dict:
+    return {
+        "user_id": user_id,
+        "item_id": item_id,
+        "student_id": student_id,
+        "score": Decimal(str(score)),
+        "source": "manual",
+        "entered_by_user_id": user_id,
+        "entered_by_role": "teacher",
+    }
+
+
+def _assert_grade_writable(db: Session, user_id: UUID, grade: Grade) -> None:
+    """Edit-lock gate for PUT / DELETE of one grade (#264). The class is the
+    student's current one; snapshot rows are never locked (A8)."""
+    if grade.snapshot_id is not None:
+        return
+    classroom_id = (
+        db.query(Student.classroom_id).filter(Student.id == grade.student_id).scalar()
+    )
+    if classroom_id is not None:
+        assert_writable(
+            db, classroom_id, [grade.item_id], user_id=user_id, require_held=False
+        )
 
 
 @router.put("/api/grades/{grade_id}", response_model=GradeWriteOut)
@@ -260,6 +316,7 @@ def update_grade(
     item = db.get(Item, grade.item_id)
     if item is not None:
         _check_semester_writable(db, user_id, item.semester_id)
+    _assert_grade_writable(db, user_id, grade)
     grade.write_score(Decimal(str(body.score)), user_id)
     db.flush()
     apply_auto_award(db, user_id, [grade])
@@ -284,6 +341,7 @@ def delete_grade(
     item = db.get(Item, grade.item_id)
     if item is not None:
         _check_semester_writable(db, user_id, item.semester_id)
+    _assert_grade_writable(db, user_id, grade)
     db.delete(grade)  # cascade removes the linked point_record
     db.commit()
 
@@ -380,23 +438,49 @@ def bulk_upsert_grades(
         db.commit()
         return GradeBulkResult(written=0, deleted=0, awarded=0, revoked=0)
 
-    # Verify every student belongs to this teacher; cross-classroom is fine
-    # because items are global per teacher.
+    # Verify every student belongs to this teacher. Students of other
+    # teachers are skipped (as before).
     student_ids = {e.student_id for e in body.entries}
-    valid_students = {
-        s.id
-        for s in db.query(Student)
-        .filter(
+    student_class: dict[UUID, UUID] = {
+        sid: cid
+        for sid, cid in db.query(Student.id, Student.classroom_id).filter(
             Student.id.in_(student_ids),
             Student.user_id == user_id,
         )
-        .all()
     }
+    valid_students = set(student_class)
+
+    if body.snapshot_id is None:
+        # Live writes must stay inside the class named in the request (#264
+        # B2): the edit lock is per (class, item), so a student of another
+        # class slipped into this batch would bypass that class's lock.
+        # (Snapshot edits keep the old behaviour — a snapshot's roster may
+        # include students who have since transferred, and they aren't
+        # locked anyway.)
+        wrong = sorted(
+            str(sid) for sid, cid in student_class.items() if cid != body.classroom_id
+        )
+        if wrong:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "error": {
+                        "code": "BAD_REQUEST",
+                        "message_key": "errors.grade.student_not_in_class",
+                        "message": "Some students are not in this class; nothing was saved.",
+                        "details": {"student_ids": wrong},
+                    }
+                },
+            )
+        # Edit lock: refused while a 小老師 holds this item in this class.
+        assert_writable(
+            db, body.classroom_id, [item.id], user_id=user_id, require_held=False
+        )
 
     # Bucket lookup: live (body.snapshot_id is None) targets snapshot_id IS
     # NULL; snapshot edit (body.snapshot_id set) targets that snapshot. The
-    # UNIQUE on (item_id, student_id, snapshot_id) keeps each bucket clean
-    # (#169).
+    # UNIQUE on (item_id, student_id, snapshot_id) keeps each snapshot bucket
+    # clean (#169); the live bucket has its own partial unique index (#264).
     bucket_q = db.query(Grade).filter(
         Grade.item_id == item.id,
         Grade.student_id.in_(student_ids),
@@ -421,6 +505,8 @@ def bulk_upsert_grades(
     } if pre_award_grade_ids else set()
 
     written_grades: list[Grade] = []
+    # New live cells, inserted in one statement below: student_id → score.
+    new_live: dict[UUID, float] = {}
     written = 0
     deleted = 0
     for e in body.entries:
@@ -431,6 +517,11 @@ def bulk_upsert_grades(
             if existing is not None:
                 db.delete(existing)
                 deleted += 1
+            continue
+        if existing is None and body.snapshot_id is None:
+            if e.student_id not in new_live:
+                written += 1
+            new_live[e.student_id] = e.score
             continue
         if existing is None:
             g = Grade(
@@ -449,6 +540,33 @@ def bulk_upsert_grades(
             existing.write_score(Decimal(str(e.score)), user_id)
             written_grades.append(existing)
         written += 1
+
+    db.flush()
+    if new_live:
+        # ON CONFLICT DO NOTHING: a cell created concurrently by someone
+        # else is skipped here and then overwritten like any existing row.
+        inserted = insert_live_grades(
+            db,
+            [
+                _new_teacher_row(user_id, item.id, sid, score)
+                for sid, score in new_live.items()
+            ],
+        )
+        fresh = {
+            g.student_id: g
+            for g in db.query(Grade).filter(
+                Grade.item_id == item.id,
+                Grade.student_id.in_(list(new_live)),
+                Grade.snapshot_id.is_(None),
+            )
+        }
+        for sid, score in new_live.items():
+            g = fresh.get(sid)
+            if g is None:
+                continue
+            if (item.id, sid) not in inserted:
+                g.write_score(Decimal(str(score)), user_id)
+            written_grades.append(g)
 
     db.flush()
     # Auto-award is a live-ledger concept: it uses live StudentStandard and

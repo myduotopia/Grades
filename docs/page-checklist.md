@@ -11,6 +11,7 @@ Every authenticated page must use the shared layout primitives so titles, spacin
 - `<PageContainer>` — wraps the page content. Sets `max-w-6xl mx-auto`. (`frontend/src/layout/PageContainer.tsx`)
 - `<PageHeader title subtitle? actions?>` — page title row. Sets the h1 size and spacing below. (`frontend/src/layout/PageHeader.tsx`)
 - `<AppShell>` — sidebar + main wrapper, applied at the route level. Pages do **not** render their own header / sign-out / language switcher.
+- `<MinimalShell>` — top-bar-only shell for pages outside the teacher app (`/assistant`, `/no-access`). Also a **layout route** (`<Route element={<MinimalShell />}>` in `App.tsx`), exactly like `<AppShell>`; pages under it never wrap themselves in it.
 
 ### Type scale
 

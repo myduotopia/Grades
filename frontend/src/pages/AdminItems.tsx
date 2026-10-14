@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -19,6 +19,7 @@ import {
 } from '@dnd-kit/sortable'
 
 import { ArchivedSemesterBanner } from '../components/ArchivedSemesterBanner'
+import { ItemAssistantsPicker } from '../components/ItemAssistantsPicker'
 import { ItemNameCombobox } from '../components/ItemNameCombobox'
 import { SortableTableRow } from '../components/SortableTableRow'
 import { useMe } from '../hooks/useMe'
@@ -415,6 +416,28 @@ function ItemModal({
   const [name, setName] = useState(existing?.name ?? '')
   const [errKey, setErrKey] = useState<string | null>(null)
 
+  // 開放登記的小老師 (#262) — edit mode only.
+  const assistantsQ = useQuery({
+    queryKey: ['item-assistants', existing?.id],
+    queryFn: () => api.items.assistants(existing!.id),
+    enabled: mode === 'edit' && !!existing,
+    // Always fresh when the window opens — another tab may have changed it.
+    gcTime: 0,
+  })
+  const [assistantIds, setAssistantIds] = useState<Set<string> | null>(null)
+  useEffect(() => {
+    if (assistantsQ.data && assistantIds === null) {
+      setAssistantIds(new Set(assistantsQ.data.assigned_student_ids))
+    }
+  }, [assistantsQ.data, assistantIds])
+  const assistantsDirty = (() => {
+    if (!assistantsQ.data || !assistantIds) return false
+    const orig = new Set(assistantsQ.data.assigned_student_ids)
+    if (orig.size !== assistantIds.size) return true
+    for (const id of assistantIds) if (!orig.has(id)) return true
+    return false
+  })()
+
   // Fetch every item the teacher owns so we can suggest existing names for
   // the same subject + category combination (e.g. "Quiz 3" already created
   // for 6A — when adding to 6B, the teacher should be able to pick it from
@@ -466,13 +489,24 @@ function ItemModal({
     },
   })
   const updateMut = useMutation({
-    mutationFn: ({ id, name: n }: { id: string; name: string }) =>
-      api.items.update(id, { name: n }),
+    mutationFn: async ({ id, name: n }: { id: string; name: string }) => {
+      // Two independent saves: the name (skipped when unchanged) and the
+      // 小老師 assignment (skipped when untouched).
+      if (n !== existing?.name) {
+        await api.items.update(id, { name: n })
+      }
+      if (assistantsDirty && assistantIds) {
+        await api.items.setAssistants(id, [...assistantIds])
+      }
+    },
     onSuccess: () => {
       onSaved()
       onClose()
     },
     onError: (err) => {
+      // The name may already be saved even if the assistant step failed —
+      // refresh the list so it doesn't show the old name.
+      onSaved()
       if (err instanceof ApiError && err.body?.message_key) {
         setErrKey(err.body.message_key)
       } else {
@@ -510,7 +544,7 @@ function ItemModal({
       <form
         onSubmit={submit}
         onClick={(e) => e.stopPropagation()}
-        className="bg-white rounded-2xl shadow-xl border border-slate-200 p-6 w-full max-w-lg"
+        className="bg-white rounded-2xl shadow-xl border border-slate-200 p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto"
       >
         <h2 className="text-lg font-semibold tracking-tight mb-4 text-slate-900">
           {mode === 'edit'
@@ -592,6 +626,26 @@ function ItemModal({
               </>
             )}
           </Row>
+          {mode === 'edit' && (
+            <Row label={t('assistant_admin.picker_label')}>
+              {assistantsQ.isLoading && (
+                <p className="text-sm text-slate-400">{t('common.loading')}</p>
+              )}
+              {assistantsQ.isError && (
+                <p className="text-sm text-rose-600">{t('common.error_generic')}</p>
+              )}
+              {assistantsQ.data && assistantIds && (
+                <ItemAssistantsPicker
+                  view={assistantsQ.data}
+                  selected={assistantIds}
+                  onChange={setAssistantIds}
+                />
+              )}
+              <p className="text-xs text-slate-500 mt-1">
+                {t('assistant_admin.picker_hint')}
+              </p>
+            </Row>
+          )}
         </div>
 
         {errKey && <p className="mt-3 text-sm text-rose-600">{t(errKey)}</p>}

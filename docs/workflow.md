@@ -106,6 +106,8 @@ Why:
 
 Sanity-check after upgrade: `alembic current` should print the latest revision id and `(head)`.
 
+**Deploy order:** the migration must land on a DB *before* the code that needs it is served from it — upgrade staging before promoting a branch to `staging`. Some migrations are hard prerequisites, e.g. #264's `u4p5q6r7s8t9` (live-grade unique index) + `grade_item_lock`: without them every grade write 500s.
+
 ### 5b. Run the app
 
 ```powershell

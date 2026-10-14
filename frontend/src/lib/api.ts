@@ -16,8 +16,38 @@ if (RAW_API_BASE.endsWith('/')) {
 }
 const API_BASE = RAW_API_BASE.replace(/\/+$/, '')
 
+// One class where the signed-in student is a 小老師 (#262), with the items
+// they may currently enter (assigned, live in the class, current semester).
+export interface AssistantContextItem {
+  item_id: string
+  item_name: string
+  subject_id: string
+  subject_system_key: string | null
+  subject_display_name: string | null
+  category_system_key: string
+}
+
+export interface AssistantContext {
+  classroom_id: string
+  classroom_name: string
+  classroom_grade: number
+  teacher_label: string | null
+  student_id: string
+  student_name: string | null
+  items: AssistantContextItem[]
+}
+
+// Who the signed-in user is (#261). Teacher = owns ≥1 class; student =
+// Google email matches a roster entry. See backend/identity.py.
+export interface MeIdentity {
+  is_teacher: boolean
+  is_student: boolean
+  assistant_contexts: AssistantContext[]
+}
+
 export interface MeResponse {
   user: { id: string; email: string | null }
+  identity: MeIdentity
   setup: {
     has_classes: boolean
     has_subjects: boolean
@@ -106,11 +136,41 @@ export class ApiError extends Error {
   }
 }
 
+// Last token handed out by authedToken(), for the one request that can't
+// wait for an async getSession(): releasing an edit lock while the page is
+// being left (#264, see sendKeepalive).
+let lastToken: string | null = null
+
 async function authedToken(): Promise<string> {
   const { data } = await supabase.auth.getSession()
   const token = data.session?.access_token
   if (!token) throw new ApiError(401, { code: 'UNAUTHORIZED', message_key: 'errors.auth.no_session', message: 'Not signed in' })
+  lastToken = token
   return token
+}
+
+/**
+ * Fire-and-forget request that survives the page unloading (#264 B10):
+ * `fetch(..., {keepalive: true})` issued synchronously with the cached
+ * token. sendBeacon can't carry an Authorization header, so it's not an
+ * option. Failures are ignored — the server-side lock expiry (90 s) is the
+ * fallback.
+ */
+function sendKeepalive(path: string, method: string, body?: unknown): void {
+  if (!lastToken) return
+  try {
+    void fetch(`${API_BASE}${path}`, {
+      method,
+      keepalive: true,
+      headers: {
+        Authorization: `Bearer ${lastToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    }).catch(() => {})
+  } catch {
+    // ignore — expiry frees the lock
+  }
 }
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -185,6 +245,8 @@ export interface Student {
   source: ClassroomSource
   created_at: string
   updated_at: string
+  // 小老師 of this class (#262).
+  is_assistant?: boolean
 }
 
 // ---------- student groups (#237) ----------
@@ -240,6 +302,26 @@ export interface StudentPayload {
   seat_number: number
   name?: string | null
   email?: string | null
+  // 小老師 toggle (#262); omit to leave unchanged. True requires an email.
+  is_assistant?: boolean
+}
+
+// Item editor: which 小老師 may enter this item (#262).
+export interface ItemAssistantCandidate {
+  student_id: string
+  seat_number: number
+  name: string | null
+  classroom_id: string
+  classroom_grade: number
+  classroom_name: string
+  item_active: boolean
+}
+
+export interface ItemAssistantsView {
+  item_id: string
+  writable: boolean
+  assigned_student_ids: string[]
+  candidates: ItemAssistantCandidate[]
 }
 
 // ---------- Student detail (issue #11) ----------
@@ -370,6 +452,8 @@ export interface ImportRowPreview {
   email: string | null
   existing_id: string | null
   errors: string[]
+  // Non-blocking notices (#261): 'duplicate_email' | 'email_unchanged'.
+  warnings?: string[]
 }
 
 export interface ImportResult {
@@ -379,6 +463,7 @@ export interface ImportResult {
     to_create: number
     to_update: number
     errors: number
+    warnings?: number
   }
   rows: ImportRowPreview[]
 }
@@ -407,6 +492,7 @@ export interface ItemGradesStudentRow {
   entered_by_user_id?: string | null
   entered_by_role?: EnteredByRole | null
   entered_by_name?: string | null
+  entered_at?: string | null
   updated_at?: string | null
 }
 
@@ -422,6 +508,68 @@ export interface ItemGradesView {
   students: ItemGradesStudentRow[]
 }
 
+// GET /api/assistant/items/:id/grades (#262): no semester_id, and rows'
+// entered_by_user_id is always null for assistants.
+export type AssistantItemGradesView = Omit<ItemGradesView, 'semester_id'>
+
+// ---------- grade-item edit locks (#264) ----------
+
+export type LockHolderRole = 'teacher' | 'assistant'
+
+/** Who holds an edit lock, as shown to others. `holder_role` null = the
+ *  caller just doesn't hold it (e.g. it expired) and nobody else does. */
+export interface LockHolder {
+  holder_role: LockHolderRole | null
+  holder_name: string | null
+}
+
+export interface ItemLock {
+  item_id: string
+  holder_role: LockHolderRole
+  holder_name: string | null
+  mine: boolean
+}
+
+export interface ItemLockList {
+  locks: ItemLock[]
+}
+
+export interface AssistantLockState {
+  locked: boolean
+  mine: boolean
+  holder_role: LockHolderRole | null
+  holder_name: string | null
+}
+
+/** One entry of a 409 `errors.grade.item_locked` (`details.locks`). */
+export interface LockedItem extends LockHolder {
+  item_id: string
+  item_name?: string | null
+}
+
+/** The holder named by a 409 `errors.grade.item_locked`, else null. */
+export function lockHolderFromError(err: unknown): LockHolder | null {
+  if (
+    err instanceof ApiError &&
+    err.status === 409 &&
+    err.body?.message_key === 'errors.grade.item_locked'
+  ) {
+    const d = (err.body.details ?? {}) as Partial<LockHolder>
+    return {
+      holder_role: (d.holder_role as LockHolderRole | null | undefined) ?? null,
+      holder_name: d.holder_name ?? null,
+    }
+  }
+  return null
+}
+
+/** All `details.locks` entries of a 409 `errors.grade.item_locked`. */
+export function lockedItemsFromError(err: unknown): LockedItem[] {
+  if (lockHolderFromError(err) === null) return []
+  const locks = (err as ApiError).body?.details?.locks
+  return Array.isArray(locks) ? (locks as LockedItem[]) : []
+}
+
 export interface GradeWriteOut {
   id: string
   item_id: string
@@ -430,6 +578,7 @@ export interface GradeWriteOut {
   awarded_points: number
   entered_by_user_id?: string | null
   entered_by_role?: EnteredByRole
+  entered_at?: string | null
   updated_at?: string | null
 }
 
@@ -605,6 +754,7 @@ export interface GradeEntry {
   entered_by_user_id?: string | null
   entered_by_role?: EnteredByRole
   entered_by_name?: string | null
+  entered_at?: string | null
   updated_at?: string | null
 }
 
@@ -851,6 +1001,11 @@ export const api = {
       }),
     remove: (id: string) =>
       request<void>(`/api/students/${id}`, { method: 'DELETE' }),
+    setAssistant: (id: string, isAssistant: boolean) =>
+      request<Student>(`/api/students/${id}/assistant`, {
+        method: 'PUT',
+        body: JSON.stringify({ is_assistant: isAssistant }),
+      }),
     standards: (classroomId: string) =>
       request<StandardsView>(
         `/api/classrooms/${classroomId}/standards`,
@@ -1004,6 +1159,70 @@ export const api = {
       }),
     remove: (id: string) =>
       request<void>(`/api/items/${id}`, { method: 'DELETE' }),
+    assistants: (id: string) =>
+      request<ItemAssistantsView>(`/api/items/${id}/assistants`),
+    setAssistants: (id: string, studentIds: string[]) =>
+      request<ItemAssistantsView>(`/api/items/${id}/assistants`, {
+        method: 'PUT',
+        body: JSON.stringify({ student_ids: studentIds }),
+      }),
+  },
+  // Student 小老師 endpoints (#262). Separate from the teacher routes; the
+  // backend derives the owning teacher and enforces every permission.
+  assistant: {
+    forItem: (itemId: string, classroomId: string) =>
+      request<AssistantItemGradesView>(
+        `/api/assistant/items/${itemId}/grades?classroom_id=${classroomId}`,
+      ),
+    bulk: (body: {
+      item_id: string
+      classroom_id: string
+      entries: { student_id: string; score: number }[]
+    }) =>
+      request<GradeBulkResult>('/api/assistant/grades/bulk', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+    // Edit lock (#264): POST = start editing / heartbeat, DELETE = stop.
+    lockState: (itemId: string, classroomId: string) =>
+      request<AssistantLockState>(
+        `/api/assistant/items/${itemId}/lock?classroom_id=${classroomId}`,
+      ),
+    acquireLock: (itemId: string, classroomId: string) =>
+      request<AssistantLockState>(
+        `/api/assistant/items/${itemId}/lock?classroom_id=${classroomId}`,
+        { method: 'POST' },
+      ),
+    releaseLock: (itemId: string, classroomId: string, keepalive = false) => {
+      const path = `/api/assistant/items/${itemId}/lock?classroom_id=${classroomId}`
+      if (keepalive) {
+        sendKeepalive(path, 'DELETE')
+        return Promise.resolve()
+      }
+      return request<void>(path, { method: 'DELETE' })
+    },
+  },
+  // Teacher-side edit locks (#264). Acquire is all-or-nothing and doubles
+  // as the heartbeat; `takeover` replaces a 小老師's lock.
+  itemLocks: {
+    list: (classroomId: string) =>
+      request<ItemLockList>(`/api/classrooms/${classroomId}/item-locks`),
+    acquire: (classroomId: string, itemIds: string[], takeover = false) =>
+      request<ItemLockList>(`/api/classrooms/${classroomId}/item-locks`, {
+        method: 'POST',
+        body: JSON.stringify({ item_ids: itemIds, takeover }),
+      }),
+    release: (classroomId: string, itemIds: string[], keepalive = false) => {
+      const path = `/api/classrooms/${classroomId}/item-locks/release`
+      if (keepalive) {
+        sendKeepalive(path, 'POST', { item_ids: itemIds })
+        return Promise.resolve()
+      }
+      return request<void>(path, {
+        method: 'POST',
+        body: JSON.stringify({ item_ids: itemIds }),
+      })
+    },
   },
   gradeEntry: {
     forItem: (itemId: string, classroomId: string) =>
