@@ -20,9 +20,17 @@ from starlette.responses import JSONResponse
 from auth import get_current_user, require_user_id
 from config import settings
 from database import get_db
+from identity import (
+    IdentityUnknown,
+    build_identity,
+    identity_unavailable,
+    owns_any_classroom,
+    sync_self_links,
+)
 from models.classroom import Classroom
 from models.curriculum import Semester, Subject
 from models.settings import UserSettings
+from routers import assistant as assistant_router
 from routers import categories as categories_router
 from routers import classroom as classroom_router
 from routers import grade_entry as grade_entry_router
@@ -30,6 +38,8 @@ from routers import grades as grades_router
 from routers import grouping as grouping_router
 from routers import home as home_router
 from routers import item as item_router
+from routers import item_assistant as item_assistant_router
+from routers import item_lock as item_lock_router
 from routers import me as me_router
 from routers import points as points_router
 from routers import semester as semester_router
@@ -131,6 +141,10 @@ app.include_router(grades_router.router, tags=["grades"])
 app.include_router(home_router.router, tags=["home"])
 app.include_router(grade_entry_router.router, tags=["grade-entry"])
 app.include_router(item_router.router, tags=["items"])
+app.include_router(item_assistant_router.router, tags=["items"])
+app.include_router(item_lock_router.router, tags=["item-locks"])
+# Student 小老師 endpoints (#262) — separate from the teacher grade routes.
+app.include_router(assistant_router.router, tags=["assistant"])
 app.include_router(subjects_router.router, tags=["subjects"])
 app.include_router(
     semester_router.router, prefix="/api/semesters", tags=["semesters"]
@@ -143,7 +157,29 @@ def me(
     user_id: Annotated[UUID, Depends(require_user_id)],
     db: Annotated[Session, Depends(get_db)],
 ) -> dict[str, Any]:
-    """Returns the current user's identity, setup status, and preferences."""
+    """Returns the current user's identity, setup status, and preferences.
+
+    `identity` (#261) tells the frontend which shell to show: teacher app,
+    student 小老師 page, or the no-access page. Computing it also re-syncs the
+    caller's student `account_link` rows (see identity.sync_self_links).
+    """
+    try:
+        students = sync_self_links(db, user_id)
+    except IdentityUnknown:
+        # "Can't tell" ≠ "not a student". For an account that owns no class,
+        # a teacher-looking answer would send a student into new-teacher
+        # onboarding → 503 (frontend shows retry). A class owner is routed to
+        # the teacher app regardless of student status, so serve them —
+        # links untouched, no 小老師 contexts this time — rather than lock
+        # every teacher out while the lookup is broken.
+        if not owns_any_classroom(db, user_id):
+            raise identity_unavailable()
+        students = []
+    identity = build_identity(db, user_id, students)
+    identity["assistant_contexts"] = [
+        c.model_dump(mode="json")
+        for c in assistant_router.build_assistant_contexts(db, students)
+    ]
     has_classes = (
         db.query(Classroom.id).filter(Classroom.user_id == user_id).first()
         is not None
@@ -168,6 +204,7 @@ def me(
             "id": user["sub"],
             "email": user.get("email"),
         },
+        "identity": identity,
         "setup": {
             "has_classes": has_classes,
             "has_subjects": has_subjects,

@@ -7,6 +7,9 @@ import type { EnteredByRole } from '../lib/api'
 export interface EnteredByStamp {
   entered_by_role?: EnteredByRole | null
   entered_by_name?: string | null
+  // When the score was last changed (#262); older payloads only have
+  // updated_at, which is the fallback.
+  entered_at?: string | null
   updated_at?: string | null
 }
 
@@ -66,7 +69,7 @@ export function EnteredByBadge({ stamp }: { stamp: EnteredByStamp | undefined })
 
   if (!stamp || stamp.entered_by_role !== 'assistant') return null
 
-  const time = formatStampTime(stamp.updated_at)
+  const time = formatStampTime(stamp.entered_at ?? stamp.updated_at)
   const label = stamp.entered_by_name
     ? t('grade_entry.entered_by.assistant_tooltip', {
         name: stamp.entered_by_name,

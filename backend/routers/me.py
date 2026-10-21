@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from auth import require_user_id
 from database import get_db
+from identity import IdentityUnknown, identity_unavailable, is_student_only
 from models.classroom import Classroom
 from models.curriculum import (
     SUBJECT_WEIGHT_PROFILES,
@@ -136,7 +137,20 @@ def seed(
     """Idempotent: create the system categories + a current semester if missing.
 
     Subjects are global (seeded by migration, user_id IS NULL) — nothing per-user.
+
+    Skipped for student accounts (#261): an account whose Google email is on
+    some teacher's roster and that owns no class is a student, not a new
+    teacher, so it must not be onboarded with teacher data. The frontend
+    already avoids calling this for them; this is the server-side backstop.
     """
+    try:
+        student_only = is_student_only(db, user_id)
+    except IdentityUnknown:
+        # Can't tell whether this classless account is a student → don't
+        # onboard it as a teacher; 503 so the next sign-in tries again.
+        raise identity_unavailable()
+    if student_only:
+        return SeedResult(categories_created=0, semesters_created=0)
     existing_keys: set[str] = {
         key
         for (key,) in db.query(Category.system_key)

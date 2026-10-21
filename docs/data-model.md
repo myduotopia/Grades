@@ -48,7 +48,9 @@ student
 
 **Class transfer:** allowed by updating `student.classroom_id`. Edge case, not optimized.
 
-**`email`** is optional. When present, it's the target of a Supabase Auth invitation (`auth.admin.inviteUserByEmail`) and the matching key for linking the student/parent to a Supabase auth user (see `account_link`).
+**`email`** is optional. When present, it's the matching key for linking the student to the Google account they sign in with (see `account_link`).
+
+**Email normalisation (#261):** every write path (single create/update, Excel import) goes through `backend/email_validation.py` — `trim()` + `lower()`, blank → NULL, format-checked (400 `errors.student.invalid_email`). Migration `r1m2n3o4p5q6` normalised pre-existing rows. Two students in the same class sharing an email is only a **warning** (form hint / import-preview warning); it blocks making either of them a 小老師 (#262). On an Excel **update** row a blank email cell keeps the stored email (it does not clear it). Changing or clearing a student's email deletes that student's `account_link(self)` so the new address can bind.
 
 ### `account_link`
 
@@ -68,18 +70,43 @@ account_link
 
 **Why `link_role` not `relationship`?** Avoids shadowing SQLAlchemy's `relationship()` function inside the model class.
 
-**Linking flow:**
-1. Teacher sets `student.email` (manually, via Excel, or auto-populated by Duotopia/Classroom import)
-2. Backend calls `supabase.auth.admin.invite_user_by_email(email)` → Supabase sends magic link
-3. Recipient clicks link → completes Supabase Auth flow → frontend gets a session
-4. Frontend calls `POST /api/me/link` (TBD endpoint)
-5. Backend matches `student WHERE email = current_user.email` → INSERT `account_link` rows
+**Linking flow — student self (#261, implemented in `backend/identity.py`):**
+1. Teacher sets `student.email` (manually or via Excel).
+2. The student signs in with Google. Every `GET /api/me` calls `sync_self_links`: it matches `student.email = trusted email` (both stored/compared normalised: trim + lower) across **all** teachers' rosters, inserts a missing `account_link(link_role='self', linked_via='email_invite')` for each match, and deletes this user's self links whose student no longer matches. If a matched student is still self-linked to a different account (email was reassigned), that stale link is removed first (partial unique index).
+3. **Trusted email = the account's Google identity email, read server-side** (`identity.trusted_email`): `SELECT identity_data->>'email' FROM auth.identities WHERE user_id = sub AND provider = 'google'`. The JWT `email` claim and `app_metadata.provider(s)` are **not** used — the JWT email is the account's primary email, which is not necessarily the address Google verified (e.g. an email/password identity linked to the same account, or a changed primary email), and `user_metadata` is user-editable. No Google identity, or several Google identities with different emails → **untrusted**: nothing is bound and existing self links are removed on the next sync. A **lookup failure** (e.g. the DB role lacks privilege on the `auth` schema, DB hiccup; the query runs in a savepoint) is different — "can't tell" ≠ "not a student" — and raises `IdentityUnknown`: links are neither created nor deleted, `GET /api/me` answers **503** for an account that owns no class (frontend shows retry; a class owner is still served as teacher, without 小老師 contexts), `POST /api/me/seed` refuses (503) for an account that owns no class, and 小老師 endpoints answer the usual 404 (fail closed). This stops someone from registering with a student's address to inherit that student's access.
+   - **Supabase project preconditions** (the check relies on them; not enforced by code): (a) the **Email** provider is disabled (this app only uses Google sign-in) — or, if it must stay on, **Confirm email** is enabled; (b) **Secure email change** is enabled; (c) **manual identity linking** is disabled (`Allow manual linking` off), so a user can't attach someone else's Google identity to their account. The backend DB role must be able to `SELECT` from `auth.identities` (the `postgres` role used today can).
+4. Authorisation on student-facing endpoints re-checks the live email match; the link alone is not sufficient.
+
+Parent links (QR flow) are a separate issue; the `invite_user_by_email` path is not used.
+
+**Identity (`GET /api/me` → `identity`):** teacher = owns ≥1 classroom; student = has ≥1 matched roster row. "Teacher" is not a security boundary — every teacher endpoint already filters by `user_id = sub`, so a student calling one sees only their own (empty) data. A roster student who owns no class is never seeded (`POST /api/me/seed` returns zeros; 503 when the identity lookup fails) and is routed to `/assistant` or `/no-access`; an account that matches no roster keeps the new-teacher onboarding.
 
 **Multiple parents per student:** `link_role='parent'` rows are unconstrained — mom + dad can both link to the same student. UI displays them as "Parent 1 / Parent 2" by `created_at` order.
 
 **One auth user, multiple students:** A single auth user can link to many student rows (e.g., a parent with kids in different classes; a student with rows under multiple teachers). Look up via `WHERE auth_user_id = me`.
 
 **`linked_via='invite_code'`** is reserved in the enum but not used in v1 — invite-code flow / table will be added later.
+
+### `class_assistant` / `item_assistant` (小老師, #262)
+
+```
+class_assistant                       item_assistant
+├─ id            uuid PK              ├─ id            uuid PK
+├─ user_id       uuid  ← teacher      ├─ user_id       uuid  ← teacher
+├─ classroom_id  uuid FK CASCADE      ├─ item_id       uuid FK → item CASCADE
+├─ student_id    uuid FK CASCADE      ├─ student_id    uuid FK → student CASCADE
+├─ created_at    timestamptz          ├─ created_at    timestamptz
+└─ UNIQUE (classroom_id, student_id)  └─ UNIQUE (item_id, student_id)
+```
+
+**Why new tables, not an `account_link` extension:** `account_link` links an *auth account* to a roster row; being a 小老師 is a teacher's per-class appointment of a *roster row*, independent of whether the student has signed in yet (and it must survive the account changing when the email changes). Separate tables keep both concerns simple and let every FK cascade.
+
+**Rules:**
+- Appointing requires `student.email`, and no classmate with the same email (409). Clearing the email, transferring the student to another class, or unticking 小老師 deletes the `class_assistant` row **and** all the student's `item_assistant` rows. Grades they already entered keep their stamp. Changing (not clearing) the email keeps the role; the new address binds on next sign-in.
+- `item_assistant` can only be set while the item is live (`classroom_item`, main bucket) in that student's class and the item's semester is current.
+- **What an assistant can see/write** (`backend/assistant_access.py`): the account's Google identity email (`auth.identities`, see linking flow step 3) matches the student now → `class_assistant` for the student's *current* class → `item_assistant` for the item → item is the same teacher's, in the teacher's **current** semester, and live in that class. Anything else is the same 404 as a non-existent id.
+- **封存 (archived) mapping:** both archive mechanisms hide items from assistants — (a) a non-current semester (`semester.is_current = false`, the read-only "已封存" semester that `_check_semester_writable` guards) and (b) "封存目前成績" snapshots (`grade_snapshot`): archiving moves the class's `classroom_item` rows into the snapshot, so the item is no longer live in the class. Assistants only ever read/write the live bucket (`grade.snapshot_id IS NULL`). If the teacher re-activates the same item later, the existing `item_assistant` row makes it visible again.
+- Ownership never mixes ids: assistant writes use the **teacher's** id for `grade.user_id`, auto-award and semester checks; the student's JWT `sub` goes only into `entered_by_user_id` with `entered_by_role='assistant'`.
 
 ### `subject`
 
@@ -187,13 +214,59 @@ grade
 ├─ source_external_id   text NULL      ← e.g., duotopia_student_assignment_id
 ├─ entered_by_user_id   uuid NULL      ← auth user who last wrote the score (#260)
 ├─ entered_by_role      varchar(16) DEFAULT 'teacher' + CHECK IN ('teacher','assistant')
+├─ entered_at           timestamptz NULL DEFAULT now()  ← when the stamped writer last changed the score (#262)
+├─ snapshot_id          uuid NULL FK → grade_snapshot CASCADE  ← NULL = live row (#169)
 ├─ created_at, updated_at  timestamptz
-└─ UNIQUE (item_id, student_id)
+├─ UNIQUE (item_id, student_id, snapshot_id)            ← snapshot buckets
+└─ UNIQUE (item_id, student_id) WHERE snapshot_id IS NULL ← uq_grade_live_item_student (#264)
 ```
 
-**"Entered by" stamp (#260).** `user_id` is the *owning* teacher; `entered_by_*` records who last *wrote* the score — the teacher, or a student assistant (小老師, #262). The stamp is refreshed only when the score actually changes (or the row is created), because bulk save and Excel import resend every row and re-saving an untouched assistant score must not relabel it as the teacher's. A teacher overwriting an assistant's score flips the stamp back to `teacher`. Rows that predate the column were backfilled with `entered_by_user_id = user_id`, `entered_by_role = 'teacher'`. The UI shows a small corner badge + tooltip (assistant name · `MM/DD HH:mm` from `updated_at`) only for `assistant` rows.
+**One live grade per cell (#264).** The three-column constraint can't protect
+the live bucket (NULL snapshot ids are distinct), so concurrent saves used to
+leave duplicate live rows that then broke every read of that cell (500). The
+partial unique index fixes that; its migration first merged existing
+duplicates (kept the most recently updated row; a removed duplicate's
+point_record moves onto the kept row if it had none — not reversible on
+downgrade). The migration holds `LOCK TABLE grade IN SHARE ROW EXCLUSIVE MODE`
+for its whole transaction (reads still work, grade writes wait) so no new
+duplicate can appear between the merge and the index build. All writers
+(teacher single/bulk, Excel import, 小老師) insert new
+live rows with `INSERT ... ON CONFLICT DO NOTHING` and then update whatever row
+exists, applying their normal rules (`models.grading.insert_live_grades`).
+
+**Deploy order (#264):** run `alembic upgrade head` on the target DB *before*
+the new code goes live. The code's `ON CONFLICT` needs the partial unique index
+and every grade write checks `grade_item_lock`; without the migration all
+grade writes 500.
+
+**"Entered by" stamp (#260).** `user_id` is the *owning* teacher; `entered_by_*` records who last *wrote* the score — the teacher, or a student assistant (小老師, #262). The stamp is refreshed only when the score actually changes (or the row is created), because bulk save and Excel import resend every row and re-saving an untouched assistant score must not relabel it as the teacher's. A teacher overwriting an assistant's score flips the stamp back to `teacher`. Rows that predate the column were backfilled with `entered_by_user_id = user_id`, `entered_by_role = 'teacher'`. The UI shows a small corner badge + tooltip (assistant name · `MM/DD HH:mm` from `entered_at`, falling back to `updated_at`) only for `assistant` rows. `entered_at` (#262) is set by `Grade.write_score` whenever the score changes; unlike `updated_at` it does not move on bookkeeping updates such as archiving into a snapshot. Pre-existing rows were backfilled from `updated_at`. The assistant's display name (`entered_by_name` in API responses) is resolved per response: the roster name of the owning teacher's student self-linked (`account_link`) to `entered_by_user_id`; it becomes unknown (badge says just 小老師) if the teacher later changes that student's email.
 
 **Duotopia import upsert key:** `(user_id, item_id, student_id)` — same as the natural unique constraint. Re-importing the same item × student overwrites the prior row, including any local edits. By design.
+
+### `grade_item_lock` (#264)
+
+```
+grade_item_lock
+├─ id              uuid PK
+├─ classroom_id    uuid FK → classroom CASCADE
+├─ item_id         uuid FK → item CASCADE
+├─ holder_user_id  uuid      ← holder's auth account (teacher or 小老師 sub); never returned to clients
+├─ holder_role     varchar(16) CHECK IN ('teacher','assistant')
+├─ holder_name     varchar(255) NULL  ← assistant roster name / teacher Google name
+├─ expires_at      timestamptz        ← live while > now() (DB clock); heartbeat = now() + 90 s
+├─ created_at, updated_at  timestamptz
+└─ UNIQUE (classroom_id, item_id)
+```
+
+"Someone is editing this item for this class." Rules (`backend/item_lock.py`):
+teacher first — a teacher can take over a 小老師's lock (after confirming in the
+UI), a 小老師 can never take anyone's; between 小老師 first come first served.
+Acquire is a conditional upsert that only lands when the row is free, expired
+or already the caller's, so concurrent acquirers serialise on the unique row.
+Every live-grade write checks the row with `SELECT ... FOR UPDATE` in its own
+transaction: teachers are refused only when someone else holds a live lock,
+小老師 must hold it. Rows are transient: a released lock is deleted, an expired
+one is simply overwritten by the next acquirer. Snapshots are not locked.
 
 ### `student_standard`
 
@@ -291,13 +364,13 @@ Cascades the related `point_record` (FK constraint).
 
 | Delete | Cascades to | Blocked by |
 |---|---|---|
-| `class` | `student`s, their grades & point_records | — |
-| `student` | grades, point_records, standards | — |
+| `class` | `student`s, their grades & point_records, `grade_item_lock` | — |
+| `student` | grades, point_records, standards, account_link, class_assistant, item_assistant | — |
 | `subject` | — | `item`s referencing it (return 409) |
 | `category` (user-custom) | `student_standard`, `point_rule` | `item`s referencing it (return 409) |
 | `category` (system default) | — | always blocked (return 403) |
 | `semester` | — | `item`s referencing it (return 409) |
-| `item` | grades, point_records via grades, item_classroom | — |
+| `item` | grades, point_records via grades, item_classroom, item_assistant, grade_item_lock | — |
 
 ### Seeding on signup
 

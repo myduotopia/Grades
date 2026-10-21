@@ -11,15 +11,21 @@ import toast from 'react-hot-toast'
 
 import { ArchivedSemesterBanner } from '../components/ArchivedSemesterBanner'
 import { EnteredByBadge, type EnteredByStamp } from '../components/EnteredByBadge'
+import { LockBadge, LockNotice, useLockHolderLabel } from '../components/EditLockNotice'
 import { StandardsMatrix } from '../components/StandardsMatrix'
 import { StudentNameLink } from '../components/StudentNameLink'
 import { PageContainer } from '../layout/PageContainer'
 import { PageHeader } from '../layout/PageHeader'
 import { useSemesterView } from '../state/SemesterView'
+import { LOCK_POLL_MS, useEditLock, type LockOps } from '../hooks/useEditLock'
 import {
   api,
   ApiError,
+  type ClassroomGradesView,
   type GradeBulkEntry,
+  type ItemLock,
+  lockHolderFromError,
+  type LockHolder,
   SYSTEM_SUBJECT_KEYS,
 } from '../lib/api'
 import { classroomDisplayName } from '../lib/classroomFormat'
@@ -380,6 +386,7 @@ export function Grades() {
           subjects={subjectsPresent}
           editTarget={editParam}
           readOnly={isArchived}
+          refreshView={async () => (await gradesQ.refetch()).data}
         />
       )}
       {view === 'standards' && isSnapshotMode && view_data && (
@@ -873,8 +880,9 @@ function BySubjectView({
   subjects,
   editTarget,
   readOnly,
+  refreshView,
 }: {
-  view: import('../lib/api').ClassroomGradesView
+  view: ClassroomGradesView
   classroomId: string
   // When set, all activate/deactivate/bulk-save calls target this snapshot
   // bucket instead of the classroom's main bucket.
@@ -882,9 +890,13 @@ function BySubjectView({
   subjects: SubjectRef[]
   editTarget: string | null
   readOnly: boolean
+  // Re-read the grade bundle; resolves to the fresh data (B3: an edit
+  // starts from the latest scores once the lock is ours).
+  refreshView: () => Promise<ClassroomGradesView | undefined>
 }) {
   const { t } = useTranslation()
   const qc = useQueryClient()
+  const holderLabel = useLockHolderLabel()
   const [, setParams] = useSearchParams()
   const [pickedId, setPickedId] = useState<string>(subjects[0]?.id ?? '')
   // One item at a time can be in column-edit mode.
@@ -917,17 +929,9 @@ function BySubjectView({
     const target = view.items.find((i) => i.id === editTarget)
     if (!target) return
     setPickedId(target.subject_id)
-    const next: Record<string, number | null> = {}
-    for (const s of view.students) {
-      const cur = view.grades.find(
-        (g) => g.student_id === s.id && g.item_id === editTarget,
-      )?.score
-      next[s.id] = cur === undefined ? null : cur
-    }
-    setDrafts(next)
-    setEditingItemId(editTarget)
-    setSaveErr(null)
     editAppliedRef.current = true
+    // Same path as the pencil: take the edit lock first (#264 B4).
+    void beginEdit({ kind: 'col', itemId: editTarget })
     setParams(
       (p) => {
         const c = new URLSearchParams(p)
@@ -936,6 +940,8 @@ function BySubjectView({
       },
       { replace: true },
     )
+    // beginEdit is re-created each render; the ref guard makes this run once.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editTarget, view, setParams])
 
   function focusStudent(studentId: string) {
@@ -1036,17 +1042,9 @@ function BySubjectView({
     )
   }
 
-  function startRowEdit(studentId: string) {
-    const next: Record<string, number | null> = {}
-    for (const i of items) {
-      const cur = lookup[studentId]?.[i.id]
-      next[i.id] = cur === undefined ? null : cur
-    }
-    setRowDrafts(next)
-    setEditingStudentId(studentId)
-    setSaveErr(null)
-  }
   function cancelRowEdit() {
+    lock.stop()
+    setLostHolder(null)
     setRowDrafts({})
     setEditingStudentId(null)
     setSaveErr(null)
@@ -1061,22 +1059,154 @@ function BySubjectView({
     setRowDrafts((d) => ({ ...d, [itemId]: Math.max(0, Math.min(100, n)) }))
   }
 
-  function startEdit(itemId: string) {
-    // Initialize drafts from current server scores for this item.
-    const next: Record<string, number | null> = {}
-    for (const s of view.students) {
-      const cur = lookup[s.id]?.[itemId]
-      next[s.id] = cur === undefined ? null : cur
-    }
-    setDrafts(next)
-    setEditingItemId(itemId)
-    setSaveErr(null)
-  }
-
   function cancelEdit() {
+    lock.stop()
+    setLostHolder(null)
     setDrafts({})
     setEditingItemId(null)
     setSaveErr(null)
+  }
+
+  // ---------- edit lock (#264) ----------
+  // Only the live bucket is locked (A8): snapshots and read-only views
+  // edit / show without it.
+  const lockable = !snapshotId && !readOnly && !!classroomId
+  const locksQ = useQuery({
+    queryKey: ['item-locks', classroomId],
+    queryFn: () => api.itemLocks.list(classroomId),
+    enabled: lockable,
+    // Polled while the tab is visible (React Query pauses in background).
+    refetchInterval: LOCK_POLL_MS,
+  })
+  // Locks held by someone else (a 小老師), by item.
+  const othersLocks = useMemo(() => {
+    const m = new Map<string, ItemLock>()
+    for (const lk of locksQ.data?.locks ?? []) if (!lk.mine) m.set(lk.item_id, lk)
+    return m
+  }, [locksQ.data])
+  // Lost our lock mid-edit (it expired and a 小老師 took it): drafts are
+  // kept, saving is blocked until the teacher takes over again.
+  const [lostHolder, setLostHolder] = useState<LockHolder | null>(null)
+  const [starting, setStarting] = useState(false)
+  const lockedItemsRef = useRef<string[]>([])
+  // Server scores at edit start, for "send only the changed cells" (B3).
+  const colBaseline = useRef<Record<string, number | null>>({})
+  const lock = useEditLock((holder) => {
+    setLostHolder(holder ?? { holder_role: null, holder_name: null })
+    void locksQ.refetch()
+  })
+
+  const opsFor = (itemIds: string[]): LockOps => ({
+    acquire: (takeover) => api.itemLocks.acquire(classroomId, itemIds, takeover),
+    release: (keepalive) => api.itemLocks.release(classroomId, itemIds, keepalive),
+  })
+  const confirmTakeover = (holder: LockHolder) =>
+    window.confirm(t('edit_lock.takeover_confirm', { who: holderLabel(holder) }))
+
+  type EditTarget = { kind: 'col'; itemId: string } | { kind: 'row'; studentId: string }
+
+  /** Open column / row edit from the given (fresh) data. */
+  function applyEdit(target: EditTarget, v: ClassroomGradesView) {
+    const score = (studentId: string, itemId: string) =>
+      v.grades.find((g) => g.student_id === studentId && g.item_id === itemId)?.score ??
+      null
+    setSaveErr(null)
+    if (target.kind === 'col') {
+      const next: Record<string, number | null> = {}
+      for (const s of v.students) next[s.id] = score(s.id, target.itemId)
+      colBaseline.current = { ...next }
+      setDrafts(next)
+      setEditingItemId(target.itemId)
+    } else {
+      const next: Record<string, number | null> = {}
+      for (const i of items) next[i.id] = score(target.studentId, i.id)
+      setRowDrafts(next)
+      setEditingStudentId(target.studentId)
+    }
+  }
+
+  /**
+   * Pencil / row pencil / ?edit= deep link (B4): take the lock(s) first —
+   * a column locks its item, a row locks every item of the subject (A6,
+   * all or nothing). Someone else holding one → ask to take over (A2);
+   * then start from the latest scores (B3).
+   */
+  async function beginEdit(target: EditTarget) {
+    setSaveErr(null)
+    if (!lockable) {
+      applyEdit(target, view)
+      return
+    }
+    const itemIds = target.kind === 'col' ? [target.itemId] : items.map((i) => i.id)
+    let takeover = false
+    const known = itemIds.map((id) => othersLocks.get(id)).find(Boolean)
+    if (known) {
+      if (!confirmTakeover(known)) return
+      takeover = true
+    }
+    setStarting(true)
+    try {
+      for (;;) {
+        try {
+          if (!(await lock.start(opsFor(itemIds), takeover))) return // cancelled meanwhile
+          break
+        } catch (err) {
+          const holder = lockHolderFromError(err)
+          if (holder && !takeover && confirmTakeover(holder)) {
+            takeover = true
+            continue
+          }
+          void locksQ.refetch()
+          if (!holder) setSaveErr(errorText(err))
+          return
+        }
+      }
+      lockedItemsRef.current = itemIds
+      setLostHolder(null)
+      const fresh = (await refreshView()) ?? view
+      applyEdit(target, fresh)
+      void locksQ.refetch()
+    } finally {
+      setStarting(false)
+    }
+  }
+
+  /** "接手並繼續" after losing the lock mid-edit: drafts are kept. */
+  async function takeBack() {
+    setStarting(true)
+    try {
+      if (!(await lock.start(opsFor(lockedItemsRef.current), true))) return
+      setLostHolder(null)
+      void locksQ.refetch()
+    } catch (err) {
+      setSaveErr(errorText(err))
+    } finally {
+      setStarting(false)
+    }
+  }
+
+  /** Before a save: re-take the lock after an idle release (A5). */
+  async function lockReadyToSave(): Promise<boolean> {
+    if (!lockable) return true
+    return (await lock.ensure()) !== 'lost'
+  }
+
+  function errorText(err: unknown): string {
+    if (err instanceof ApiError && err.body?.message_key) {
+      const key = err.body.message_key
+      return t(key, { defaultValue: err.body.message })
+    }
+    return err instanceof Error ? err.message : t('common.error_generic')
+  }
+
+  /** A save answered 409 item_locked: someone else has the item now. */
+  function onSaveLocked(err: unknown): boolean {
+    const holder = lockHolderFromError(err)
+    if (!holder) return false
+    lock.stop()
+    setLostHolder(holder)
+    void locksQ.refetch()
+    return true
   }
 
   // Items where ≥1 student still has a real score (>0) for this class.
@@ -1123,12 +1253,16 @@ function BySubjectView({
 
   const saveMut = useMutation({
     mutationFn: async (itemId: string) => {
-      const entries: GradeBulkEntry[] = view.students.map((s) => {
+      // Only the cells that differ from the scores the edit started from
+      // (#264 B3) — re-sending untouched cells would overwrite anything
+      // saved meanwhile and re-stamp nothing useful.
+      const entries: GradeBulkEntry[] = view.students.flatMap((s) => {
         const v = drafts[s.id]
         // Normalise unrounded typed values (e.g. 78.46) before send.
         const score =
           v == null ? null : normaliseScore(String(v))
-        return { student_id: s.id, score }
+        const base = colBaseline.current[s.id] ?? null
+        return score === base ? [] : [{ student_id: s.id, score }]
       })
       return api.gradeEntry.bulk({
         item_id: itemId,
@@ -1146,6 +1280,7 @@ function BySubjectView({
         qc.invalidateQueries({ queryKey: ['snapshot-grades', snapshotId] })
       }
       qc.invalidateQueries({ queryKey: ['item-grades', editingItemId] })
+      lock.stop()
       setDrafts({})
       setEditingItemId(null)
     },
@@ -1162,6 +1297,7 @@ function BySubjectView({
         const existingId = err.body.details.existing_item_id as string
         const existingName =
           (err.body.details.existing_item_name as string) || ''
+        lock.stop()
         setDrafts({})
         setEditingItemId(null)
         setParams(
@@ -1180,6 +1316,7 @@ function BySubjectView({
         editAppliedRef.current = false
         return
       }
+      if (onSaveLocked(err)) return
       setSaveErr(
         err instanceof ApiError && err.body?.message
           ? err.body.message
@@ -1223,10 +1360,12 @@ function BySubjectView({
       if (snapshotId) {
         qc.invalidateQueries({ queryKey: ['snapshot-grades', snapshotId] })
       }
+      lock.stop()
       setRowDrafts({})
       setEditingStudentId(null)
     },
     onError: (err) => {
+      if (onSaveLocked(err)) return
       setSaveErr(
         err instanceof ApiError && err.body?.message
           ? err.body.message
@@ -1311,8 +1450,10 @@ function BySubjectView({
                 })}
               </span>
               <button
-                onClick={() => saveRowMut.mutate(editingStudentId)}
-                disabled={saveRowMut.isPending}
+                onClick={async () => {
+                  if (await lockReadyToSave()) saveRowMut.mutate(editingStudentId)
+                }}
+                disabled={saveRowMut.isPending || lostHolder !== null}
                 className="px-2 py-0.5 rounded bg-amber-500 hover:bg-amber-600 text-white text-xs font-medium disabled:bg-slate-300"
               >
                 {saveRowMut.isPending ? t('common.saving') : t('common.save')}
@@ -1329,6 +1470,27 @@ function BySubjectView({
           {snapshotId && <RecomputeButton snapshotId={snapshotId} />}
         </div>
       </div>
+
+      {lostHolder && (editingItemId !== null || editingStudentId !== null) && (
+        <LockNotice
+          tone="warn"
+          action={
+            <button
+              type="button"
+              onClick={() => void takeBack()}
+              disabled={starting}
+              className="px-2 py-0.5 rounded bg-amber-500 hover:bg-amber-600 text-white text-xs font-medium disabled:bg-slate-300"
+            >
+              {t('edit_lock.takeover_continue')}
+            </button>
+          }
+        >
+          {t('edit_lock.teacher_lost', { who: holderLabel(lostHolder) })}
+        </LockNotice>
+      )}
+      {lock.status === 'paused' && !lostHolder && (
+        <LockNotice>{t('edit_lock.paused')}</LockNotice>
+      )}
 
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
         <div className="overflow-auto max-h-[70vh]">
@@ -1351,6 +1513,9 @@ function BySubjectView({
                   const isEditing = editingItemId === i.id
                   const otherEditing =
                     editingItemId !== null && editingItemId !== i.id
+                  // A 小老師 is editing this column (B5): shown even while
+                  // just viewing; the pencil then offers a takeover.
+                  const otherLock = lockable ? othersLocks.get(i.id) : undefined
                   const headerBg = isEditing
                     ? 'bg-violet-50'
                     : CATEGORY_HEADER_BG[i.category_system_key] ?? 'bg-slate-50'
@@ -1381,6 +1546,11 @@ function BySubjectView({
                               </span>
                               {sortArrow(i.id)}
                             </div>
+                            {otherLock && (
+                              <div className="mt-0.5">
+                                <LockBadge holder={otherLock} />
+                              </div>
+                            )}
                           </div>
                         </button>
                         <ColumnCopyButton
@@ -1392,10 +1562,18 @@ function BySubjectView({
                         {!isEditing && !readOnly && editingStudentId === null && (
                           <>
                             <button
-                              onClick={() => startEdit(i.id)}
-                              disabled={otherEditing}
-                              title={t('grades.edit_scores')}
-                              aria-label={t('grades.edit_scores')}
+                              onClick={() => void beginEdit({ kind: 'col', itemId: i.id })}
+                              disabled={otherEditing || starting}
+                              title={
+                                otherLock
+                                  ? t('edit_lock.pencil_takeover', { who: holderLabel(otherLock) })
+                                  : t('grades.edit_scores')
+                              }
+                              aria-label={
+                                otherLock
+                                  ? t('edit_lock.pencil_takeover', { who: holderLabel(otherLock) })
+                                  : t('grades.edit_scores')
+                              }
                               className="ml-1 shrink-0 text-slate-400 hover:text-amber-700 disabled:opacity-30 disabled:cursor-not-allowed"
                             >
                               ✎
@@ -1436,8 +1614,10 @@ function BySubjectView({
                         {isEditing && (
                           <div className="ml-2 flex items-center gap-1">
                             <button
-                              onClick={() => saveMut.mutate(i.id)}
-                              disabled={saveMut.isPending}
+                              onClick={async () => {
+                                if (await lockReadyToSave()) saveMut.mutate(i.id)
+                              }}
+                              disabled={saveMut.isPending || lostHolder !== null}
                               className="px-2 py-0.5 rounded bg-amber-500 hover:bg-amber-600 text-white text-xs font-medium disabled:bg-slate-300"
                             >
                               {saveMut.isPending
@@ -1492,8 +1672,8 @@ function BySubjectView({
                         </span>
                         {!readOnly && editingItemId === null && !isRowEditing && (
                           <button
-                            onClick={() => startRowEdit(s.id)}
-                            disabled={editingStudentId !== null}
+                            onClick={() => void beginEdit({ kind: 'row', studentId: s.id })}
+                            disabled={editingStudentId !== null || starting}
                             title={t('grades.edit_row')}
                             aria-label={t('grades.edit_row')}
                             className="shrink-0 text-slate-400 hover:text-amber-700 disabled:opacity-30 disabled:cursor-not-allowed"

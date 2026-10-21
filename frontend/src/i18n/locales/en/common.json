@@ -27,7 +27,8 @@
     "sign_in_with_google": "Sign in with Google",
     "sign_out": "Sign out",
     "signed_in_as": "Signed in as",
-    "signing_in": "Signing in…"
+    "signing_in": "Signing in…",
+    "identity_error": "Couldn't load your account information. Please check your connection and try again."
   },
   "common": {
     "save": "Save",
@@ -537,7 +538,8 @@
       "name": "Name",
       "email": "Email",
       "groups": "Groups",
-      "actions": "Actions"
+      "actions": "Actions",
+      "assistant": "Assistant"
     },
     "actions": {
       "add": "Add student",
@@ -573,11 +575,22 @@
         "create": "{{n}} to create",
         "update": "{{n}} to update",
         "errors": "{{n}} with errors"
+      },
+      "email_note": "Emails are converted to lowercase. On \"update\" rows, a blank email cell keeps the existing email instead of clearing it.",
+      "warning": {
+        "duplicate_email": "Note: another student in this class has the same email",
+        "email_unchanged": "Email cell blank — existing email kept"
+      },
+      "row_error": {
+        "duplicate_email_assistant": "This email is shared with a classmate and one of them is an assistant; an assistant's email must be unique in the class"
       }
     },
     "errors": {
-      "duplicate_seat": "Seat number already exists in this class"
-    }
+      "duplicate_seat": "Seat number already exists in this class",
+      "invalid_email": "Email format is invalid"
+    },
+    "email_hint": "Optional. Enter the student's Google account email so they can sign in and be made a student assistant.",
+    "email_duplicate_warning": "Another student in this class uses this email (you can still save, but neither can be made a student assistant)."
   },
   "grade_entry": {
     "title": "Enter scores",
@@ -777,6 +790,20 @@
       "bad_date_range": "Start date cannot be after end date",
       "date_mismatch": "The entered dates do not match the academic year / term",
       "archived": "This semester is archived and read-only"
+    },
+    "assistant": {
+      "email_required": "This student has no email and can't be made an assistant",
+      "duplicate_email": "Another student in this class has the same email, so this one can't be made an assistant",
+      "email_clash": "This email is already used by a classmate and one of them is an assistant — an assistant's email must be unique in the class",
+      "invalid_assignment": "Some students aren't assistants of a class where this item is in use",
+      "teacher_grade_locked": "This score was entered by the teacher and can't be changed by an assistant",
+      "forbidden_entries": "Some scores couldn't be saved (e.g. ones the teacher entered), so nothing was saved. Refresh and try again.",
+      "write_conflict": "This score was just changed by someone else. Refresh and try again."
+    },
+    "grade": {
+      "item_locked": "Someone else is editing this item; it can't be saved right now",
+      "student_not_in_class": "Some students aren't in this class; nothing was saved",
+      "write_conflict": "This score was just changed by someone else. Refresh and try again"
     }
   },
   "archived_banner": {
@@ -855,5 +882,69 @@
       "name_required": "Group name is required",
       "duplicate_name": "A group with this name already exists in this class"
     }
+  },
+  "no_access": {
+    "title": "No access yet",
+    "body": "Your account has nothing to use yet. If you are a student, ask your teacher to add your Google account email to the class roster and make you a student assistant.",
+    "signed_in_as": "Signed in as {{email}}",
+    "switch_account": "Sign in with another account"
+  },
+  "assistant": {
+    "role": "Student assistant",
+    "header": "{{name}} (student assistant)",
+    "title": "Enter scores",
+    "subtitle": "Only the grade items your teacher assigned to you are listed.",
+    "class_with_teacher": "{{cls}} ({{teacher}})",
+    "pick_item": "Grade item",
+    "empty": {
+      "heading": "No grade items assigned to you yet",
+      "body": "Items appear here once your teacher opens them to you."
+    },
+    "col": {
+      "score": "Score"
+    },
+    "score_for": "Score for #{{seat}} {{name}}",
+    "teacher_entered": "Entered by teacher",
+    "teacher_entered_hint": "The teacher entered this score; it can't be changed",
+    "cannot_clear": "An entered score can't be cleared",
+    "invalid_score": "Enter a number from 0 to 100",
+    "pending": "{{n}} unsaved",
+    "saved": "Saved {{n}}",
+    "load_error": "Couldn't load. Your teacher may have archived this item or closed it to you.",
+    "no_students": "This class has no students."
+  },
+  "assistant_admin": {
+    "needs_email": "Add an email before making this student an assistant",
+    "switch_on": "{{name}} is an assistant — click to remove",
+    "switch_off": "Make {{name}} a student assistant",
+    "checkbox": "Student assistant",
+    "checkbox_hint": "After signing in with Google, an assistant can only enter the grade items you assign to them.",
+    "picker_label": "Student assistants who may enter this item",
+    "picker_hint": "Checked assistants can enter this item after signing in (their own class only). They cannot delete scores or change scores you entered.",
+    "picker_empty": "No student assistants yet. Make a student an assistant from the class roster first.",
+    "picker_archived": "This semester is archived; changes are disabled.",
+    "picker_inactive": "This class hasn't used this item yet (save it once on that class's grade-entry page)",
+    "picker_student": "#{{seat}} {{name}}"
+  },
+  "edit_lock": {
+    "holder_teacher": "The teacher",
+    "holder_assistant": "{{name}} (assistant)",
+    "holder_assistant_no_name": "An assistant",
+    "holder_unknown": "Someone else",
+    "badge": "{{who}} editing",
+    "pencil_takeover": "{{who}} is editing — click to take over",
+    "takeover_confirm": "{{who}} is editing. Take over?\n\nTheir screen turns read-only within 30 seconds and anything they haven't saved will be discarded.",
+    "teacher_lost": "{{who}} has started editing this item; your input isn't saved yet. Choose “Take over and continue” to keep editing and save.",
+    "takeover_continue": "Take over and continue",
+    "paused": "Idle for 5 minutes, so editing was released. Keep typing to take it back automatically.",
+    "taken_over_by_teacher": "The teacher has taken over editing. Scores you hadn't saved were not stored.",
+    "taken_by_other": "{{who}} is editing now. Scores you hadn't saved were not stored.",
+    "lock_expired": "Your editing session expired. Scores you hadn't saved were not stored. Press “Edit scores” again.",
+    "assistant_edit": "Edit scores",
+    "assistant_view_hint": "View only. Press “Edit scores” to enter scores — only one person can edit this item at a time.",
+    "assistant_blocked": "{{who}} is editing; you can't enter scores right now (this updates within 30 seconds).",
+    "import_blocked": "Someone is editing these items, so nothing was imported. Try again once they're done, or take over the item on the grades page (its pencil) and then import:",
+    "import_item_line": "{{item}}: {{who}} is editing",
+    "unnamed_item": "This item"
   }
 }

@@ -97,12 +97,34 @@ Returns the user's identity and a setup status flag the frontend uses to decide 
     "has_classes": true,
     "has_subjects": true,
     "has_current_semester": true
+  },
+  "identity": {
+    "is_teacher": true,
+    "is_student": false,
+    "assistant_contexts": []
   }
 }
 ```
 
+`identity` (#261): `is_teacher` = owns ≥1 classroom; `is_student` = the
+account's Google identity email (read server-side from `auth.identities`,
+not the JWT `email` claim) matches ≥1 `student.email` (any teacher).
+`assistant_contexts` lists the classes where this student is a 小老師 (#262):
+`{classroom_id, classroom_grade, classroom_name, teacher_label, student_id,
+student_name, items:[{item_id, item_name, subject_id, subject_system_key,
+subject_display_name, category_system_key}]}` — `items` only holds what the
+assistant can enter right now; `teacher_label` is the teacher's Google full
+name read from Supabase `auth.users` (null if unavailable).
+Calling this endpoint also syncs the caller's `account_link(self)` rows — see
+data-model.md §account_link. The frontend routes on it: teacher app,
+`/assistant`, or `/no-access`. If the `auth.identities` lookup itself fails
+(identity unknown — no links are changed): an account that owns no class gets
+**503** `errors.identity.unavailable` and the frontend shows an error with
+retry; a class owner still gets 200 as teacher, with `is_student: false` and
+no `assistant_contexts` for that response.
+
 #### `POST /api/me/seed`
-Idempotent. Called by `/auth/callback` on first sign-in to create the 7 default categories and one default semester. Safe to call repeatedly — checks before inserting.
+Idempotent. Called by `/auth/callback` on first sign-in to create the 7 default categories and one default semester. Safe to call repeatedly — checks before inserting. Returns zeros without seeding for a roster student who owns no classroom (#261). For an account that owns no classroom and whose identity lookup fails → **503** `errors.identity.unavailable`, nothing seeded.
 
 ### Classrooms
 
@@ -162,6 +184,8 @@ on the website (single-student modal), not in Excel.
 
 - `seat_number` required, 1–99
 - `name`, `email` optional (null allowed)
+- `email` is trimmed + lowercased; an invalid format returns
+  `400` `errors.student.invalid_email` (#261)
 - `standards` is an optional map of `{ category.system_key: threshold }`.
   Unknown keys are ignored; keys not in the payload are left untouched.
 - PUT-only: include `classroom_id` to transfer the student to a different
@@ -211,6 +235,22 @@ Response:
 A `dry_run=false` request returns `400 BAD_REQUEST` (`errors.import.has_errors`)
 if any row has `action: "error"` — fix the file and re-upload.
 
+Email rules (#261): same normaliser/validator as the single form (invalid →
+row error `email is invalid`). Each row also carries `warnings` (codes, not
+blocking; `summary.warnings` counts rows with any):
+- `duplicate_email` — after the import, another student in this class would
+  have the same email (ordinary students only — see the error below);
+- `email_unchanged` — an **update** row whose email cell is blank keeps the
+  stored email (shown in `email`) instead of clearing it.
+
+小老師 email clash (#262): when, after the import, an email would be shared by
+classmates and one of them is a 小老師, every row in that group whose email is
+new or changed becomes `action: "error"` with error code
+`duplicate_email_assistant` (blocking, unlike `duplicate_email`). The commit
+re-checks the final state with the same rule as the single form and answers
+**409** `errors.assistant.email_clash` with the whole batch rolled back if a
+clash slipped past the preview.
+
 ### Subjects
 
 | Method | Path | Description |
@@ -249,6 +289,8 @@ When PUT sets `is_current=true`, the backend automatically sets all other rows f
 | GET | `/api/items/:id` | Item detail (includes classroom list) |
 | PUT | `/api/items/:id` | Update (incl. `classroom_ids`) |
 | DELETE | `/api/items/:id` | Cascade-delete grades, point_records |
+| GET | `/api/items/:id/assistants` | 小老師 assignable to this item (all the teacher's classes) + which are assigned + `writable` (#262) |
+| PUT | `/api/items/:id/assistants` | Replace the assigned set: `{ "student_ids": [...] }`. Each must be a 小老師 of a class where the item is live; archived semester → 403 |
 
 `POST /api/items` body:
 ```json
@@ -273,6 +315,106 @@ When PUT sets `is_current=true`, the backend automatically sets all other rows f
 | GET | `/api/classrooms/:id/grades?semester_id=` | One classroom's grade bundle for one semester (defaults to current). Frontend computes weighted totals from `category_weights`. |
 | GET | `/api/classrooms/:id/grades/template.xlsx` | Download grade batch-import template |
 | POST | `/api/classrooms/:id/grades/import` | Excel batch import (preview + commit) |
+
+Grade payloads carry the stamp fields `entered_by_user_id`, `entered_by_role`,
+`entered_by_name` (assistant's roster name) and `entered_at` (#260 / #262).
+
+**Live-bucket rules (#264).** `POST /api/grades/bulk` without `snapshot_id`
+requires every listed student to be in `classroom_id` — otherwise **400**
+`errors.grade.student_not_in_class` with `details.student_ids` and nothing is
+saved (a student of another class would bypass that class's edit lock).
+Students of other teachers are still skipped silently. Snapshot bulk edits are
+unchanged. Single `POST` / `PUT` / `DELETE` use the student's current class.
+Every live write (single, bulk, Excel import) is refused with **409**
+`errors.grade.item_locked` while a 小老師 holds a live edit lock on that item in
+that class (see *Grade-item edit locks*). A teacher does not need to hold the
+lock to write — only nobody else may. There is at most one live grade per
+(item, student) (`uq_grade_live_item_student`); writers insert with
+`ON CONFLICT DO NOTHING` and update the row that exists instead.
+
+#### Grade-item edit locks (#264)
+
+One lock per (class, item) — "someone is entering this item for this class".
+A lock is live while `expires_at > now()` (DB clock). Repeating the acquire call
+is the heartbeat (the UI sends it every ~25 s; the server TTL is 90 s, so a
+closed tab / lost connection frees the item within 90 s). The frontend also
+releases after 5 minutes without typing/clicking. Two tabs of the same account
+share one lock. Snapshots are never locked.
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/api/classrooms/:id/item-locks` | Live locks in the class: `{locks: [{item_id, holder_role, holder_name, mine}]}`. Polled by the grades page while visible. |
+| POST | `/api/classrooms/:id/item-locks` | `{item_ids: [...], takeover?: bool}` — acquire or renew, **all or nothing** (row edit locks every item of the subject at once). A 小老師's live lock → **409** unless `takeover: true` (the UI asks 「要接手嗎？」 first). Items must be the teacher's (**404** `errors.item.not_found`) and in the current semester (**403** `errors.semester.archived`). |
+| POST | `/api/classrooms/:id/item-locks/release` | `{item_ids: [...]}` → 204. Deletes only the caller's own locks. Sent with `fetch(..., {keepalive: true})` when the page is left. |
+
+`holder_role` is `teacher` / `assistant`; `holder_name` is the assistant's roster
+name (or the teacher's Google name, may be null). The holder's account id is
+never returned. Error shape:
+
+```json
+{"error": {"code": "CONFLICT", "message_key": "errors.grade.item_locked",
+  "details": {"holder_role": "assistant", "holder_name": "小明",
+              "locks": [{"item_id": "…", "holder_role": "assistant", "holder_name": "小明"}]}}}
+```
+
+`holder_role` / `holder_name` are `null` when the caller (a 小老師) simply doesn't
+hold the lock and nobody else does — e.g. it expired. The Excel import adds
+`item_name` to each `locks[]` entry.
+
+### Student assistants (小老師, #262)
+
+Teacher side:
+
+| Method | Path | Description |
+|---|---|---|
+| PUT | `/api/students/:id/assistant` | `{ "is_assistant": bool }`. 400 `errors.assistant.email_required` without email; 409 `errors.assistant.duplicate_email` if a classmate shares it (not checked when the student already is one and the email didn't change, so re-saving them never 409s). Unsetting removes item assignments; stamps stay. |
+
+`StudentOut` includes `is_assistant`; `POST`/`PUT` student bodies accept an
+optional `is_assistant` (same rules) so the student form can save both at once.
+
+Email edits involving an assistant: `POST /api/classrooms/:id/students` and
+`PUT /api/students/:id` answer **409** `errors.assistant.email_clash` (nothing
+saved) when the new / changed email equals a classmate's and either side is a
+小老師 — e.g. an assistant's email changed to a classmate's, or a student given
+an assistant classmate's email. Two ordinary students sharing an email are
+still only a warning. A transfer (`PUT` with a new `classroom_id`) is checked
+the same way against the target class. The Excel import applies the same rule:
+the preview marks such rows as errors (`duplicate_email_assistant`) and the
+commit answers 409 `errors.assistant.email_clash` with the whole batch rolled
+back (see the students import section).
+
+Student side — separate endpoints, the teacher routes are unchanged:
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/api/assistant/items/:id/grades?classroom_id=` | Teacher's item-grades shape minus `semester_id`: whole class, names, scores, stamps. No email; `entered_by_user_id` always null. |
+| POST | `/api/assistant/grades` | `{item_id, classroom_id, student_id, score}` upsert. If the cell is created concurrently, the live unique index (`uq_grade_live_item_student`, #264) turns the INSERT into a no-op; the existing row is re-read and the same rules apply (teacher-entered → 403); if it still can't be found, **409** `errors.assistant.write_conflict`. |
+| PUT | `/api/assistant/grades/:id` | `{score}` |
+| POST | `/api/assistant/grades/bulk` | `{item_id, classroom_id, entries:[{student_id, score}]}`. A cell created concurrently with a teacher-entered value → **409** `errors.assistant.write_conflict`, nothing saved. |
+| GET | `/api/assistant/items/:id/lock?classroom_id=` | Edit-lock state `{locked, mine, holder_role, holder_name}` (#264). |
+| POST | `/api/assistant/items/:id/lock?classroom_id=` | Start editing (the pencil) / heartbeat. Free or already mine → 200 state; anyone else's live lock → **409** `errors.grade.item_locked` naming the holder. Never takes over. |
+| DELETE | `/api/assistant/items/:id/lock?classroom_id=` | Stop editing → 204. Deletes only the caller's own lock, so it needs no permission check (reveals nothing, and still frees the item right after the role is revoked). |
+
+Rules (enforced server-side): only assigned, live, current-semester items in
+the assistant's own class, otherwise **404** (`errors.item.not_found` /
+`errors.grade.not_found` — the same as a non-existent id). Changing a score last
+written by the teacher → **403** `errors.assistant.teacher_grade_locked`
+(re-sending the same value is a no-op). No DELETE route; `score: null` and any
+unknown field such as `snapshot_id` → **422**. Bulk never activates an item and
+is all-or-nothing: any violation → **403** `errors.assistant.forbidden_entries`
+with `details.violations: [{student_id, reason}]` (`not_in_class`,
+`teacher_entered`, `duplicate`). Assistants may enter their own score and may
+overwrite other assistants' scores. Writes store the teacher's id in
+`grade.user_id`; the assistant's sub goes to `entered_by_user_id` (stored, but
+never returned by these endpoints — write responses also carry `null`).
+
+**Edit lock (#264).** Every assistant write (`POST`, `PUT`, non-empty bulk)
+also needs the caller to hold the item's live edit lock in that class, checked
+after the 404 rules above (so the lock never reveals whether an id exists):
+otherwise **409** `errors.grade.item_locked`. A teacher taking over makes the
+assistant's next heartbeat / save answer 409 with `holder_role: "teacher"`;
+the page then turns read-only and drops the unsaved input. When the role or
+assignment is revoked, the heartbeat answers 404 like any other route.
 
 #### `GET /api/classrooms/:id/grades`
 

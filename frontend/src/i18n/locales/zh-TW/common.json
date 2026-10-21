@@ -27,7 +27,8 @@
     "sign_in_with_google": "用 Google 登入",
     "sign_out": "登出",
     "signed_in_as": "登入身份",
-    "signing_in": "登入中…"
+    "signing_in": "登入中…",
+    "identity_error": "無法載入帳號資料，請確認網路連線後重試。"
   },
   "common": {
     "save": "儲存",
@@ -537,7 +538,8 @@
       "name": "姓名",
       "email": "Email",
       "groups": "組別",
-      "actions": "動作"
+      "actions": "動作",
+      "assistant": "小老師"
     },
     "actions": {
       "add": "新增學生",
@@ -573,11 +575,22 @@
         "create": "{{n}} 筆新增",
         "update": "{{n}} 筆更新",
         "errors": "{{n}} 筆錯誤"
+      },
+      "email_note": "email 會自動轉成小寫；「更新」的列若 email 欄空白，會保留原本的 email，不會清除。",
+      "warning": {
+        "duplicate_email": "提醒：班上有其他學生使用相同 email",
+        "email_unchanged": "email 欄空白，保留原本的 email"
+      },
+      "row_error": {
+        "duplicate_email_assistant": "這個 email 和同班同學重複，而其中一位是小老師；小老師的 email 不能和同學相同"
       }
     },
     "errors": {
-      "duplicate_seat": "這個班級已經有相同座號的學生了"
-    }
+      "duplicate_seat": "這個班級已經有相同座號的學生了",
+      "invalid_email": "Email 格式不正確"
+    },
+    "email_hint": "選填。填入學生的 Google 帳號 email，學生才能登入並被設為小老師。",
+    "email_duplicate_warning": "班上已有其他學生使用這個 email（仍可儲存，但這兩位都無法設為小老師）。"
   },
   "grade_entry": {
     "title": "線上輸入成績",
@@ -777,6 +790,20 @@
       "bad_date_range": "開始日期不能晚於結束日期",
       "date_mismatch": "輸入的日期跟學年 / 學期算出來的不一致",
       "archived": "此學期已封存，無法修改"
+    },
+    "assistant": {
+      "email_required": "這位學生還沒有 email，無法設為小老師",
+      "duplicate_email": "班上有其他學生使用相同 email，無法設為小老師",
+      "email_clash": "這個 email 與同班同學重複，而其中一位是小老師；小老師的 email 在班上必須唯一",
+      "invalid_assignment": "有學生不是此班的小老師，或此班尚未使用這個項目",
+      "teacher_grade_locked": "這個分數是老師登記的，小老師不能修改",
+      "forbidden_entries": "部分分數不能儲存（例如老師登記的分數），整批都沒有儲存，請重新整理後再試",
+      "write_conflict": "這個分數剛被其他人修改，請重新整理後再試"
+    },
+    "grade": {
+      "item_locked": "有人正在編輯這個項目，暫時不能儲存",
+      "student_not_in_class": "有學生不屬於這個班級，整批都沒有儲存",
+      "write_conflict": "這個分數剛被其他人修改，請重新整理後再試"
     }
   },
   "archived_banner": {
@@ -855,5 +882,69 @@
       "name_required": "請輸入組名",
       "duplicate_name": "這個班級已有同名的組別"
     }
+  },
+  "no_access": {
+    "title": "尚無權限",
+    "body": "你的帳號目前沒有可以使用的功能。如果你是學生，請老師在學生名單填上你的 Google 帳號 email，並把你設為小老師。",
+    "signed_in_as": "目前登入：{{email}}",
+    "switch_account": "換一個帳號登入"
+  },
+  "assistant": {
+    "role": "小老師",
+    "header": "{{name}}（小老師）",
+    "title": "小老師登記成績",
+    "subtitle": "只會列出老師指定給你的成績項目。",
+    "class_with_teacher": "{{cls}}（{{teacher}}）",
+    "pick_item": "成績項目",
+    "empty": {
+      "heading": "老師還沒有指定成績項目給你",
+      "body": "老師在成績項目開放給你之後，這裡就會出現可以登記的項目。"
+    },
+    "col": {
+      "score": "分數"
+    },
+    "score_for": "{{seat}} 號 {{name}} 的分數",
+    "teacher_entered": "老師登記",
+    "teacher_entered_hint": "這個分數是老師登記的，不能修改",
+    "cannot_clear": "不能清空已登記的分數",
+    "invalid_score": "請輸入 0–100 的數字",
+    "pending": "{{n}} 筆待儲存",
+    "saved": "已儲存 {{n}} 筆",
+    "load_error": "讀取失敗，這個項目可能已被老師封存或取消開放。",
+    "no_students": "這個班級沒有學生。"
+  },
+  "assistant_admin": {
+    "needs_email": "需先填 email 才能設為小老師",
+    "switch_on": "{{name}} 是小老師，按一下取消",
+    "switch_off": "把 {{name}} 設為小老師",
+    "checkbox": "設為小老師",
+    "checkbox_hint": "小老師用 Google 帳號登入後，只能登記你在「成績項目」指定給他的項目。",
+    "picker_label": "開放登記的小老師",
+    "picker_hint": "勾選的小老師登入後可以登記此項目（只限自己班的學生）。不能刪除分數，也不能改你登記的分數。",
+    "picker_empty": "還沒有任何小老師。請先到班級的學生名單把學生設為小老師。",
+    "picker_archived": "此學期已封存，無法變更。",
+    "picker_inactive": "此班尚未使用這個項目（先在該班成績輸入頁儲存一次）",
+    "picker_student": "{{seat}} 號 {{name}}"
+  },
+  "edit_lock": {
+    "holder_teacher": "老師",
+    "holder_assistant": "{{name}}（小老師）",
+    "holder_assistant_no_name": "小老師",
+    "holder_unknown": "其他人",
+    "badge": "{{who}}編輯中",
+    "pencil_takeover": "{{who}}正在編輯，按一下可接手",
+    "takeover_confirm": "{{who}}正在編輯，要接手嗎？\n\n接手後，對方的畫面會在 30 秒內轉為唯讀，他尚未儲存的輸入會作廢。",
+    "teacher_lost": "{{who}}已開始編輯這個項目，你的輸入還沒儲存。按「接手並繼續」即可繼續輸入與儲存。",
+    "takeover_continue": "接手並繼續",
+    "paused": "閒置超過 5 分鐘，已暫時釋放編輯權。繼續輸入就會自動重新取得。",
+    "taken_over_by_teacher": "老師已接手編輯，你尚未儲存的分數沒有存入。",
+    "taken_by_other": "{{who}}正在編輯，你尚未儲存的分數沒有存入。",
+    "lock_expired": "編輯權已失效，你尚未儲存的分數沒有存入。請重新按「編輯分數」。",
+    "assistant_edit": "編輯分數",
+    "assistant_view_hint": "目前是檢視模式，按「編輯分數」才能輸入。同一時間只能有一個人編輯這個項目。",
+    "assistant_blocked": "{{who}}正在編輯，暫時不能輸入（畫面約 30 秒內會更新）。",
+    "import_blocked": "以下項目有人正在編輯，整份成績都沒有匯入。請等對方完成後再試，或到成績頁按該項目的鉛筆「接手」後再匯入：",
+    "import_item_line": "{{item}}：{{who}}正在編輯",
+    "unnamed_item": "此項目"
   }
 }

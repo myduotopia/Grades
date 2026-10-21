@@ -1,4 +1,5 @@
 import type { Session } from '@supabase/supabase-js'
+import { useQueryClient } from '@tanstack/react-query'
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 
 import { supabase } from '../lib/supabase'
@@ -47,6 +48,7 @@ function peekStoredSession(): { kind: 'dead' } | { kind: 'unknown' } {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
+  const queryClient = useQueryClient()
 
   useEffect(() => {
     // Fast-path: storage says we're already dead → don't ask Supabase at all.
@@ -64,9 +66,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       })
     }
 
-    const { data: subscription } = supabase.auth.onAuthStateChange((_event, newSession) => {
+    const { data: subscription } = supabase.auth.onAuthStateChange((event, newSession) => {
       // TOKEN_REFRESHED → fresh session; SIGNED_OUT (emitted on refresh
       // failure or manual logout) → null. ProtectedRoute handles the redirect.
+      // On sign-out drop every cached query: the next account signing in on
+      // this tab must not see the previous one's /api/me identity or data.
+      if (event === 'SIGNED_OUT') queryClient.clear()
       setSession(newSession)
       setLoading(false)
     })
@@ -74,7 +79,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       subscription.subscription.unsubscribe()
     }
-  }, [])
+  }, [queryClient])
 
   return (
     <AuthContext.Provider value={{ session, loading }}>{children}</AuthContext.Provider>

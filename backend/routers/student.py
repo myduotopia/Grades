@@ -24,14 +24,24 @@ from openpyxl import Workbook, load_workbook
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from assistant_access import (
+    assistant_ids_in_classroom,
+    check_email_change_vs_assistants,
+    is_assistant,
+    revoke_assistant,
+    set_assistant,
+)
 from auth import require_user_id
 from database import get_db
+from email_validation import InvalidEmail, clean_email, duplicate_emails
+from models.access import AccountLink
 from models.classroom import Classroom, Student
 from schemas import (
     ImportPreviewSummary,
     ImportResult,
     ImportRowPreview,
     ListMeta,
+    StudentAssistantUpdate,
     StudentCreate,
     StudentList,
     StudentOut,
@@ -82,6 +92,37 @@ def _bad_request(message_key: str, message: str) -> HTTPException:
     )
 
 
+def _invalid_email() -> HTTPException:
+    return _bad_request("errors.student.invalid_email", "Email is invalid.")
+
+
+def _clean_email_or_400(raw: str | None) -> str | None:
+    try:
+        return clean_email(raw)
+    except InvalidEmail:
+        raise _invalid_email()
+
+
+def _on_email_changed(db: Session, student: Student, old_email: str | None) -> None:
+    """Side effects of a roster email change (#261).
+
+    The student's `account_link(self)` belonged to whoever signed in with the
+    OLD email; drop it so the account that owns the new email can bind on
+    its next sign-in (`ix_account_link_one_self_per_student` allows only
+    one self link per student).
+    """
+    if (old_email or None) == (student.email or None):
+        return
+    db.query(AccountLink).filter(
+        AccountLink.student_id == student.id,
+        AccountLink.link_role == "self",
+    ).delete(synchronize_session=False)
+    # No email → can't sign in → no longer a 小老師 (#262). A changed (not
+    # cleared) email keeps the role; the new address binds on next sign-in.
+    if not student.email:
+        revoke_assistant(db, student.id)
+
+
 # ---------- lookups ----------
 
 def _get_owned_classroom(db: Session, user_id: UUID, classroom_id: UUID) -> Classroom:
@@ -106,8 +147,9 @@ def _get_owned_student(db: Session, user_id: UUID, student_id: UUID) -> Student:
     return s
 
 
-def _serialize_student(s: Student) -> StudentOut:
+def _serialize_student(s: Student, assistant: bool = False) -> StudentOut:
     return StudentOut(
+        is_assistant=assistant,
         id=s.id,
         classroom_id=s.classroom_id,
         seat_number=s.seat_number,
@@ -134,8 +176,9 @@ def list_students(
         .order_by(Student.seat_number.asc())
         .all()
     )
+    assistants = assistant_ids_in_classroom(db, classroom_id)
     return StudentList(
-        data=[_serialize_student(s) for s in rows],
+        data=[_serialize_student(s, s.id in assistants) for s in rows],
         meta=ListMeta(total=len(rows)),
     )
 
@@ -152,12 +195,13 @@ def create_student(
     db: Annotated[Session, Depends(get_db)],
 ) -> StudentOut:
     _get_owned_classroom(db, user_id, classroom_id)
+    email = _clean_email_or_400(body.email)
     student = Student(
         user_id=user_id,
         classroom_id=classroom_id,
         seat_number=body.seat_number,
         name=body.name,
-        email=body.email,
+        email=email,
         source="manual",
     )
     db.add(student)
@@ -169,9 +213,13 @@ def create_student(
             "errors.student.duplicate_seat",
             "Seat number already exists in this classroom.",
         )
+    if body.is_assistant:
+        set_assistant(db, student, True)
+    # A new row taking an assistant classmate's email is refused (409).
+    check_email_change_vs_assistants(db, student)
     db.commit()
     db.refresh(student)
-    return _serialize_student(student)
+    return _serialize_student(student, is_assistant(db, student))
 
 
 @router.put("/api/students/{student_id}", response_model=StudentOut)
@@ -182,12 +230,16 @@ def update_student(
     db: Annotated[Session, Depends(get_db)],
 ) -> StudentOut:
     student = _get_owned_student(db, user_id, student_id)
+    email = _clean_email_or_400(body.email)
+    transferred = False
     if body.classroom_id is not None and body.classroom_id != student.classroom_id:
         _get_owned_classroom(db, user_id, body.classroom_id)  # ensures ownership
         student.classroom_id = body.classroom_id
+        transferred = True
     student.seat_number = body.seat_number
     student.name = body.name
-    student.email = body.email
+    old_email = student.email
+    student.email = email
     try:
         db.flush()
     except IntegrityError:
@@ -196,9 +248,43 @@ def update_student(
             "errors.student.duplicate_seat",
             "Seat number already exists in this classroom.",
         )
+    email_changed = (old_email or None) != (student.email or None)
+    _on_email_changed(db, student, old_email)
+    if transferred:
+        # 小老師 is per class: a transfer ends the role (#262).
+        revoke_assistant(db, student.id)
+    if body.is_assistant is not None:
+        set_assistant(
+            db, student, body.is_assistant, email_changed=email_changed
+        )
+    if email_changed or transferred:
+        # Final state: an assistant must not share an email with a
+        # classmate, whichever side changed (409, nothing is saved).
+        check_email_change_vs_assistants(db, student)
     db.commit()
     db.refresh(student)
-    return _serialize_student(student)
+    return _serialize_student(student, is_assistant(db, student))
+
+
+@router.put("/api/students/{student_id}/assistant", response_model=StudentOut)
+def update_student_assistant(
+    student_id: UUID,
+    body: StudentAssistantUpdate,
+    user_id: Annotated[UUID, Depends(require_user_id)],
+    db: Annotated[Session, Depends(get_db)],
+) -> StudentOut:
+    """Make / unmake a student 小老師 of their class (#262).
+
+    400 `errors.assistant.email_required` without an email; 409
+    `errors.assistant.duplicate_email` when a classmate shares the email.
+    Unsetting also removes every item assignment; grades already entered
+    keep their stamp.
+    """
+    student = _get_owned_student(db, user_id, student_id)
+    set_assistant(db, student, body.is_assistant)
+    db.commit()
+    db.refresh(student)
+    return _serialize_student(student, is_assistant(db, student))
 
 
 @router.delete("/api/students/{student_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -308,12 +394,19 @@ async def import_students(
         if row is None or all(c is None or c == "" for c in row):
             continue
         preview_rows.append(_parse_row(row_idx, row, header_map, by_seat, seen_seats))
+    _flag_duplicate_emails(
+        preview_rows,
+        existing_students,
+        by_seat,
+        assistant_ids_in_classroom(db, classroom_id),
+    )
 
     summary = ImportPreviewSummary(
         total_rows=len(preview_rows),
         to_create=sum(1 for r in preview_rows if r.action == "create"),
         to_update=sum(1 for r in preview_rows if r.action == "update"),
         errors=sum(1 for r in preview_rows if r.action == "error"),
+        warnings=sum(1 for r in preview_rows if r.warnings),
     )
 
     if dry_run:
@@ -337,6 +430,12 @@ async def import_students(
             "errors.student.duplicate_seat",
             "Seat number already exists in this classroom.",
         )
+    except HTTPException:
+        # 409 errors.assistant.email_clash from the 小老師 email check (a
+        # clash that slipped past preview, e.g. a concurrent edit): the whole
+        # batch is rolled back — nothing from this file is saved.
+        db.rollback()
+        raise
     return ImportResult(dry_run=False, summary=summary, rows=preview_rows)
 
 
@@ -409,10 +508,15 @@ def _parse_row(
     name_raw = cell("姓名")
     name = str(name_raw).strip() if name_raw not in (None, "") else None
 
-    # email (optional)
-    email_raw = cell("email") or cell("Email")
-    email = str(email_raw).strip() if email_raw not in (None, "") else None
-    if email and "@" not in email:
+    # email (optional) — same normalise/validate helper as the single form.
+    email_raw = cell("email")
+    if email_raw in (None, ""):
+        email_raw = cell("Email")
+    email: str | None
+    try:
+        email = clean_email(email_raw)
+    except InvalidEmail:
+        email = str(email_raw).strip()
         errors.append("email is invalid")
 
     if errors:
@@ -426,6 +530,14 @@ def _parse_row(
         )
 
     existing = by_seat.get(seat) if seat is not None else None
+    warnings: list[str] = []
+    if existing is not None and email is None:
+        # Blank email cell on an UPDATE row means "leave it alone", not
+        # "clear it" (#261) — teachers often re-import a roster that only
+        # carries seat + name. Preview shows the email that will remain.
+        email = existing.email
+        if email:
+            warnings.append("email_unchanged")
     return ImportRowPreview(
         row_number=row_idx,
         action="update" if existing else "create",
@@ -433,7 +545,69 @@ def _parse_row(
         name=name,
         email=email,
         existing_id=existing.id if existing else None,
+        warnings=warnings,
     )
+
+
+def _import_email_changed(r: ImportRowPreview, by_seat: dict[int, Student]) -> bool:
+    """A new row, or an update row whose email differs from the stored one —
+    exactly the rows `_commit_import` runs the 小老師 email check on."""
+    existing = by_seat.get(r.seat_number) if r.seat_number is not None else None
+    if r.action == "create" or existing is None:
+        return True
+    return (existing.email or None) != (r.email or None)
+
+
+def _flag_duplicate_emails(
+    rows: list[ImportRowPreview],
+    existing_students: list[Student],
+    by_seat: dict[int, Student],
+    assistant_ids: set[UUID],
+) -> None:
+    """Flag emails that, after this import, two students in the class would
+    share. Computed on the post-import state: existing students keyed by
+    seat, overridden by the file's rows.
+
+    - A 小老師 is in the group of students sharing the email → every row in
+      that group whose email is new / changed becomes an ERROR
+      (`duplicate_email_assistant`), mirroring the 409 that
+      `check_email_change_vs_assistants` raises at commit time (#262).
+    - Otherwise (ordinary students only) → warning, import still allowed.
+    """
+    final_by_seat: dict[int, str | None] = {
+        s.seat_number: s.email for s in existing_students
+    }
+    for r in rows:
+        if r.action != "error" and r.seat_number is not None:
+            final_by_seat[r.seat_number] = r.email
+    dupes = duplicate_emails(final_by_seat.values())
+    if not dupes:
+        return
+    # Import never changes who is 小老師 (and can't clear an email), so the
+    # current assistants are also the post-import assistants.
+    assistant_seats = {
+        s.seat_number for s in existing_students if s.id in assistant_ids
+    }
+    dupes_with_assistant = {
+        e
+        for e in dupes
+        if any(
+            seat in assistant_seats
+            for seat, em in final_by_seat.items()
+            if em and em.lower() == e
+        )
+    }
+    for r in rows:
+        if r.action == "error" or not r.email:
+            continue
+        key = r.email.lower()
+        if key not in dupes:
+            continue
+        if key in dupes_with_assistant and _import_email_changed(r, by_seat):
+            r.action = "error"
+            r.errors.append("duplicate_email_assistant")
+        else:
+            r.warnings.append("duplicate_email")
 
 
 # ---------- commit ----------
@@ -445,13 +619,23 @@ def _commit_import(
     rows: list[ImportRowPreview],
     by_seat: dict[int, Student],
 ) -> None:
+    # Students whose email is new / changed by this file; checked against
+    # 小老師 after ALL rows are applied (final state — a swap between two
+    # rows must not trip on the intermediate state).
+    to_check: list[Student] = []
     for r in rows:
         if r.action == "error" or r.seat_number is None:
             continue
         if r.action == "update" and r.existing_id is not None:
             student = by_seat[r.seat_number]
             student.name = r.name
+            # Blank cell → r.email was filled with the stored value in
+            # _parse_row, so this is a no-op; a filled cell updates it.
+            old_email = student.email
             student.email = r.email
+            _on_email_changed(db, student, old_email)
+            if (old_email or None) != (student.email or None):
+                to_check.append(student)
         else:
             student = Student(
                 user_id=user_id,
@@ -463,4 +647,9 @@ def _commit_import(
             )
             db.add(student)
             db.flush()
+            to_check.append(student)
+    db.flush()
+    for student in to_check:
+        # 409 errors.assistant.email_clash → caller rolls back the batch.
+        check_email_change_vs_assistants(db, student)
 
